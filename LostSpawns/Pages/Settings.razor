@@ -1,0 +1,203 @@
+@page "/settings"
+@inject SettingsService SettingsSvc
+@inject IdentityService Identity
+
+<PageTitle>Lost Spawns — Settings</PageTitle>
+
+<h2 class="text-accent" style="margin-bottom: 1.5rem; letter-spacing: 0.1em;">⚙ SETTINGS</h2>
+
+<div class="settings-grid">
+    <!-- Video Settings -->
+    <div class="card">
+        <div class="card-header">Video</div>
+
+        <div class="setting-row">
+            <label class="form-label">Draw Distance</label>
+            <div class="setting-control">
+                <input type="range" min="2" max="24" step="1"
+                       value="@_drawDistance" @oninput="OnDrawDistanceChanged" />
+                <span class="setting-value">@_drawDistance chunks</span>
+            </div>
+        </div>
+
+        <div class="setting-row">
+            <label class="form-label">Field of View</label>
+            <div class="setting-control">
+                <input type="range" min="50" max="120" step="1"
+                       value="@_fov" @oninput="OnFovChanged" />
+                <span class="setting-value">@_fov°</span>
+            </div>
+        </div>
+
+        <div class="setting-row">
+            <label class="form-label">V-Sync</label>
+            <div class="setting-control">
+                <label class="toggle">
+                    <input type="checkbox" checked="@_vsync" @onchange="OnVsyncChanged" />
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <button class="btn btn-primary" style="margin-top: 1rem;" @onclick="SaveVideo">
+            Save Video Settings
+        </button>
+    </div>
+
+    <!-- Player Settings -->
+    <div class="card">
+        <div class="card-header">Player</div>
+
+        <div class="setting-row">
+            <label class="form-label">Display Name</label>
+            <div class="setting-control">
+                <input type="text" class="form-control" maxlength="24"
+                       value="@_playerName" @oninput="OnPlayerNameChanged"
+                       placeholder="Survivor" />
+            </div>
+        </div>
+
+        <button class="btn btn-primary" style="margin-top: 1rem;" @onclick="SavePlayer">
+            Save Player Settings
+        </button>
+    </div>
+</div>
+
+@if (_saved)
+{
+    <div class="save-toast">
+        ✓ Settings saved
+    </div>
+}
+
+@code {
+    private int _drawDistance;
+    private int _fov;
+    private bool _vsync;
+    private string _playerName = "";
+    private bool _saved;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Identity.InitAsync();
+
+        _drawDistance = SettingsSvc.DrawDistance;
+        _fov = (int)SettingsSvc.FieldOfView;
+        _vsync = SettingsSvc.Vsync;
+        _playerName = SettingsSvc.PlayerName;
+    }
+
+    private void OnDrawDistanceChanged(ChangeEventArgs e) => _drawDistance = int.Parse(e.Value?.ToString() ?? "8");
+    private void OnFovChanged(ChangeEventArgs e) => _fov = int.Parse(e.Value?.ToString() ?? "70");
+    private void OnVsyncChanged(ChangeEventArgs e) => _vsync = (bool)(e.Value ?? true);
+    private void OnPlayerNameChanged(ChangeEventArgs e) => _playerName = e.Value?.ToString() ?? "";
+
+    private async Task SaveVideo()
+    {
+        SettingsSvc.SaveVideo(_drawDistance, _fov, _vsync);
+        await ShowSaved();
+    }
+
+    private async Task SavePlayer()
+    {
+        SettingsSvc.SavePlayerName(_playerName);
+        Identity.SetPlayerName(_playerName);
+        await ShowSaved();
+    }
+
+    private async Task ShowSaved()
+    {
+        _saved = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _saved = false;
+        StateHasChanged();
+    }
+}
+
+<style>
+    .settings-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        gap: 1.5rem;
+        max-width: 900px;
+    }
+
+    .setting-row {
+        margin-bottom: 1.25rem;
+    }
+    .setting-control {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .setting-control input[type="range"] {
+        flex: 1;
+    }
+    .setting-value {
+        font-family: var(--font-heading);
+        font-size: 0.85rem;
+        color: var(--accent);
+        min-width: 80px;
+        text-align: right;
+    }
+
+    /* Toggle switch */
+    .toggle {
+        position: relative;
+        display: inline-block;
+        width: 44px;
+        height: 24px;
+        cursor: pointer;
+    }
+    .toggle input { display: none; }
+    .toggle-slider {
+        position: absolute;
+        inset: 0;
+        background: var(--bg-hover);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        transition: all var(--transition);
+    }
+    .toggle-slider::before {
+        content: '';
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        left: 2px;
+        top: 2px;
+        background: var(--text-dim);
+        border-radius: 50%;
+        transition: all var(--transition);
+    }
+    .toggle input:checked + .toggle-slider {
+        background: var(--accent-glow);
+        border-color: var(--accent-dim);
+    }
+    .toggle input:checked + .toggle-slider::before {
+        transform: translateX(20px);
+        background: var(--accent);
+    }
+
+    /* Save toast */
+    .save-toast {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        background: var(--bg-card);
+        border: 1px solid var(--accent-dim);
+        color: var(--accent);
+        padding: 0.75rem 1.5rem;
+        border-radius: var(--radius-lg);
+        font-family: var(--font-heading);
+        font-weight: 500;
+        letter-spacing: 0.05em;
+        box-shadow: 0 4px 20px rgba(57, 255, 20, 0.15);
+        animation: slideIn 0.3s ease;
+        z-index: 1000;
+    }
+    @@keyframes slideIn {
+        from { transform: translateY(20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+</style>

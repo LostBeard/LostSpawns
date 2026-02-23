@@ -1,0 +1,103 @@
+@page "/"
+@inject IdentityService Identity
+@inject VoxelEngineService Engine
+
+<PageTitle>Lost Spawns</PageTitle>
+
+<div class="hero">
+    <div class="hero-content">
+        <h1 class="hero-title glow-text">LOST SPAWNS</h1>
+        <p class="hero-subtitle">Survive the wasteland. Build. Fight. Endure.</p>
+
+        <div class="hero-stats">
+            <div class="stat-card">
+                <span class="stat-label">Player</span>
+                <span class="stat-value">@(Identity.PlayerName ?? "—")</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">GPU Backend</span>
+                <span class="stat-value @(Engine.IsInitialized ? "text-accent" : "text-warn")">
+                    @(Engine.BackendName ?? "Not Initialized")
+                </span>
+            </div>
+        </div>
+
+        <div class="hero-actions">
+            <a href="game" class="btn btn-primary btn-lg">▶ ENTER WORLD</a>
+            <a href="settings" class="btn btn-outline btn-lg">⚙ SETTINGS</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await Identity.InitAsync();
+        await Engine.InitAsync();
+    }
+}
+
+<style>
+    .hero {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 100px);
+        text-align: center;
+    }
+    .hero-content {
+        max-width: 600px;
+    }
+    .hero-title {
+        font-size: 3.5rem;
+        letter-spacing: 0.15em;
+        margin-bottom: 0.5rem;
+        color: var(--accent);
+    }
+    .hero-subtitle {
+        font-family: var(--font-heading);
+        font-size: 1.2rem;
+        color: var(--text-dim);
+        letter-spacing: 0.08em;
+        margin-bottom: 2.5rem;
+    }
+    .hero-stats {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        margin-bottom: 2.5rem;
+        flex-wrap: wrap;
+    }
+    .stat-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 0.75rem 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-width: 160px;
+    }
+    .stat-label {
+        font-family: var(--font-heading);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-muted);
+    }
+    .stat-value {
+        font-family: var(--font-heading);
+        font-size: 1rem;
+        font-weight: 600;
+    }
+    .hero-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    .btn-lg {
+        padding: 0.75rem 2rem;
+        font-size: 1rem;
+    }
+</style>

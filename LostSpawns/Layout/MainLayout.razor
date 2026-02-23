@@ -1,0 +1,37 @@
+@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <aside class="sidebar @(SidebarCollapsed ? "collapsed" : "")">
+        <div class="sidebar-brand">
+            <span class="brand-icon">☢</span>
+            <span class="brand-text">LOST SPAWNS</span>
+            <button class="sidebar-toggle" @onclick="ToggleSidebar" title="Toggle sidebar">
+                <span>@(SidebarCollapsed ? "▶" : "◀")</span>
+            </button>
+        </div>
+        <NavMenu />
+        <div class="sidebar-footer">
+            <span class="badge-status online">● Online</span>
+        </div>
+    </aside>
+
+    <div class="main-area">
+        <header class="top-bar">
+            <div class="top-bar-left">
+                <button class="sidebar-toggle-mobile" @onclick="ToggleSidebar">☰</button>
+            </div>
+            <div class="top-bar-right">
+                <span class="text-dim" style="font-size: 0.8rem;">v0.1.0-alpha</span>
+            </div>
+        </header>
+        <main class="content-area">
+            @Body
+        </main>
+    </div>
+</div>
+
+@code {
+    private bool SidebarCollapsed { get; set; }
+
+    private void ToggleSidebar() => SidebarCollapsed = !SidebarCollapsed;
+}

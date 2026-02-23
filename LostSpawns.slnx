@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="LICENSE.txt" />
+    <File Path="Notes.md" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="LostSpawns/LostSpawns.csproj" />
+</Solution>

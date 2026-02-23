@@ -1,0 +1,198 @@
+@page "/game"
+@using SpawnDev.BlazorJS.JSObjects
+@using LostSpawns.Models
+@using LostSpawns.Rendering
+@inject VoxelEngineService Engine
+@inject InputService Input
+@inject RenderService Renderer
+@inject WorldService World
+@inject SettingsService Settings
+@implements IAsyncDisposable
+
+<PageTitle>Lost Spawns — Game</PageTitle>
+
+@if (!_ready)
+{
+    <div class="game-loading">
+        <div class="game-loading-inner">
+            <h2 class="glow-text">INITIALIZING</h2>
+            <p class="text-dim">@_status</p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="game-hud">
+        <div class="hud-top-left">
+            <span class="badge-status online">@Engine.BackendName</span>
+            <span class="text-dim" style="font-size:0.75rem;">@_fpsText</span>
+            <span class="text-dim" style="font-size:0.65rem;">@_chunkText</span>
+        </div>
+        <div class="hud-top-right">
+            <span class="text-dim" style="font-size: 0.75rem;">Click canvas to capture mouse</span>
+        </div>
+        <div class="hud-crosshair">+</div>
+    </div>
+}
+
+<canvas id="gameCanvas" @ref="_canvasRef" width="1280" height="720"
+        tabindex="0" @onclick="OnCanvasClick"></canvas>
+
+@code {
+    private ElementReference _canvasRef;
+    private bool _ready;
+    private string _status = "";
+    private string _fpsText = "";
+    private string _chunkText = "";
+    private int _frameCount;
+    private double _fpsTimer;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _status = "Creating GPU context…";
+        StateHasChanged();
+
+        await Engine.InitAsync();
+
+        _status = "Building render pipeline…";
+        StateHasChanged();
+
+        using var canvas = new HTMLCanvasElement(_canvasRef);
+        Renderer.Init(canvas, Engine.Accelerator!);
+
+        _status = "Generating world…";
+        StateHasChanged();
+
+        World.Init(seed: 42);
+
+        // Camera above terrain
+        int spawnHeight = World.GetHeightAt(0, 0);
+        Renderer.Camera.Position = new System.Numerics.Vector3(0, spawnHeight + 8, 0);
+        Renderer.Camera.Yaw = 45f;
+        Renderer.Camera.Pitch = -15f;
+
+        // Initial chunks via GPU pipeline (same noise as streaming)
+        var initialChunks = await World.GenerateChunksAsync(
+            Renderer.Camera.Position,
+            Math.Min(Settings.DrawDistance, 3));
+
+        foreach (var (cx, cz, mesh) in initialChunks)
+            Renderer.UploadChunkMesh(cx, cz, mesh);
+
+        Console.WriteLine($"[Game] Initial GPU load: {initialChunks.Count} chunks");
+
+        // Queue remaining chunks — GPU kernel generates heightmaps async
+        World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
+
+        Input.Attach();
+        Renderer.OnUpdate = OnGameUpdate;
+
+        _ready = true;
+        _status = "";
+        StateHasChanged();
+
+        Renderer.StartRenderLoop();
+    }
+
+    private void OnGameUpdate(float deltaTime)
+    {
+        Renderer.Camera.ProcessKeyboard(Input.KeysDown, deltaTime);
+
+        var (dx, dy) = Input.ConsumeMouseDelta();
+        if (dx != 0 || dy != 0)
+            Renderer.Camera.ProcessMouseMovement((float)dx, (float)dy);
+
+        // Update desired chunks (dispatches GPU tasks, removes old)
+        var removed = World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
+        foreach (var key in removed)
+            Renderer.RemoveChunkMesh(key.cx, key.cz);
+
+        // Process up to 2 GPU-ready chunks per frame (fill blocks + mesh + upload)
+        var ready = World.ProcessReadyChunks(2);
+        foreach (var (cx, cz, mesh) in ready)
+            Renderer.UploadChunkMesh(cx, cz, mesh);
+
+        // HUD
+        string pending = World.HasPendingChunks ? $" +{World.PendingCount} gen" : "";
+        _chunkText = $"{Renderer.VisibleChunkCount}/{Renderer.TotalChunkCount} visible{pending}";
+
+        _frameCount++;
+        _fpsTimer += deltaTime;
+        if (_fpsTimer >= 1.0)
+        {
+            _fpsText = $"{_frameCount} FPS";
+            _frameCount = 0;
+            _fpsTimer = 0;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnCanvasClick()
+    {
+        using var canvas = new HTMLCanvasElement(_canvasRef);
+        await canvas.RequestPointerLock();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Renderer.StopRenderLoop();
+        Renderer.Dispose();
+        World.Reset();
+        Input.Detach();
+        return ValueTask.CompletedTask;
+    }
+}
+
+<style>
+    #gameCanvas {
+        display: block;
+        width: 100%;
+        height: calc(100vh - 48px);
+        background: #000;
+        cursor: crosshair;
+        outline: none;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+    }
+
+    .game-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 40vh;
+        text-align: center;
+    }
+    .game-loading-inner h2 {
+        font-size: 1.5rem;
+        letter-spacing: 0.15em;
+        margin-bottom: 0.5rem;
+    }
+
+    .game-hud {
+        position: relative;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        padding: 0.5rem 0;
+        margin-bottom: 0.5rem;
+    }
+    .hud-top-left, .hud-top-right {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .hud-crosshair {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 1.5rem;
+        color: rgba(57, 255, 20, 0.6);
+        pointer-events: none;
+        z-index: 150;
+        font-weight: 300;
+        text-shadow: 0 0 4px var(--accent-glow);
+    }
+</style>
