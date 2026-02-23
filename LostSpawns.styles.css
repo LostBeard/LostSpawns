@@ -1,0 +1,196 @@
+/* /Layout/MainLayout.razor.rz.scp.css */
+/* ── App Shell ────────────────────────────────── */
+.app-shell[b-aaevr7zw2t] {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* ── Sidebar ─────────────────────────────────── */
+.sidebar[b-aaevr7zw2t] {
+    width: 240px;
+    min-width: 240px;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    transition: width 0.25s ease, min-width 0.25s ease;
+    overflow: hidden;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    z-index: 200;
+}
+
+.sidebar.collapsed[b-aaevr7zw2t] {
+    width: 60px;
+    min-width: 60px;
+}
+
+.sidebar.collapsed .brand-text[b-aaevr7zw2t],
+.sidebar.collapsed .sidebar-footer[b-aaevr7zw2t],
+.sidebar.collapsed[b-aaevr7zw2t]  .nav-text {
+    display: none;
+}
+
+.sidebar-brand[b-aaevr7zw2t] {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.brand-icon[b-aaevr7zw2t] {
+    font-size: 1.4rem;
+    filter: drop-shadow(0 0 6px var(--accent-glow-strong));
+    flex-shrink: 0;
+}
+
+.brand-text[b-aaevr7zw2t] {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    white-space: nowrap;
+}
+
+.sidebar-toggle[b-aaevr7zw2t] {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.25rem;
+    transition: color var(--transition);
+}
+
+.sidebar-toggle:hover[b-aaevr7zw2t] {
+    color: var(--accent);
+}
+
+.sidebar-footer[b-aaevr7zw2t] {
+    margin-top: auto;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.8rem;
+}
+
+/* ── Main Area ────────────────────────────────── */
+.main-area[b-aaevr7zw2t] {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.top-bar[b-aaevr7zw2t] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1.5rem;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    height: 48px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.top-bar-left[b-aaevr7zw2t] {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.top-bar-right[b-aaevr7zw2t] {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.sidebar-toggle-mobile[b-aaevr7zw2t] {
+    display: none;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 1.1rem;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+}
+
+.content-area[b-aaevr7zw2t] {
+    flex: 1;
+    padding: 0;
+}
+
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 768px) {
+    .sidebar[b-aaevr7zw2t] {
+        position: fixed;
+        left: 0;
+        top: 0;
+        transform: translateX(-100%);
+    }
+
+    .sidebar:not(.collapsed)[b-aaevr7zw2t] {
+        transform: translateX(0);
+        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.7);
+    }
+
+    .sidebar-toggle-mobile[b-aaevr7zw2t] {
+        display: block;
+    }
+
+    .content-area[b-aaevr7zw2t] {
+        padding: 1rem;
+    }
+}
+/* /Layout/NavMenu.razor.rz.scp.css */
+.nav-menu[b-jruohpwg9j] {
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem 0;
+    gap: 2px;
+}
+
+.nav-item[b-jruohpwg9j] {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem 0.75rem 1.25rem;
+    color: var(--text-dim);
+    text-decoration: none;
+    font-family: var(--font-heading);
+    font-weight: 500;
+    font-size: 0.9rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-left: 3px solid transparent;
+    transition: all var(--transition);
+}
+
+.nav-item:hover[b-jruohpwg9j] {
+    background: var(--bg-hover);
+    color: var(--text);
+    border-left-color: var(--border-accent);
+}
+
+.nav-item.active[b-jruohpwg9j] {
+    background: var(--accent-glow);
+    color: var(--accent);
+    border-left-color: var(--accent);
+}
+
+.nav-icon[b-jruohpwg9j] {
+    font-size: 1.1rem;
+    width: 1.5rem;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.nav-text[b-jruohpwg9j] {
+    white-space: nowrap;
+}

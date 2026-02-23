@@ -1,0 +1,352 @@
+/* ═════════════════════════════════════════════════════════════
+   Lost Spawns — Dark Post-Apocalyptic Theme
+   ═════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Exo+2:wght@300;400;500;600;700&display=swap');
+
+:root {
+    /* Core palette – dark wasteland */
+    --bg-deep: #0a0a0e;
+    --bg-surface: #13131a;
+    --bg-card: #1a1a24;
+    --bg-sidebar: #0e0e14;
+    --bg-hover: #1e1e2a;
+    --bg-input: #16161f;
+    --border: #2a2a38;
+    --border-accent: #3d3d52;
+
+    /* Accent – muted teal / sea-green */
+    --accent: #5ab8a0;
+    --accent-dim: #4a9e88;
+    --accent-glow: rgba(90, 184, 160, 0.12);
+    --accent-glow-strong: rgba(90, 184, 160, 0.25);
+
+    /* Secondary accent – warning amber */
+    --warn: #e0a050;
+    --warn-dim: #c08838;
+
+    /* Danger */
+    --danger: #d94452;
+
+    /* Text */
+    --text: #e0e0ea;
+    --text-dim: #9090a8;
+    --text-muted: #60607a;
+
+    /* Typography */
+    --font-heading: 'Rajdhani', 'Segoe UI', sans-serif;
+    --font-body: 'Exo 2', 'Segoe UI', sans-serif;
+
+    /* Misc */
+    --radius: 6px;
+    --radius-lg: 12px;
+    --transition: 0.2s ease;
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+    --shadow-glow: 0 0 16px rgba(90, 184, 160, 0.06);
+}
+
+/* ── Global Reset ────────────────────────────── */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body {
+    font-family: var(--font-body);
+    background: var(--bg-deep);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color var(--transition);
+}
+
+a:hover {
+    color: var(--accent-dim);
+    text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+h1:focus {
+    outline: none;
+}
+
+/* ── Buttons ─────────────────────────────────── */
+.btn {
+    font-family: var(--font-heading);
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.5rem 1.25rem;
+    transition: all var(--transition);
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--accent-dim) 0%, var(--accent) 100%);
+    border-color: var(--accent-dim);
+    color: #000;
+}
+
+.btn-primary:hover {
+    box-shadow: 0 0 16px var(--accent-glow-strong);
+    transform: translateY(-1px);
+}
+
+.btn-outline {
+    background: transparent;
+    border-color: var(--accent-dim);
+    color: var(--accent);
+}
+
+.btn-outline:hover {
+    background: var(--accent-glow);
+}
+
+.btn-danger {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+}
+
+/* ── Form Controls ───────────────────────────── */
+.form-control,
+.form-select {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 0.5rem 0.75rem;
+    font-family: var(--font-body);
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--accent-dim);
+    box-shadow: 0 0 0 2px var(--accent-glow);
+    outline: none;
+}
+
+input[type="range"] {
+    accent-color: var(--accent);
+}
+
+.form-label {
+    color: var(--text-dim);
+    font-family: var(--font-heading);
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    font-size: 0.78rem;
+    margin-bottom: 0.3rem;
+}
+
+/* ── Cards / Panels ──────────────────────────── */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    padding: 1.5rem;
+    transition: border-color var(--transition);
+}
+
+.card:hover {
+    border-color: var(--border-accent);
+}
+
+.card-header {
+    font-family: var(--font-heading);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1rem;
+}
+
+/* ── Scrollbar ───────────────────────────────── */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-deep);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-accent);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-dim);
+}
+
+/* ── Loading Screen ──────────────────────────── */
+.loading-progress {
+    position: absolute;
+    display: block;
+    width: 8rem;
+    height: 8rem;
+    inset: 30vh 0 auto 0;
+    margin: 0 auto;
+}
+
+.loading-progress circle {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 0.6rem;
+    transform-origin: 50% 50%;
+    transform: rotate(-90deg);
+}
+
+.loading-progress circle:last-child {
+    stroke: var(--accent);
+    stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
+    transition: stroke-dasharray 0.05s ease-in-out;
+}
+
+.loading-progress-text {
+    position: absolute;
+    text-align: center;
+    font-weight: bold;
+    font-family: var(--font-heading);
+    color: var(--accent);
+    inset: calc(30vh + 3.25rem) 0 auto 0.2rem;
+}
+
+.loading-progress-text::after {
+    content: var(--blazor-load-percentage-text, "Loading");
+}
+
+/* ── Error UI ────────────────────────────────── */
+#blazor-error-ui {
+    background: var(--bg-card);
+    border-top: 2px solid var(--danger);
+    color: var(--text);
+    bottom: 0;
+    box-sizing: border-box;
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem;
+    position: fixed;
+    width: 100%;
+    z-index: 10000;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
+
+.blazor-error-boundary {
+    background: var(--danger);
+    padding: 1rem;
+    color: white;
+    border-radius: var(--radius);
+}
+
+.blazor-error-boundary::after {
+    content: "An error has occurred.";
+}
+
+/* ── Utility ─────────────────────────────────── */
+.text-accent {
+    color: var(--accent);
+}
+
+.text-dim {
+    color: var(--text-dim);
+}
+
+.text-muted {
+    color: var(--text-muted);
+}
+
+.text-warn {
+    color: var(--warn);
+}
+
+.glow-text {
+    text-shadow: 0 0 10px var(--accent-glow-strong), 0 0 20px var(--accent-glow);
+}
+
+.badge-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-family: var(--font-heading);
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.badge-status.online {
+    background: var(--accent-glow);
+    color: var(--accent);
+    border: 1px solid rgba(90, 184, 160, 0.3);
+}
+
+.badge-status.offline {
+    background: rgba(255, 51, 68, 0.12);
+    color: var(--danger);
+    border: 1px solid rgba(255, 51, 68, 0.3);
+}
+
+/* ── Game Canvas ─────────────────────────────── */
+.game-canvas-container {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: #000;
+}
+
+.game-canvas-container canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* ── Subtle scan-line effect on body ─────────── */
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 99999;
+    background: repeating-linear-gradient(0deg,
+            transparent,
+            transparent 2px,
+            rgba(0, 0, 0, 0.03) 2px,
+            rgba(0, 0, 0, 0.03) 4px);
+    mix-blend-mode: overlay;
+}
