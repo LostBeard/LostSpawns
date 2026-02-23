@@ -26,6 +26,7 @@ public class RenderService : IDisposable
 
     private GPUTexture? _depthTexture;
     private GPUTextureView? _depthView;
+    private string? _canvasId;
     private int _canvasWidth;
     private int _canvasHeight;
 
@@ -91,8 +92,11 @@ public class RenderService : IDisposable
             Format = _canvasFormat,
         });
 
-        _canvasWidth = canvas.Width;
-        _canvasHeight = canvas.Height;
+        _canvasId = canvas.Id;
+        _canvasWidth = canvas.ClientWidth;
+        _canvasHeight = canvas.ClientHeight;
+        canvas.Width = _canvasWidth;
+        canvas.Height = _canvasHeight;
 
         _shaderModule = _device.CreateShaderModule(new GPUShaderModuleDescriptor
         {
@@ -330,6 +334,26 @@ public class RenderService : IDisposable
             _vertexBuffer == null || _slots.Count == 0)
             return;
 
+        // Dynamic resize: match canvas pixel resolution to its CSS display size
+        if (_canvasId != null)
+        {
+            using var doc = _js.Get<Document>("document");
+            using var canvasEl = doc.GetElementById<HTMLCanvasElement>(_canvasId);
+            if (canvasEl != null)
+            {
+                int cw = canvasEl.ClientWidth;
+                int ch = canvasEl.ClientHeight;
+                if (cw > 0 && ch > 0 && (cw != _canvasWidth || ch != _canvasHeight))
+                {
+                    _canvasWidth = cw;
+                    _canvasHeight = ch;
+                    canvasEl.Width = cw;
+                    canvasEl.Height = ch;
+                    CreateDepthTexture();
+                }
+            }
+        }
+
         float aspect = (float)_canvasWidth / _canvasHeight;
         var vp = Camera.GetVpMatrix(aspect);
 
@@ -441,6 +465,7 @@ public class RenderService : IDisposable
         _context?.Unconfigure();
         _context?.Dispose();
         _context = null;
+        _canvasId = null;
 
         // Allow re-init on next navigation to the game page
         IsInitialized = false;

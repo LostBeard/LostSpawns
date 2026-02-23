@@ -35,8 +35,10 @@ else
     </div>
 }
 
-<canvas id="gameCanvas" @ref="_canvasRef" width="1280" height="720"
-        tabindex="0" @onclick="OnCanvasClick"></canvas>
+<div class="game-container">
+    <canvas id="gameCanvas" @ref="_canvasRef" width="1280" height="720"
+            tabindex="0" @onclick="OnCanvasClick"></canvas>
+</div>
 
 @code {
     private ElementReference _canvasRef;
@@ -146,22 +148,29 @@ else
 }
 
 <style>
-    #gameCanvas {
+    .game-container {
+        position: fixed;
+        inset: 0;
+        z-index: 300;
+        background: #000;
+    }
+
+    .game-container canvas {
         display: block;
         width: 100%;
-        height: calc(100vh - 48px);
-        background: #000;
+        height: 100%;
         cursor: crosshair;
         outline: none;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
     }
 
     .game-loading {
+        position: fixed;
+        inset: 0;
+        z-index: 300;
         display: flex;
         align-items: center;
         justify-content: center;
-        height: 40vh;
+        background: var(--bg-deep);
         text-align: center;
     }
     .game-loading-inner h2 {
@@ -171,17 +180,22 @@ else
     }
 
     .game-hud {
-        position: relative;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 350;
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        padding: 0.5rem 0;
-        margin-bottom: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        pointer-events: none;
     }
     .hud-top-left, .hud-top-right {
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        pointer-events: auto;
     }
     .hud-crosshair {
         position: fixed;
@@ -189,10 +203,9 @@ else
         left: 50%;
         transform: translate(-50%, -50%);
         font-size: 1.5rem;
-        color: rgba(57, 255, 20, 0.6);
+        color: rgba(90, 184, 160, 0.6);
         pointer-events: none;
-        z-index: 150;
+        z-index: 350;
         font-weight: 300;
-        text-shadow: 0 0 4px var(--accent-glow);
     }
 </style>
