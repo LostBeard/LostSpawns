@@ -377,7 +377,7 @@ public class RenderService : IDisposable
                     View = colorView,
                     LoadOp = GPULoadOp.Clear,
                     StoreOp = GPUStoreOp.Store,
-                    ClearValue = new GPUColorDict { R = 0.65, G = 0.80, B = 0.95, A = 1.0 },
+                    ClearValue = new GPUColorDict { R = 0.45, G = 0.48, B = 0.52, A = 1.0 }, // overcast sky
                 }
             },
             DepthStencilAttachment = new GPURenderPassDepthStencilAttachment
@@ -528,12 +528,12 @@ fn fs_main(input : VertexOutput) -> @location(0) vec4<f32> {
     let sun_intensity = max(dot(n, sun_dir), 0.0);
     let fill_intensity = max(dot(n, fill_dir), 0.0);
 
-    // Warm sunlight + cool sky fill + ambient base
-    let sun_color = vec3<f32>(1.0, 0.95, 0.85);
-    let fill_color = vec3<f32>(0.55, 0.65, 0.85);
-    let ambient = vec3<f32>(0.30, 0.32, 0.38);
+    // Overcast daylight - desaturated, cold, post-apocalyptic
+    let sun_color = vec3<f32>(0.85, 0.82, 0.75);   // muted warm, filtered through clouds
+    let fill_color = vec3<f32>(0.45, 0.48, 0.55);   // cold blue-gray fill
+    let ambient = vec3<f32>(0.25, 0.26, 0.30);       // dark ambient base
 
-    let light = ambient + sun_color * sun_intensity * 0.55 + fill_color * fill_intensity * 0.18;
+    let light = ambient + sun_color * sun_intensity * 0.50 + fill_color * fill_intensity * 0.20;
 
     // === Per-block color variation (breaks visual monotony) ===
     let block_pos = floor(input.world_pos);
@@ -565,7 +565,7 @@ fn fs_main(input : VertexOutput) -> @location(0) vec4<f32> {
     let dist = length(input.world_pos);
     let fog_start = 80.0;
     let fog_end = 220.0;
-    let fog_color = vec3<f32>(0.65, 0.80, 0.95);
+    let fog_color = vec3<f32>(0.45, 0.48, 0.52);  // overcast gray fog
     let fog_factor = clamp((dist - fog_start) / (fog_end - fog_start), 0.0, 1.0);
     let fog_factor_smooth = fog_factor * fog_factor; // quadratic falloff
     color = mix(color, fog_color, fog_factor_smooth);

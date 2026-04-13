@@ -13,7 +13,7 @@ public static class TerrainKernels
     //  Constants for the mesh kernel
     // ──────────────────────────────────────────────────────────────
     private const int SizeXZ = 16;
-    private const int Height = 64;
+    private const int Height = 256;
     private const int SizeXZ2 = SizeXZ * SizeXZ; // 256
 
     // 6 face directions: dx, dy, dz
@@ -264,28 +264,29 @@ public static class TerrainKernels
     /// <summary>Block type + face normal → RGB color. Face-dependent for natural look.</summary>
     private static void GetBlockColorGpu(int blockType, float ny, out float r, out float g, out float b)
     {
+        // DayZ palette - muted, desaturated, post-apocalyptic
         // BlockType enum: Air=0, Dirt=1, Grass=2, Stone=3, Sand=4, Water=5, Wood=6, Leaves=7
-        if (blockType == 1) // Dirt
+        if (blockType == 1) // Dirt - dark brown, muddy
         {
             if (ny > 0.5f)
-            { r = 0.60f; g = 0.40f; b = 0.22f; } // top: lighter dirt
+            { r = 0.36f; g = 0.28f; b = 0.18f; } // top: slightly lighter
             else
-            { r = 0.55f; g = 0.35f; b = 0.18f; } // sides/bottom
+            { r = 0.32f; g = 0.24f; b = 0.16f; } // sides/bottom
         }
-        else if (blockType == 2) // Grass
+        else if (blockType == 2) // Grass - muted olive
         {
             if (ny > 0.5f)
-            { r = 0.30f; g = 0.65f; b = 0.20f; } // top: green
+            { r = 0.28f; g = 0.38f; b = 0.18f; } // top: muted olive green
             else if (ny < -0.5f)
-            { r = 0.55f; g = 0.35f; b = 0.18f; } // bottom: dirt
+            { r = 0.32f; g = 0.24f; b = 0.16f; } // bottom: dirt
             else
-            { r = 0.42f; g = 0.48f; b = 0.22f; } // sides: dirt-green mix
+            { r = 0.30f; g = 0.30f; b = 0.18f; } // sides: earthy green-brown
         }
-        else if (blockType == 3) { r = 0.50f; g = 0.50f; b = 0.50f; }  // Stone
-        else if (blockType == 4) { r = 0.85f; g = 0.78f; b = 0.52f; }  // Sand
-        else if (blockType == 5) { r = 0.20f; g = 0.40f; b = 0.80f; }  // Water
-        else if (blockType == 6) { r = 0.45f; g = 0.30f; b = 0.15f; }  // Wood
-        else if (blockType == 7) { r = 0.18f; g = 0.55f; b = 0.15f; }  // Leaves
+        else if (blockType == 3) { r = 0.38f; g = 0.38f; b = 0.40f; }  // Stone - cold gray
+        else if (blockType == 4) { r = 0.55f; g = 0.50f; b = 0.38f; }  // Sand - dirty beige
+        else if (blockType == 5) { r = 0.12f; g = 0.22f; b = 0.32f; }  // Water - dark murky
+        else if (blockType == 6) { r = 0.30f; g = 0.25f; b = 0.18f; }  // Wood - weathered
+        else if (blockType == 7) { r = 0.20f; g = 0.32f; b = 0.14f; }  // Leaves - dark green
         else { r = 1.0f; g = 0.0f; b = 1.0f; }                         // Unknown
     }
 

@@ -17,6 +17,7 @@ public class WorldService
     private readonly HashSet<(int cx, int cz)> _inFlight = new();
     private readonly Queue<(int cx, int cz, float[] mesh)> _readyQueue = new();
     private TerrainGenerator? _generator;
+    private HeightmapLoader? _heightmapLoader;
     private int _lastCX = int.MinValue;
     private int _lastCZ = int.MinValue;
     private bool _gpuReady;
@@ -29,16 +30,23 @@ public class WorldService
     public bool HasPendingChunks => _pendingQueue.Count > 0 || _inFlight.Count > 0 || _readyQueue.Count > 0;
     public int PendingCount => _pendingQueue.Count + _inFlight.Count + _readyQueue.Count;
 
+    /// <summary>The heightmap loader, if a real-world map is loaded.</summary>
+    public HeightmapLoader? HeightmapLoader => _heightmapLoader;
+
     public WorldService(VoxelEngineService engine)
     {
         _engine = engine;
     }
 
+    /// <summary>
+    /// Initialize with procedural terrain (Perlin noise).
+    /// </summary>
     public void Init(int seed = 42)
     {
         if (IsInitialized) return;
         Seed = seed;
         _generator = new TerrainGenerator(seed);
+        _heightmapLoader = null;
 
         if (_engine.IsInitialized)
         {
@@ -48,6 +56,25 @@ public class WorldService
             Console.WriteLine("[WorldService] GPU heightmap + mesh generation enabled");
         }
 
+        IsInitialized = true;
+    }
+
+    /// <summary>
+    /// Initialize with a real-world heightmap (e.g., Deer Isle terrain data).
+    /// Falls back to procedural generation for the terrain generator but uses
+    /// the heightmap data for chunk generation when available.
+    /// </summary>
+    public void InitWithHeightmap(HeightmapLoader loader, int seed = 42)
+    {
+        if (IsInitialized) return;
+        Seed = seed;
+        _generator = new TerrainGenerator(seed);
+        _heightmapLoader = loader;
+
+        // GPU terrain gen stays with Perlin for now - heightmap uses CPU path
+        _gpuReady = false;
+
+        Console.WriteLine($"[WorldService] Real-world heightmap loaded: {loader.GridSize}x{loader.GridSize}, {loader.MapSizeInChunks} chunks");
         IsInitialized = true;
     }
 
@@ -151,7 +178,10 @@ public class WorldService
     private void FallbackCpuGenerate(int cx, int cz)
     {
         if (_chunks.ContainsKey((cx, cz))) return;
-        var chunk = _generator!.GenerateChunk(cx, cz);
+        // Use heightmap loader if available, otherwise procedural
+        var chunk = _heightmapLoader != null
+            ? _heightmapLoader.GenerateChunk(cx, cz)
+            : _generator!.GenerateChunk(cx, cz);
         var mesh = VoxelMesher.GenerateMesh(chunk);
         _chunks[(cx, cz)] = true;
         if (mesh.Length > 0)
@@ -219,6 +249,8 @@ public class WorldService
 
     public int GetHeightAt(float worldX, float worldZ)
     {
+        if (_heightmapLoader != null)
+            return _heightmapLoader.GetElevation(worldX, worldZ);
         return _generator?.GetHeight(worldX, worldZ) ?? 30;
     }
 

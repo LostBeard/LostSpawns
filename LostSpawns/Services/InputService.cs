@@ -29,6 +29,9 @@ public class InputService : IAsyncDisposable
     public double MouseDeltaX { get; private set; }
     public double MouseDeltaY { get; private set; }
 
+    /// <summary>True when pointer lock is active (mouse captured by canvas).</summary>
+    public bool IsPointerLocked { get; private set; }
+
     /// <summary>Normalized XZ move vector: X=strafe, Y=forward.</summary>
     public Vector2 MoveVector => new(
         (Right ? 1f : 0f) - (Left ? 1f : 0f),
@@ -49,6 +52,7 @@ public class InputService : IAsyncDisposable
         _window!.OnKeyDown += OnKeyDown;
         _window!.OnKeyUp += OnKeyUp;
         _window!.OnMouseMove += OnMouseMove;
+        _document!.OnPointerLockChange += OnPointerLockChange;
     }
 
     /// <summary>Call on dispose to detach all listeners.</summary>
@@ -62,6 +66,10 @@ public class InputService : IAsyncDisposable
         if (_window != null)
         {
             _window.OnMouseMove -= OnMouseMove;
+        }
+        if (_document != null)
+        {
+            _document.OnPointerLockChange -= OnPointerLockChange;
         }
     }
 
@@ -99,8 +107,22 @@ public class InputService : IAsyncDisposable
         }
     }
 
+    private void OnPointerLockChange()
+    {
+        bool wasLocked = IsPointerLocked;
+        IsPointerLocked = _document?.PointerLockElement != null;
+        if (wasLocked && !IsPointerLocked)
+        {
+            // Pointer lock lost - consume any stale deltas
+            MouseDeltaX = 0;
+            MouseDeltaY = 0;
+        }
+    }
+
     private void OnMouseMove(MouseEvent e)
     {
+        // Only accumulate mouse movement when pointer is locked
+        if (!IsPointerLocked) return;
         MouseDeltaX += e.MovementX;
         MouseDeltaY += e.MovementY;
     }

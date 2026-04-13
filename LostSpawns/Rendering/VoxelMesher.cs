@@ -81,19 +81,33 @@ public static class VoxelMesher
                 var neighbor = chunk.GetBlock(x + dx, y + dy, z + dz);
                 if (neighbor != BlockType.Air) continue;  // face is hidden
 
-                // Emit 6 vertices for this face (world-space positions)
+                // Compute per-vertex ambient occlusion for this face
+                // Each vertex checks 3 neighboring blocks at its corner
+                // More solid neighbors = darker vertex (0-3 occluders -> 1.0 to 0.55 brightness)
+                var aoValues = ComputeFaceAO(chunk, x, y, z, f);
+
+                // Face-dependent color adjustment (top brighter, bottom darker, sides muted)
+                float fr = r, fg = g, fb = b;
+                if (ny > 0.5f) { fr *= 1.05f; fg *= 1.05f; fb *= 1.02f; } // top: slight boost
+                else if (ny < -0.5f) { fr *= 0.65f; fg *= 0.65f; fb *= 0.65f; } // bottom: dark
+                else { fr *= 0.82f; fg *= 0.82f; fb *= 0.82f; } // sides: slight darken
+
+                // Emit 6 vertices for this face with AO baked into color
+                // Quad vertices map: v0=0, v1=1, v2=2, v3=0, v4=2, v5=3 (two triangles)
+                int[] aoMap = { 0, 1, 2, 0, 2, 3 };
                 for (int v = 0; v < 6; v++)
                 {
+                    float ao = aoValues[aoMap[v]];
                     var pos = FaceVertices[f][v];
-                    vertices.Add(worldOffsetX + x + pos[0]); // world X
-                    vertices.Add(y + pos[1]);                 // world Y
-                    vertices.Add(worldOffsetZ + z + pos[2]); // world Z
+                    vertices.Add(worldOffsetX + x + pos[0]);
+                    vertices.Add(y + pos[1]);
+                    vertices.Add(worldOffsetZ + z + pos[2]);
                     vertices.Add(nx);
                     vertices.Add(ny);
                     vertices.Add(nz);
-                    vertices.Add(r);
-                    vertices.Add(g);
-                    vertices.Add(b);
+                    vertices.Add(fr * ao);
+                    vertices.Add(fg * ao);
+                    vertices.Add(fb * ao);
                 }
             }
         }
@@ -104,15 +118,74 @@ public static class VoxelMesher
     /// <summary>Returns the vertex count from a packed vertex array.</summary>
     public static int VertexCount(float[] packed) => packed.Length / 9;
 
+    /// <summary>
+    /// Computes ambient occlusion for the 4 corners of a face.
+    /// Each corner checks 3 neighboring blocks (side1, side2, corner).
+    /// Returns brightness values: 1.0 (no occlusion) to 0.55 (fully occluded).
+    /// </summary>
+    private static float[] ComputeFaceAO(ChunkData chunk, int x, int y, int z, int faceIndex)
+    {
+        // AO corner offsets per face - each corner checks side1, side2, and diagonal
+        // For each face, 4 corners x 3 neighbor offsets
+        int[][] cornerOffsets = faceIndex switch
+        {
+            0 => new[] { // +X face: corners at (1,0,0), (1,1,0), (1,1,1), (1,0,1)
+                new[] { 1,0,-1, 1,-1,0, 1,-1,-1 }, new[] { 1,0,-1, 1,1,0, 1,1,-1 },
+                new[] { 1,0,1, 1,1,0, 1,1,1 },     new[] { 1,0,1, 1,-1,0, 1,-1,1 },
+            },
+            1 => new[] { // -X face
+                new[] { -1,0,1, -1,-1,0, -1,-1,1 }, new[] { -1,0,1, -1,1,0, -1,1,1 },
+                new[] { -1,0,-1, -1,1,0, -1,1,-1 }, new[] { -1,0,-1, -1,-1,0, -1,-1,-1 },
+            },
+            2 => new[] { // +Y face (top)
+                new[] { -1,1,0, 0,1,-1, -1,1,-1 }, new[] { -1,1,0, 0,1,1, -1,1,1 },
+                new[] { 1,1,0, 0,1,1, 1,1,1 },     new[] { 1,1,0, 0,1,-1, 1,1,-1 },
+            },
+            3 => new[] { // -Y face (bottom)
+                new[] { -1,-1,0, 0,-1,1, -1,-1,1 }, new[] { -1,-1,0, 0,-1,-1, -1,-1,-1 },
+                new[] { 1,-1,0, 0,-1,-1, 1,-1,-1 },  new[] { 1,-1,0, 0,-1,1, 1,-1,1 },
+            },
+            4 => new[] { // +Z face
+                new[] { -1,0,1, 0,-1,1, -1,-1,1 }, new[] { 1,0,1, 0,-1,1, 1,-1,1 },
+                new[] { 1,0,1, 0,1,1, 1,1,1 },     new[] { -1,0,1, 0,1,1, -1,1,1 },
+            },
+            _ => new[] { // -Z face
+                new[] { 1,0,-1, 0,-1,-1, 1,-1,-1 }, new[] { -1,0,-1, 0,-1,-1, -1,-1,-1 },
+                new[] { -1,0,-1, 0,1,-1, -1,1,-1 }, new[] { 1,0,-1, 0,1,-1, 1,1,-1 },
+            },
+        };
+
+        var ao = new float[4];
+        for (int corner = 0; corner < 4; corner++)
+        {
+            var offsets = cornerOffsets[corner];
+            bool s1 = chunk.GetBlock(x + offsets[0], y + offsets[1], z + offsets[2]) != BlockType.Air;
+            bool s2 = chunk.GetBlock(x + offsets[3], y + offsets[4], z + offsets[5]) != BlockType.Air;
+            bool cn = chunk.GetBlock(x + offsets[6], y + offsets[7], z + offsets[8]) != BlockType.Air;
+
+            // Classic voxel AO formula: 0-3 occluders
+            int occluders = (s1 ? 1 : 0) + (s2 ? 1 : 0) + ((s1 && s2) ? 1 : (cn ? 1 : 0));
+            ao[corner] = occluders switch
+            {
+                0 => 1.00f,  // fully lit
+                1 => 0.85f,  // slightly shadowed
+                2 => 0.70f,  // moderately shadowed
+                _ => 0.55f,  // heavily shadowed (corner)
+            };
+        }
+        return ao;
+    }
+
     private static (float r, float g, float b) GetBlockColor(BlockType type) => type switch
     {
-        BlockType.Grass  => (0.30f, 0.65f, 0.20f),
-        BlockType.Dirt   => (0.55f, 0.35f, 0.18f),
-        BlockType.Stone  => (0.50f, 0.50f, 0.50f),
-        BlockType.Sand   => (0.85f, 0.78f, 0.52f),
-        BlockType.Water  => (0.20f, 0.40f, 0.80f),
-        BlockType.Wood   => (0.45f, 0.30f, 0.15f),
-        BlockType.Leaves => (0.18f, 0.55f, 0.15f),
+        // DayZ palette - muted, desaturated, post-apocalyptic
+        BlockType.Grass  => (0.28f, 0.38f, 0.18f),  // muted olive, dark forest green
+        BlockType.Dirt   => (0.32f, 0.24f, 0.16f),  // dark brown, muddy
+        BlockType.Stone  => (0.38f, 0.38f, 0.40f),  // cold gray, weathered
+        BlockType.Sand   => (0.55f, 0.50f, 0.38f),  // dirty beige, wet sand
+        BlockType.Water  => (0.12f, 0.22f, 0.32f),  // dark blue-green, murky
+        BlockType.Wood   => (0.30f, 0.25f, 0.18f),  // weathered gray-brown bark
+        BlockType.Leaves => (0.20f, 0.32f, 0.14f),  // dark green, some brown mixed
         _ => (1.0f, 0.0f, 1.0f), // magenta = unknown
     };
 }

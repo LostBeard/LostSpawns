@@ -6,7 +6,7 @@ namespace LostSpawns.Models;
 public class ChunkData
 {
     public const int SizeXZ = 16;
-    public const int Height = 64;
+    public const int Height = 256;
     public const int Volume = SizeXZ * Height * SizeXZ;
 
     private readonly byte[] _blocks = new byte[Volume];

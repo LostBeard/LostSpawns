@@ -7,6 +7,7 @@
 @inject RenderService Renderer
 @inject WorldService World
 @inject SettingsService Settings
+@inject SpawnDev.BlazorJS.BlazorJSRuntime JS
 @implements IAsyncDisposable
 
 <PageTitle>Lost Spawns — Game</PageTitle>
@@ -64,13 +65,36 @@ else
         using var canvas = new HTMLCanvasElement(_canvasRef);
         Renderer.Init(canvas, Engine.Accelerator!);
 
-        _status = "Generating world…";
+        _status = "Loading terrain data…";
         StateHasChanged();
 
-        World.Init(seed: 42);
+        // Load real-world Deer Isle heightmap
+        var heightmapLoader = new LostSpawns.Services.HeightmapLoader();
+        try
+        {
+            await heightmapLoader.LoadAsync(JS, "maps/deer_isle.heightmap");
+            heightmapLoader.SetCellSize(15.62f); // 16km / 1024 grid
+            World.InitWithHeightmap(heightmapLoader, seed: 42);
+            _status = "Deer Isle terrain loaded!";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Game] Heightmap load failed: {ex.Message}, falling back to procedural");
+            World.Init(seed: 42);
+        }
+        StateHasChanged();
 
-        // Camera above terrain
+        // Camera above terrain - spawn on the island, not in the ocean
         int spawnHeight = World.GetHeightAt(0, 0);
+        // If spawn is underwater, find higher ground nearby
+        if (spawnHeight <= 64) // 64 = sea level in HeightmapLoader
+        {
+            for (int search = 1; search < 200; search += 4)
+            {
+                int h = World.GetHeightAt(search * 16, search * 16);
+                if (h > 68) { spawnHeight = h; break; }
+            }
+        }
         Renderer.Camera.Position = new System.Numerics.Vector3(0, spawnHeight + 8, 0);
         Renderer.Camera.Yaw = 45f;
         Renderer.Camera.Pitch = -15f;
@@ -131,10 +155,18 @@ else
         }
     }
 
-    private async Task OnCanvasClick()
+    private void OnCanvasClick()
     {
-        using var canvas = new HTMLCanvasElement(_canvasRef);
-        await canvas.RequestPointerLock();
+        if (Input.IsPointerLocked) return;
+        try
+        {
+            using var canvas = new HTMLCanvasElement(_canvasRef);
+            canvas.RequestPointerLock();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Game] Pointer lock failed: {ex.Message}");
+        }
     }
 
     public ValueTask DisposeAsync()

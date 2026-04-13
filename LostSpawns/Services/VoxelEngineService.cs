@@ -68,7 +68,7 @@ public class VoxelEngineService : IAsyncDisposable
             int, int
         >(TerrainKernels.MeshKernel);
 
-        _meshBlockBuffer = _accelerator.Allocate1D<int>(16384);
+        _meshBlockBuffer = _accelerator.Allocate1D<int>(Models.ChunkData.Volume); // 16x16x256 = 65536
         _meshVertexBuffer = _accelerator.Allocate1D<float>(MaxOutputFloats);
         _meshCounterBuffer = _accelerator.Allocate1D<int>(1);
         _blockIntsPool = new int[Models.ChunkData.Volume];
@@ -126,7 +126,7 @@ public class VoxelEngineService : IAsyncDisposable
             _meshCounterBuffer!.CopyFromCPU(_counterReset);
 
             _meshKernel(
-                (Index1D)16384,
+                (Index1D)Models.ChunkData.Volume,
                 _meshBlockBuffer.View,
                 _meshVertexBuffer!.View,
                 _meshCounterBuffer.View,
