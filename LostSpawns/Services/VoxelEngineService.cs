@@ -125,7 +125,7 @@ public class VoxelEngineService : IAsyncDisposable
                 Models.ChunkData.Height);
 
             // Debug: log block stats and mesh result
-            if (_meshCount < 5)
+            if (_meshCount < 10)
             {
                 int solidCount = 0;
                 for (int i = 0; i < packed.Length; i++)
