@@ -35,6 +35,7 @@ public class VoxelEngineService : IAsyncDisposable
     // Pooled int[] for block format conversion (byte -> PackedBlock)
     private int[]? _packedBlocksPool;
 
+    private int _meshCount; // debug: limit log spam
     public Accelerator? Accelerator => _accelerator;
     public bool IsInitialized { get; private set; }
     public string? BackendName { get; private set; }
@@ -118,10 +119,18 @@ public class VoxelEngineService : IAsyncDisposable
                 packed[i] = blocks[i] > 0 ? PackedBlock.Pack(blocks[i]) : 0;
 
             // GPU pipeline: face cull -> greedy merge -> PackedQuad GPU buffer
-            return await _meshPipeline.MeshSectionUnpaddedAsync(
+            var result = await _meshPipeline.MeshSectionUnpaddedAsync(
                 packed,
                 Models.ChunkData.SizeXZ,
                 Models.ChunkData.Height);
+
+            if (result.HasMesh && _meshCount < 5)
+            {
+                Console.WriteLine($"[VoxelEngineService] Mesh result: {result.QuadCount} quads, buffer={result.QuadBuffer?.Length}");
+                _meshCount++;
+            }
+
+            return result;
         }
         finally
         {
