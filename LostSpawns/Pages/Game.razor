@@ -85,12 +85,12 @@
         Renderer.Camera.Yaw = 45f;
         Renderer.Camera.Pitch = -15f;
 
-        // Initial chunks via VoxelEngine greedy mesh GPU pipeline
+        // Initial chunks - small radius for fast startup (streaming fills the rest)
+        // Each chunk = 16 section mesh ops, so keep initial count low
         var initialCount = await World.GenerateChunksAsync(
-            Renderer.Camera.Position,
-            Math.Min(Settings.DrawDistance, 12));
+            Renderer.Camera.Position, 3);
 
-        Console.WriteLine($"[Game] Initial GPU load: {initialCount} chunks (GPU-resident, no vertex buffer)");
+        Console.WriteLine($"[Game] Initial GPU load: {initialCount} columns, {World.LoadedSections} sections");
 
         // Queue remaining chunks — GPU kernel generates heightmaps async
         World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
