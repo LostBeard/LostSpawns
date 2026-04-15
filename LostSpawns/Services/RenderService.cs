@@ -196,12 +196,9 @@ public class RenderService : IDisposable
             if (!FrustumCuller.IsBoxVisible(in frustum, min, max))
                 continue;
 
-            // Bake section offset into MVP
-            var model = Matrix4x4.CreateTranslation(sectionOffset);
-            var mvp = model * vp;
-
+            // Pass VP matrix + section offset separately (shader applies offset internally)
             _voxelPipeline.UpdateUniforms(
-                mvp, Vector3.Zero, 1.0f,
+                vp, sectionOffset, 1.0f,
                 new Vector3(0.45f, 0.48f, 0.52f), 0.0003f,
                 new Vector3(0.25f, 0.26f, 0.30f), 0);
 
