@@ -226,7 +226,7 @@ public class RenderService : IDisposable
         _depthTexture = _device!.CreateTexture(new GPUTextureDescriptor
         {
             Size = new[] { _canvasWidth, _canvasHeight },
-            Format = "depth24plus",
+            Format = "depth32float",
             Usage = GPUTextureUsage.RenderAttachment,
         });
         _depthView = _depthTexture.CreateView();
