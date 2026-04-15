@@ -1,4 +1,10 @@
 using System.Numerics;
+using ILGPU;
+using ILGPU.Runtime;
+using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.ILGPU.WebGPU;
+using SpawnDev.VoxelEngine;
+using SpawnDev.VoxelEngine.Meshing;
 using LostSpawns.Models;
 using LostSpawns.Rendering;
 
@@ -6,16 +12,16 @@ namespace LostSpawns.Services;
 
 /// <summary>
 /// Manages the voxel world: chunk loading/unloading around the player.
-/// Full GPU pipeline: heightmap → block fill → GPU mesh → ready queue.
-/// Game loop just dequeues fully-meshed chunks for upload.
+/// Full GPU pipeline: heightmap -> block fill -> VoxelEngine greedy mesh -> GPU-resident quads.
+/// No CPU readback - mesh data stays on GPU from generation to rendering.
 /// </summary>
 public class WorldService
 {
     private readonly VoxelEngineService _engine;
-    private readonly Dictionary<(int cx, int cz), bool> _chunks = new();
+    private readonly Dictionary<(int cx, int cz), ChunkMesh> _chunks = new();
     private readonly Queue<(int cx, int cz)> _pendingQueue = new();
     private readonly HashSet<(int cx, int cz)> _inFlight = new();
-    private readonly Queue<(int cx, int cz, float[] mesh)> _readyQueue = new();
+    private readonly Queue<(int cx, int cz, ChunkMesh mesh)> _readyQueue = new();
     private TerrainGenerator? _generator;
     private HeightmapLoader? _heightmapLoader;
     private int _lastCX = int.MinValue;
@@ -33,14 +39,15 @@ public class WorldService
     /// <summary>The heightmap loader, if a real-world map is loaded.</summary>
     public HeightmapLoader? HeightmapLoader => _heightmapLoader;
 
+    /// <summary>All loaded chunks with their GPU mesh data. Used by RenderService for drawing.</summary>
+    public IReadOnlyDictionary<(int cx, int cz), ChunkMesh> Chunks => _chunks;
+
     public WorldService(VoxelEngineService engine)
     {
         _engine = engine;
     }
 
-    /// <summary>
-    /// Initialize with procedural terrain (Perlin noise).
-    /// </summary>
+    /// <summary>Initialize with procedural terrain (Perlin noise).</summary>
     public void Init(int seed = 42)
     {
         if (IsInitialized) return;
@@ -53,17 +60,13 @@ public class WorldService
             var noise = new PerlinNoise(seed);
             _engine.SetPermutationTable(noise.PermTable);
             _gpuReady = true;
-            Console.WriteLine("[WorldService] GPU heightmap + mesh generation enabled");
+            Console.WriteLine("[WorldService] GPU heightmap + VoxelEngine greedy mesh enabled");
         }
 
         IsInitialized = true;
     }
 
-    /// <summary>
-    /// Initialize with a real-world heightmap (e.g., Deer Isle terrain data).
-    /// Block filling from heightmap is a simple array lookup (CPU).
-    /// Mesh generation runs on GPU via ILGPU (the expensive part).
-    /// </summary>
+    /// <summary>Initialize with a real-world heightmap (e.g., Deer Isle terrain data).</summary>
     public void InitWithHeightmap(HeightmapLoader loader, int seed = 42)
     {
         if (IsInitialized) return;
@@ -74,7 +77,7 @@ public class WorldService
         if (_engine.IsInitialized)
         {
             _gpuReady = true;
-            Console.WriteLine("[WorldService] Heightmap mode: block fill from heightmap + GPU mesh generation");
+            Console.WriteLine("[WorldService] Heightmap mode: block fill from heightmap + VoxelEngine greedy mesh");
         }
 
         Console.WriteLine($"[WorldService] Real-world heightmap loaded: {loader.GridSize}x{loader.GridSize}, {loader.MapSizeInChunks} chunks");
@@ -88,10 +91,7 @@ public class WorldService
 
         if (pcx == _lastCX && pcz == _lastCZ && (_chunks.Count > 0 || _pendingQueue.Count > 0 || _inFlight.Count > 0))
         {
-            if (_gpuReady)
-                DispatchGpuPending();
-            else
-                ProcessCpuPending();
+            DispatchGpuPending();
             return new();
         }
 
@@ -112,6 +112,9 @@ public class WorldService
         {
             if (!desired.Contains(key))
             {
+                // Dispose GPU buffer when chunk unloads
+                if (_chunks.TryGetValue(key, out var mesh))
+                    mesh.Dispose();
                 _chunks.Remove(key);
                 removed.Add(key);
             }
@@ -125,26 +128,8 @@ public class WorldService
         foreach (var key in toAdd)
             _pendingQueue.Enqueue(key);
 
-        if (_gpuReady)
-            DispatchGpuPending();
-        else
-            ProcessCpuPending();
-
+        DispatchGpuPending();
         return removed;
-    }
-
-    /// <summary>Process pending chunks via CPU when GPU heightmap isn't available (heightmap mode).</summary>
-    private void ProcessCpuPending()
-    {
-        // Generate up to 4 chunks per frame to avoid blocking
-        int processed = 0;
-        while (_pendingQueue.Count > 0 && processed < 4)
-        {
-            var key = _pendingQueue.Dequeue();
-            if (_chunks.ContainsKey(key)) continue;
-            FallbackCpuGenerate(key.Item1, key.Item2);
-            processed++;
-        }
     }
 
     private void DispatchGpuPending()
@@ -154,27 +139,25 @@ public class WorldService
             var key = _pendingQueue.Dequeue();
             if (_chunks.ContainsKey(key)) continue;
             _inFlight.Add(key);
-            _ = GenerateChunkFullGpuAsync(key.Item1, key.Item2);
+            _ = GenerateChunkGpuAsync(key.Item1, key.Item2);
         }
     }
 
     /// <summary>
-    /// Full async GPU pipeline: heightmap → fill blocks → GPU mesh → queue result.
-    /// Only lightweight CPU work (block filling) happens here.
+    /// Full GPU pipeline: heightmap -> fill blocks -> VoxelEngine greedy mesh.
+    /// Mesh data stays GPU-resident (no CPU readback).
     /// </summary>
-    private async Task GenerateChunkFullGpuAsync(int cx, int cz)
+    private async Task GenerateChunkGpuAsync(int cx, int cz)
     {
         try
         {
-            Models.ChunkData chunk;
+            ChunkData chunk;
             if (_heightmapLoader != null)
             {
-                // Heightmap mode: block fill from real terrain data (simple lookup)
                 chunk = _heightmapLoader.GenerateChunk(cx, cz);
             }
             else
             {
-                // Procedural mode: GPU Perlin heightmap + CPU block fill
                 var heightmap = await _engine.GenerateHeightmapAsync(cx, cz);
                 if (_chunks.ContainsKey((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
                 chunk = _generator!.GenerateChunkFromHeightmap(cx, cz, heightmap);
@@ -182,15 +165,33 @@ public class WorldService
 
             if (_chunks.ContainsKey((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
 
-            // Step 3: GPU meshing — blocks passed as byte[], converted inside semaphore
-            var (mesh, vertexCount) = await _engine.GenerateMeshAsync(chunk.Blocks, cx, cz);
+            // VoxelEngine greedy mesh: GPU face cull + greedy merge -> PackedQuad GPU buffer
+            var meshResult = await _engine.GenerateMeshAsync(chunk.Blocks);
 
             _inFlight.Remove((cx, cz));
-            if (_chunks.ContainsKey((cx, cz))) return;
+            if (_chunks.ContainsKey((cx, cz)))
+            {
+                // Chunk was removed while we were generating - dispose the buffer
+                meshResult.QuadBuffer?.Dispose();
+                return;
+            }
 
-            _chunks[(cx, cz)] = true;
-            if (mesh.Length > 0)
-                _readyQueue.Enqueue((cx, cz, mesh));
+            if (meshResult.HasMesh)
+            {
+                var gpuBuffer = meshResult.QuadBuffer!.GetGPUBuffer();
+                var chunkMesh = new ChunkMesh
+                {
+                    QuadBuffer = gpuBuffer,
+                    QuadCount = meshResult.QuadCount,
+                    IlgpuBuffer = meshResult.QuadBuffer,
+                };
+                _readyQueue.Enqueue((cx, cz, chunkMesh));
+            }
+            else
+            {
+                // Empty chunk (all air) - mark as loaded with no mesh
+                _chunks[(cx, cz)] = ChunkMesh.Empty;
+            }
 
             DispatchGpuPending();
         }
@@ -198,50 +199,38 @@ public class WorldService
         {
             _inFlight.Remove((cx, cz));
             Console.WriteLine($"[WorldService] GPU pipeline error ({cx},{cz}): {ex.Message}");
-            // Fallback to CPU
-            FallbackCpuGenerate(cx, cz);
             DispatchGpuPending();
         }
     }
 
-    /// <summary>CPU fallback for when GPU fails.</summary>
-    private void FallbackCpuGenerate(int cx, int cz)
-    {
-        if (_chunks.ContainsKey((cx, cz))) return;
-        // Use heightmap loader if available, otherwise procedural
-        var chunk = _heightmapLoader != null
-            ? _heightmapLoader.GenerateChunk(cx, cz)
-            : _generator!.GenerateChunk(cx, cz);
-        var mesh = VoxelMesher.GenerateMesh(chunk);
-        _chunks[(cx, cz)] = true;
-        if (mesh.Length > 0)
-            _readyQueue.Enqueue((cx, cz, mesh));
-    }
-
     /// <summary>
-    /// Called per frame. Returns up to maxCount fully-meshed chunks for GPU upload.
+    /// Called per frame. Dequeues fully-meshed chunks and adds them to the active chunks dictionary.
     /// </summary>
-    public List<(int cx, int cz, float[] mesh)> ProcessReadyChunks(int maxCount = 2)
+    public int ProcessReadyChunks(int maxCount = 2)
     {
-        var results = new List<(int, int, float[])>();
-        while (results.Count < maxCount && _readyQueue.Count > 0)
+        int processed = 0;
+        while (processed < maxCount && _readyQueue.Count > 0)
         {
-            var item = _readyQueue.Dequeue();
-            if (!_chunks.ContainsKey((item.cx, item.cz))) continue; // was removed
-            results.Add(item);
+            var (cx, cz, mesh) = _readyQueue.Dequeue();
+            if (_chunks.ContainsKey((cx, cz)))
+            {
+                // Duplicate - dispose the new buffer
+                mesh.Dispose();
+                continue;
+            }
+            _chunks[(cx, cz)] = mesh;
+            processed++;
         }
-        return results;
+        return processed;
     }
 
-    /// <summary>Async initial load using GPU pipeline for noise consistency with streaming chunks.</summary>
-    public async Task<List<(int cx, int cz, float[] mesh)>> GenerateChunksAsync(Vector3 playerPos, int drawDistance)
+    /// <summary>Async initial load using GPU pipeline.</summary>
+    public async Task<int> GenerateChunksAsync(Vector3 playerPos, int drawDistance)
     {
         _lastCX = (int)MathF.Floor(playerPos.X / ChunkData.SizeXZ);
         _lastCZ = (int)MathF.Floor(playerPos.Z / ChunkData.SizeXZ);
 
-        var results = new List<(int, int, float[])>();
         int r2 = drawDistance * drawDistance;
-
         var toGenerate = new List<(int cx, int cz)>();
         for (int dx = -drawDistance; dx <= drawDistance; dx++)
         for (int dz = -drawDistance; dz <= drawDistance; dz++)
@@ -252,7 +241,7 @@ public class WorldService
             toGenerate.Add((cx, cz));
         }
 
-        // Generate sequentially: heightmap block fill + GPU mesh
+        int count = 0;
         foreach (var (cx, cz) in toGenerate)
         {
             try
@@ -265,18 +254,31 @@ public class WorldService
                     var heightmap = await _engine.GenerateHeightmapAsync(cx, cz);
                     chunk = _generator!.GenerateChunkFromHeightmap(cx, cz, heightmap);
                 }
-                // GPU mesh generation (ILGPU kernel)
-                var (mesh, vertexCount) = await _engine.GenerateMeshAsync(chunk.Blocks, cx, cz);
-                _chunks[(cx, cz)] = true;
-                if (mesh.Length > 0)
-                    results.Add((cx, cz, mesh));
+
+                var meshResult = await _engine.GenerateMeshAsync(chunk.Blocks);
+
+                if (meshResult.HasMesh)
+                {
+                    var gpuBuffer = meshResult.QuadBuffer!.GetGPUBuffer();
+                    _chunks[(cx, cz)] = new ChunkMesh
+                    {
+                        QuadBuffer = gpuBuffer,
+                        QuadCount = meshResult.QuadCount,
+                        IlgpuBuffer = meshResult.QuadBuffer,
+                    };
+                }
+                else
+                {
+                    _chunks[(cx, cz)] = ChunkMesh.Empty;
+                }
+                count++;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[WorldService] Chunk ({cx},{cz}) error: {ex.Message}");
             }
         }
-        return results;
+        return count;
     }
 
     public int GetHeightAt(float worldX, float worldZ)
@@ -289,14 +291,46 @@ public class WorldService
     /// <summary>Resets all state so the service can be re-initialized.</summary>
     public void Reset()
     {
+        // Dispose all GPU buffers
+        foreach (var mesh in _chunks.Values)
+            mesh.Dispose();
+        while (_readyQueue.Count > 0)
+            _readyQueue.Dequeue().mesh.Dispose();
+
         _chunks.Clear();
         _pendingQueue.Clear();
         _inFlight.Clear();
-        _readyQueue.Clear();
         _lastCX = int.MinValue;
         _lastCZ = int.MinValue;
         _gpuReady = false;
         _generator = null;
         IsInitialized = false;
+    }
+}
+
+/// <summary>
+/// GPU-resident mesh data for a chunk. Holds the PackedQuad buffer
+/// produced by VoxelEngine's greedy merge pipeline.
+/// </summary>
+public class ChunkMesh : IDisposable
+{
+    /// <summary>WebGPU buffer of PackedQuad data for VertexPullPipeline.</summary>
+    public GPUBuffer? QuadBuffer { get; init; }
+
+    /// <summary>Number of quads in the buffer.</summary>
+    public int QuadCount { get; init; }
+
+    /// <summary>ILGPU buffer reference (for disposal).</summary>
+    public MemoryBuffer1D<long, Stride1D.Dense>? IlgpuBuffer { get; init; }
+
+    /// <summary>True if this chunk has visible geometry.</summary>
+    public bool HasMesh => QuadCount > 0 && QuadBuffer != null;
+
+    /// <summary>Empty chunk (all air, no mesh data).</summary>
+    public static ChunkMesh Empty { get; } = new() { QuadCount = 0 };
+
+    public void Dispose()
+    {
+        IlgpuBuffer?.Dispose();
     }
 }

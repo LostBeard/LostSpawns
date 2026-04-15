@@ -2,17 +2,20 @@ using SpawnDev.BlazorJS;
 using SpawnDev.BlazorJS.JSObjects;
 using SpawnDev.ILGPU.WebGPU;
 using ILGPU.Runtime;
-using System.Linq;
 using System.Numerics;
 using LostSpawns.Models;
 using LostSpawns.Rendering;
+using SpawnDev.VoxelEngine.Rendering;
 
 namespace LostSpawns.Services;
 
 /// <summary>
-/// WebGPU render pipeline service. Uses a single sub-allocated vertex buffer
-/// with CPU-side vertex cache for proper compaction. One SetVertexBuffer per
-/// frame, then Draw with firstVertex offsets per visible chunk.
+/// WebGPU render service using VoxelEngine's VertexPullPipeline.
+/// Reads PackedQuad data directly from GPU buffers (no vertex buffer management).
+/// Each chunk's quad buffer goes straight from greedy merge to the render pass.
+///
+/// Memory: ~8 bytes per quad vs ~216 bytes per face (27x reduction).
+/// No free-list, no sub-allocation, no compaction, no buffer growth.
 /// </summary>
 public class RenderService : IDisposable
 {
@@ -21,8 +24,6 @@ public class RenderService : IDisposable
     private GPUDevice? _device;
     private GPUQueue? _queue;
     private GPUCanvasContext? _context;
-    private GPURenderPipeline? _pipeline;
-    private GPUShaderModule? _shaderModule;
     private string _canvasFormat = "bgra8unorm";
 
     private GPUTexture? _depthTexture;
@@ -31,18 +32,11 @@ public class RenderService : IDisposable
     private int _canvasWidth;
     private int _canvasHeight;
 
-    // Sub-allocated vertex buffer with CPU-side cache for compaction
-    private GPUBuffer? _vertexBuffer;
-    private int _bufferCapacityVertices;
-    private int _nextFreeVertex;
-    private readonly Dictionary<(int cx, int cz), ChunkSlot> _slots = new();
+    // VoxelEngine vertex-pull render pipeline (reads PackedQuad directly from storage buffer)
+    private VertexPullPipeline? _voxelPipeline;
 
-    private const int BytesPerVertex = 9 * 4;  // 9 floats * 4 bytes
-    private int _maxBufferVertices;
-    private int _initialCapacityVertices;
-
-    // Free-list: slots from removed chunks, sorted large→small for best-fit reuse
-    private readonly List<(int firstVertex, int vertexCount)> _freeSlots = new();
+    // World reference (set during init)
+    private WorldService? _world;
 
     private GPUBuffer? _uniformBuffer;
     private GPUBindGroup? _uniformBindGroup;
@@ -51,9 +45,6 @@ public class RenderService : IDisposable
     private bool _disposed;
     private double _lastTimestamp;
     private ActionCallback<double>? _rafCallback;
-
-    private readonly float[] _mvpFloats = new float[16];
-    private byte[]? _mvpBytes;
 
     public Camera Camera { get; } = new();
     public bool IsInitialized { get; private set; }
@@ -73,16 +64,17 @@ public class RenderService : IDisposable
     public int CanvasHeight => _canvasHeight;
 
     public int VisibleChunkCount { get; private set; }
-    public int TotalChunkCount => _slots.Count;
+    public int TotalChunkCount => _world?.LoadedCount ?? 0;
 
     public RenderService(BlazorJSRuntime js)
     {
         _js = js;
     }
 
-    public void Init(HTMLCanvasElement canvas, Accelerator accelerator)
+    public void Init(HTMLCanvasElement canvas, Accelerator accelerator, WorldService world)
     {
         if (IsInitialized) return;
+        _world = world;
 
         if (accelerator is not WebGPUAccelerator webGpuAccel)
             throw new InvalidOperationException("RenderService requires a WebGPU accelerator");
@@ -112,246 +104,14 @@ public class RenderService : IDisposable
         canvas.Width = _canvasWidth;
         canvas.Height = _canvasHeight;
 
-        _shaderModule = _device.CreateShaderModule(new GPUShaderModuleDescriptor
-        {
-            Code = WgslShaderSource
-        });
-
-        _pipeline = _device.CreateRenderPipeline(new GPURenderPipelineDescriptor
-        {
-            Layout = "auto",
-            Vertex = new GPUVertexState
-            {
-                Module = _shaderModule,
-                EntryPoint = "vs_main",
-                Buffers = new[]
-                {
-                    new GPUVertexBufferLayout
-                    {
-                        ArrayStride = (ulong)BytesPerVertex,
-                        StepMode = GPUVertexStepMode.Vertex,
-                        Attributes = new GPUVertexAttribute[]
-                        {
-                            new() { ShaderLocation = 0, Offset = 0,     Format = GPUVertexFormat.Float32x3 },
-                            new() { ShaderLocation = 1, Offset = 3 * 4, Format = GPUVertexFormat.Float32x3 },
-                            new() { ShaderLocation = 2, Offset = 6 * 4, Format = GPUVertexFormat.Float32x3 },
-                        }
-                    }
-                }
-            },
-            Fragment = new GPUFragmentState
-            {
-                Module = _shaderModule,
-                EntryPoint = "fs_main",
-                Targets = new[]
-                {
-                    new GPUColorTargetState { Format = _canvasFormat }
-                }
-            },
-            Primitive = new GPUPrimitiveState
-            {
-                Topology = GPUPrimitiveTopology.TriangleList,
-                CullMode = GPUCullMode.Back,
-                FrontFace = GPUFrontFace.CCW,
-            },
-            DepthStencil = new GPUDepthStencilState
-            {
-                Format = "depth24plus",
-                DepthWriteEnabled = true,
-                DepthCompare = "less",
-            }
-        });
+        // VoxelEngine vertex-pull pipeline (reads PackedQuad from storage buffers)
+        _voxelPipeline = new VertexPullPipeline();
+        _voxelPipeline.Init(_device, _queue, _canvasFormat);
 
         CreateDepthTexture();
 
-        // Query device limits for buffer sizing - no hardcoded assumptions
-        var limits = _device.Limits;
-        long maxBufferSize = (long)(limits?.MaxBufferSize ?? 256 * 1024 * 1024); // fallback 256MB
-        int deviceMaxVerts = (int)(maxBufferSize / BytesPerVertex);
-        _maxBufferVertices = Math.Min(deviceMaxVerts * 4 / 10, 20_000_000); // 40% of max, cap 20M
-        _initialCapacityVertices = Math.Min(_maxBufferVertices / 3, 5_000_000);
-
-        Console.WriteLine($"[RenderService] Device maxBufferSize: {maxBufferSize / 1024 / 1024}MB, vertex budget: {_maxBufferVertices} verts ({_maxBufferVertices * (long)BytesPerVertex / 1024 / 1024}MB)");
-
-        // Pre-allocate vertex buffer
-        _bufferCapacityVertices = _initialCapacityVertices;
-        _vertexBuffer = _device.CreateBuffer(new GPUBufferDescriptor
-        {
-            Size = (ulong)_bufferCapacityVertices * BytesPerVertex,
-            Usage = GPUBufferUsage.Vertex | GPUBufferUsage.CopyDst | GPUBufferUsage.CopySrc,
-        });
-        _nextFreeVertex = 0;
-
-        _uniformBuffer = _device.CreateBuffer(new GPUBufferDescriptor
-        {
-            Size = 80, // mat4x4 (64) + vec3 camera_pos + padding (16)
-            Usage = GPUBufferUsage.Uniform | GPUBufferUsage.CopyDst,
-        });
-
-        _uniformBindGroup = _device.CreateBindGroup(new GPUBindGroupDescriptor
-        {
-            Layout = _pipeline.GetBindGroupLayout(0),
-            Entries = new[]
-            {
-                new GPUBindGroupEntry
-                {
-                    Binding = 0,
-                    Resource = new GPUBufferBinding { Buffer = _uniformBuffer }
-                }
-            }
-        });
-
         IsInitialized = true;
-        Console.WriteLine($"[RenderService] Pipeline created. Vertex buffer: {_bufferCapacityVertices} verts ({_bufferCapacityVertices * BytesPerVertex / 1024 / 1024}MB)");
-    }
-
-    /// <summary>
-    /// Upload mesh for a chunk. Tries to reuse a free slot first, falls back to appending.
-    /// </summary>
-    public void UploadChunkMesh(int cx, int cz, float[] vertices)
-    {
-        var key = (cx, cz);
-        int vertexCount = vertices.Length / 9;
-        if (vertexCount == 0) return;
-
-        // Remove old slot if exists
-        if (_slots.Remove(key, out var oldSlot))
-            _freeSlots.Add((oldSlot.FirstVertex, oldSlot.VertexCount));
-
-        // Try to reuse a free slot (first-fit)
-        int writeOffset = TryFreeListAlloc(vertexCount);
-
-        // If no free slot, append at end
-        if (writeOffset < 0)
-        {
-            if (_nextFreeVertex + vertexCount > _bufferCapacityVertices)
-            {
-                // Grow buffer - GPU copy, no CPU stall
-                int needed = _nextFreeVertex + vertexCount;
-                int newCap = Math.Min(Math.Max(needed + needed / 4, _bufferCapacityVertices + 1_000_000), _maxBufferVertices);
-                if (newCap < needed)
-                {
-                    // Buffer at max capacity. Don't evict visible chunks - that causes thrashing.
-                    // Just skip this chunk. WorldService's natural movement-based unloading
-                    // will free space as the player moves away from old chunks.
-                    return;
-                }
-                GrowBuffer(newCap);
-            }
-            writeOffset = _nextFreeVertex;
-            _nextFreeVertex += vertexCount;
-        }
-
-        writeData:
-        // Write to GPU
-        var slot = new ChunkSlot { FirstVertex = writeOffset, VertexCount = vertexCount, CpuData = vertices };
-        ulong byteOffset = (ulong)writeOffset * BytesPerVertex;
-        using var jsArray = new Float32Array(vertices);
-        _queue!.WriteBuffer(_vertexBuffer!, byteOffset, jsArray);
-
-        _slots[key] = slot;
-    }
-
-    /// <summary>Total vertices currently stored across all chunks.</summary>
-    public int TotalVertices => _slots.Values.Sum(s => s.VertexCount);
-
-    /// <summary>Vertex budget pressure: 0.0 = empty, 1.0 = full.</summary>
-    public float Pressure => (float)TotalVertices / _maxBufferVertices;
-
-    /// <summary>Try to find a free slot that fits the requested vertex count.</summary>
-    private int TryFreeListAlloc(int vertexCount)
-    {
-        for (int i = 0; i < _freeSlots.Count; i++)
-        {
-            var (start, count) = _freeSlots[i];
-            if (count >= vertexCount)
-            {
-                _freeSlots.RemoveAt(i);
-                if (count > vertexCount)
-                    _freeSlots.Add((start + vertexCount, count - vertexCount));
-                return start;
-            }
-        }
-        return -1;
-    }
-
-    /// <summary>Evict the chunk farthest from (cx,cz), prioritizing high vertex count. Returns true if evicted.</summary>
-    private bool EvictFarthestChunk(int cameraCx, int cameraCz)
-    {
-        if (_slots.Count == 0) return false;
-
-        // Score = distance^2 * vertexCount (evict far + expensive chunks first)
-        var best = _slots.MaxBy(kv =>
-        {
-            int dx = kv.Key.Item1 - cameraCx;
-            int dz = kv.Key.Item2 - cameraCz;
-            return (long)(dx * dx + dz * dz) * kv.Value.VertexCount;
-        });
-
-        RemoveChunkMesh(best.Key.Item1, best.Key.Item2);
-        return true;
-    }
-
-    /// <summary>Remove a chunk's slot and add it to the free list for reuse. Coalesces adjacent free slots.</summary>
-    public void RemoveChunkMesh(int cx, int cz)
-    {
-        if (_slots.Remove((cx, cz), out var slot))
-        {
-            int start = slot.FirstVertex;
-            int count = slot.VertexCount;
-
-            // Try to coalesce with adjacent free slots
-            for (int i = _freeSlots.Count - 1; i >= 0; i--)
-            {
-                var f = _freeSlots[i];
-                // Free slot immediately before this one?
-                if (f.firstVertex + f.vertexCount == start)
-                {
-                    start = f.firstVertex;
-                    count += f.vertexCount;
-                    _freeSlots.RemoveAt(i);
-                }
-                // Free slot immediately after this one?
-                else if (start + count == f.firstVertex)
-                {
-                    count += f.vertexCount;
-                    _freeSlots.RemoveAt(i);
-                }
-            }
-            _freeSlots.Add((start, count));
-        }
-    }
-
-    /// <summary>
-    /// Grows the buffer using GPU→GPU copy. No CPU re-upload, no stall.
-    /// Existing slot offsets remain valid since data is copied at the same positions.
-    /// </summary>
-    private void GrowBuffer(int newCapacity)
-    {
-        Console.WriteLine($"[RenderService] Growing buffer: {_bufferCapacityVertices} -> {newCapacity} vertices ({newCapacity * BytesPerVertex / 1024 / 1024}MB)");
-
-        var newBuffer = _device!.CreateBuffer(new GPUBufferDescriptor
-        {
-            Size = (ulong)newCapacity * BytesPerVertex,
-            Usage = GPUBufferUsage.Vertex | GPUBufferUsage.CopyDst | GPUBufferUsage.CopySrc,
-        });
-
-        // GPU→GPU copy existing data (fast, no CPU involvement)
-        if (_nextFreeVertex > 0 && _vertexBuffer != null)
-        {
-            using var encoder = _device.CreateCommandEncoder();
-            encoder.CopyBufferToBuffer(
-                _vertexBuffer, 0,
-                newBuffer, 0,
-                (ulong)_nextFreeVertex * BytesPerVertex);
-            using var commandBuffer = encoder.Finish();
-            _queue!.Submit(new[] { commandBuffer });
-        }
-
-        _vertexBuffer?.Destroy();
-        _vertexBuffer?.Dispose();
-        _vertexBuffer = newBuffer;
-        _bufferCapacityVertices = newCapacity;
+        Console.WriteLine($"[RenderService] VertexPullPipeline initialized. No vertex buffer needed.");
     }
 
     public void StartRenderLoop()
@@ -385,8 +145,7 @@ public class RenderService : IDisposable
 
     private void RenderFrame()
     {
-        if (_device == null || _context == null || _pipeline == null ||
-            _vertexBuffer == null || _slots.Count == 0)
+        if (_device == null || _context == null || _voxelPipeline == null || _world == null)
             return;
 
         // Dynamic resize: match canvas pixel resolution to its CSS display size
@@ -411,54 +170,32 @@ public class RenderService : IDisposable
 
         float aspect = (float)_canvasWidth / _canvasHeight;
         var vp = Camera.GetVpMatrix(aspect);
-
-        Camera.WriteMvp(_mvpFloats, aspect);
-        // 16 floats MVP + 3 floats camera pos + 1 padding = 80 bytes
-        _mvpBytes ??= new byte[80];
-        Buffer.BlockCopy(_mvpFloats, 0, _mvpBytes, 0, 64);
-        var camPos = Camera.Position;
-        var camBytes = new[] { camPos.X, camPos.Y, camPos.Z, 0f };
-        Buffer.BlockCopy(camBytes, 0, _mvpBytes, 64, 16);
-        _queue!.WriteBuffer(_uniformBuffer!, 0, _mvpBytes);
-
         var frustum = FrustumCuller.ExtractPlanes(vp);
 
         using var colorTexture = _context.GetCurrentTexture();
         using var colorView = colorTexture.CreateView();
         using var encoder = _device.CreateCommandEncoder();
 
-        using var pass = encoder.BeginRenderPass(new GPURenderPassDescriptor
-        {
-            ColorAttachments = new[]
-            {
-                new GPURenderPassColorAttachment
-                {
-                    View = colorView,
-                    LoadOp = GPULoadOp.Clear,
-                    StoreOp = GPUStoreOp.Store,
-                    ClearValue = new GPUColorDict { R = 0.45, G = 0.48, B = 0.52, A = 1.0 }, // overcast sky
-                }
-            },
-            DepthStencilAttachment = new GPURenderPassDepthStencilAttachment
-            {
-                View = _depthView!,
-                DepthLoadOp = "clear",
-                DepthStoreOp = "store",
-                DepthClearValue = 1.0f,
-            }
-        });
+        // Voxel render pass (clears canvas, renders terrain with vertex pulling)
+        using var pass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView!,
+            clearColor: true, new Vector3(0.45f, 0.48f, 0.52f));
 
-        pass.SetPipeline(_pipeline);
-        pass.SetBindGroup(0, _uniformBindGroup!);
+        // Update camera uniforms
+        _voxelPipeline.UpdateUniforms(
+            vp,                                          // MVP matrix
+            Vector3.Zero,                                // section offset (world-space)
+            1.0f,                                        // voxel size
+            new Vector3(0.45f, 0.48f, 0.52f),           // fog color (overcast sky)
+            0.0003f,                                     // fog density
+            new Vector3(0.25f, 0.26f, 0.30f),           // ambient color
+            0                                            // time
+        );
 
-        // Bind the single vertex buffer ONCE
-        pass.SetVertexBuffer(0, _vertexBuffer);
-
-        // Draw each visible chunk using firstVertex offset
+        // Draw each visible chunk using its GPU-resident PackedQuad buffer
         int visible = 0;
-        foreach (var ((cx, cz), slot) in _slots)
+        foreach (var ((cx, cz), chunkMesh) in _world.Chunks)
         {
-            if (slot.VertexCount == 0) continue;
+            if (!chunkMesh.HasMesh) continue;
 
             var min = new Vector3(cx * ChunkData.SizeXZ, 0, cz * ChunkData.SizeXZ);
             var max = new Vector3(cx * ChunkData.SizeXZ + ChunkData.SizeXZ, ChunkData.Height, cz * ChunkData.SizeXZ + ChunkData.SizeXZ);
@@ -466,7 +203,7 @@ public class RenderService : IDisposable
             if (!FrustumCuller.IsBoxVisible(in frustum, min, max))
                 continue;
 
-            pass.Draw((uint)slot.VertexCount, 1, (uint)slot.FirstVertex, 0);
+            _voxelPipeline.DrawSection(pass, chunkMesh.QuadBuffer!, chunkMesh.QuadCount);
             visible++;
         }
         VisibleChunkCount = visible;
@@ -504,138 +241,18 @@ public class RenderService : IDisposable
         _rafCallback?.Dispose();
         _rafCallback = null;
 
-        _vertexBuffer?.Destroy();
-        _vertexBuffer?.Dispose();
-        _vertexBuffer = null;
-        _slots.Clear();
-        _freeSlots.Clear();
-        _nextFreeVertex = 0;
-
-        _uniformBindGroup?.Dispose();
-        _uniformBindGroup = null;
-        _uniformBuffer?.Destroy();
-        _uniformBuffer?.Dispose();
-        _uniformBuffer = null;
         _depthView?.Dispose();
         _depthView = null;
         _depthTexture?.Destroy();
         _depthTexture?.Dispose();
         _depthTexture = null;
-        _shaderModule?.Dispose();
-        _shaderModule = null;
-        _pipeline = null;
+
         _context?.Unconfigure();
         _context?.Dispose();
         _context = null;
         _canvasId = null;
 
-        // Allow re-init on next navigation to the game page
         IsInitialized = false;
         _disposed = false;
     }
-
-    /// <summary>Metadata for a chunk's sub-region within the shared vertex buffer.</summary>
-    private struct ChunkSlot
-    {
-        public int FirstVertex;
-        public int VertexCount;
-        public float[] CpuData;   // Cached for compaction
-    }
-
-    #region WGSL Shader
-
-    private const string WgslShaderSource = @"
-struct Uniforms {
-    mvp : mat4x4<f32>,
-    camera_pos : vec3<f32>,
-};
-
-@group(0) @binding(0) var<uniform> uniforms : Uniforms;
-
-struct VertexInput {
-    @location(0) position : vec3<f32>,
-    @location(1) normal   : vec3<f32>,
-    @location(2) color    : vec3<f32>,
-};
-
-struct VertexOutput {
-    @builtin(position) clip_position : vec4<f32>,
-    @location(0) world_normal : vec3<f32>,
-    @location(1) base_color   : vec3<f32>,
-    @location(2) world_pos    : vec3<f32>,
-};
-
-@vertex
-fn vs_main(input : VertexInput) -> VertexOutput {
-    var output : VertexOutput;
-    output.clip_position = uniforms.mvp * vec4<f32>(input.position, 1.0);
-    output.world_normal = input.normal;
-    output.base_color = input.color;
-    output.world_pos = input.position;
-    return output;
-}
-
-// Hash function for subtle per-block color variation
-fn hash2(p : vec2<f32>) -> f32 {
-    let h = dot(p, vec2<f32>(127.1, 311.7));
-    return fract(sin(h) * 43758.5453123);
-}
-
-@fragment
-fn fs_main(input : VertexOutput) -> @location(0) vec4<f32> {
-    // === Dual-light system (warm sun + cool fill) ===
-    let sun_dir = normalize(vec3<f32>(0.35, 0.85, 0.40));
-    let fill_dir = normalize(vec3<f32>(-0.3, 0.2, -0.5));
-    let n = normalize(input.world_normal);
-
-    let sun_intensity = max(dot(n, sun_dir), 0.0);
-    let fill_intensity = max(dot(n, fill_dir), 0.0);
-
-    // Overcast daylight - desaturated, cold, post-apocalyptic
-    let sun_color = vec3<f32>(0.85, 0.82, 0.75);   // muted warm, filtered through clouds
-    let fill_color = vec3<f32>(0.45, 0.48, 0.55);   // cold blue-gray fill
-    let ambient = vec3<f32>(0.25, 0.26, 0.30);       // dark ambient base
-
-    let light = ambient + sun_color * sun_intensity * 0.50 + fill_color * fill_intensity * 0.20;
-
-    // === Per-block color variation (breaks visual monotony) ===
-    let block_pos = floor(input.world_pos);
-    let variation = hash2(vec2<f32>(block_pos.x, block_pos.z)) * 0.08 - 0.04;
-
-    // === Face-dependent tinting ===
-    var color = input.base_color;
-
-    // Top faces get slight brightness boost (skylight)
-    if (n.y > 0.5) {
-        color = color * 1.05 + vec3<f32>(0.01, 0.02, 0.0);
-    }
-    // Bottom faces get darkened
-    if (n.y < -0.5) {
-        color = color * 0.70;
-    }
-    // Side faces get slight dirtiness (lower saturation)
-    if (abs(n.y) < 0.1) {
-        color = mix(color, vec3<f32>(dot(color, vec3<f32>(0.3, 0.59, 0.11))), 0.12);
-    }
-
-    // Apply variation
-    color = color + vec3<f32>(variation);
-
-    // === Apply lighting ===
-    color = color * light;
-
-    // === Distance fog ===
-    let dist = length(input.world_pos - uniforms.camera_pos);
-    let fog_start = 3000.0;
-    let fog_end = 6000.0;
-    let fog_color = vec3<f32>(0.45, 0.48, 0.52);  // overcast gray fog
-    let fog_factor = clamp((dist - fog_start) / (fog_end - fog_start), 0.0, 1.0);
-    let fog_factor_smooth = fog_factor * fog_factor; // quadratic falloff
-    color = mix(color, fog_color, fog_factor_smooth);
-
-    return vec4<f32>(color, 1.0);
-}
-";
-
-    #endregion
 }

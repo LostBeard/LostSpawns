@@ -3,14 +3,18 @@ using ILGPU.Runtime;
 using SpawnDev.BlazorJS;
 using SpawnDev.ILGPU;
 using SpawnDev.ILGPU.WebGPU;
+using SpawnDev.VoxelEngine;
+using SpawnDev.VoxelEngine.Meshing;
 using LostSpawns.Rendering;
 
 namespace LostSpawns.Services;
 
 /// <summary>
 /// Owns the ILGPU Context and Accelerator for GPU compute.
-/// Mesh dispatches are serialized via SemaphoreSlim with shared buffers.
-/// All GPU readbacks use CopyToHostAsync (required by WebGPU backend).
+/// Uses VoxelEngine's VoxelMeshPipeline for greedy-merged GPU meshing.
+/// Mesh output stays GPU-resident (no CPU readback, no float[] vertices).
+///
+/// Memory: ~25MB vs old 686MB (27x reduction via greedy merge + PackedQuad format).
 /// </summary>
 public class VoxelEngineService : IAsyncDisposable
 {
@@ -18,23 +22,15 @@ public class VoxelEngineService : IAsyncDisposable
     private Context? _context;
     private Accelerator? _accelerator;
 
-    // Heightmap kernel
+    // Heightmap kernel (kept - generates terrain heights on GPU)
     private Action<Index1D, ArrayView<int>, ArrayView<int>, float, float, float, float, float, int, int>? _heightmapKernel;
     private MemoryBuffer1D<int, Stride1D.Dense>? _permBuffer;
 
-    // Mesh kernel + shared buffers (protected by _meshLock)
-    private Action<Index1D, ArrayView<int>, ArrayView<float>, ArrayView<int>, int, int>? _meshKernel;
-    private MemoryBuffer1D<int, Stride1D.Dense>? _meshBlockBuffer;
-    private MemoryBuffer1D<float, Stride1D.Dense>? _meshVertexBuffer;
-    private MemoryBuffer1D<int, Stride1D.Dense>? _meshCounterBuffer;
-    private MemoryBuffer1D<float, Stride1D.Dense>? _meshResultBuffer;
-    private readonly SemaphoreSlim _meshLock = new(1, 1);
+    // VoxelEngine greedy mesh pipeline (replaces old per-face MeshKernel)
+    private VoxelMeshPipeline? _meshPipeline;
 
-    // Pooled arrays
-    private readonly int[] _counterReset = new[] { 0 };
-    private int[]? _blockIntsPool;
-
-    private const int MaxOutputFloats = 2_000_000; // 222K vertices at 9 floats/vert, 256-height chunks
+    // Pooled int[] for block format conversion (byte -> PackedBlock)
+    private int[]? _packedBlocksPool;
 
     public Accelerator? Accelerator => _accelerator;
     public bool IsInitialized { get; private set; }
@@ -56,24 +52,20 @@ public class VoxelEngineService : IAsyncDisposable
         _accelerator = await _context.CreatePreferredAcceleratorAsync();
         BackendName = _accelerator.AcceleratorType.ToString();
 
+        // Heightmap kernel (GPU Perlin noise)
         _heightmapKernel = _accelerator.LoadAutoGroupedStreamKernel<
             Index1D,
             ArrayView<int>, ArrayView<int>,
             float, float, float, float, float, int, int
         >(TerrainKernels.HeightmapKernel);
 
-        _meshKernel = _accelerator.LoadAutoGroupedStreamKernel<
-            Index1D,
-            ArrayView<int>, ArrayView<float>, ArrayView<int>,
-            int, int
-        >(TerrainKernels.MeshKernel);
+        // VoxelEngine greedy mesh pipeline (face cull + greedy merge on GPU)
+        _meshPipeline = new VoxelMeshPipeline(_accelerator);
 
-        _meshBlockBuffer = _accelerator.Allocate1D<int>(Models.ChunkData.Volume); // 16x16x256 = 65536
-        _meshVertexBuffer = _accelerator.Allocate1D<float>(MaxOutputFloats);
-        _meshCounterBuffer = _accelerator.Allocate1D<int>(1);
-        _blockIntsPool = new int[Models.ChunkData.Volume];
+        // Pooled array for block conversion
+        _packedBlocksPool = new int[Models.ChunkData.Volume];
 
-        Console.WriteLine($"[VoxelEngineService] Initialized: {BackendName}");
+        Console.WriteLine($"[VoxelEngineService] Initialized: {BackendName} (VoxelEngine greedy mesh pipeline)");
         IsInitialized = true;
     }
 
@@ -105,82 +97,34 @@ public class VoxelEngineService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Generates mesh vertex data using the GPU kernel.
-    /// Accepts raw byte[] blocks — conversion to int[] is done inside the semaphore
-    /// to prevent data races when multiple concurrent tasks share the pooled array.
+    /// Generate mesh using VoxelEngine's GPU greedy merge pipeline.
+    /// Returns GPU-resident MeshResult - no CPU readback, no float[] allocations.
+    /// The caller owns the MeshResult and must dispose QuadBuffer when the chunk unloads.
     /// </summary>
-    public async Task<(float[] vertices, int vertexCount)> GenerateMeshAsync(byte[] blocks, int chunkX, int chunkZ)
+    public async Task<VoxelMeshPipeline.MeshResult> GenerateMeshAsync(byte[] blocks)
     {
-        if (_meshKernel == null)
+        if (_meshPipeline == null)
             throw new InvalidOperationException("Not initialized");
 
-        await _meshLock.WaitAsync();
-        try
-        {
-            // Convert byte[] → int[] inside semaphore (pooled array is safe here)
-            var blockInts = _blockIntsPool!;
-            for (int i = 0; i < blocks.Length; i++)
-                blockInts[i] = blocks[i];
+        // Convert byte blocks to PackedBlock int format
+        var packed = _packedBlocksPool!;
+        for (int i = 0; i < blocks.Length && i < packed.Length; i++)
+            packed[i] = blocks[i] > 0 ? PackedBlock.Pack(blocks[i]) : 0;
 
-            _meshBlockBuffer!.CopyFromCPU(blockInts);
-            _meshCounterBuffer!.CopyFromCPU(_counterReset);
+        // GPU pipeline: face cull -> greedy merge -> PackedQuad GPU buffer
+        var result = await _meshPipeline.MeshSectionUnpaddedAsync(
+            packed,
+            Models.ChunkData.SizeXZ,
+            Models.ChunkData.Height);
 
-            _meshKernel(
-                (Index1D)Models.ChunkData.Volume,
-                _meshBlockBuffer.View,
-                _meshVertexBuffer!.View,
-                _meshCounterBuffer.View,
-                chunkX * 16, chunkZ * 16);
-
-            await _accelerator!.SynchronizeAsync();
-
-            // Read counter
-            var counterResult = await _meshCounterBuffer.CopyToHostAsync();
-            int floatCount = counterResult[0];
-
-            if (floatCount <= 0)
-                return (Array.Empty<float>(), 0);
-
-            if (floatCount > MaxOutputFloats)
-            {
-                Console.WriteLine($"[VoxelEngine] Chunk ({chunkX},{chunkZ}) clamped: {floatCount} -> {MaxOutputFloats} floats");
-                floatCount = MaxOutputFloats;
-            }
-
-            // Ensure shared result buffer is large enough
-            if (_meshResultBuffer == null || _meshResultBuffer.Length < floatCount)
-            {
-                _meshResultBuffer?.Dispose();
-                // Allocate with some headroom to avoid frequent resizing
-                int allocSize = Math.Max(floatCount, 100_000);
-                _meshResultBuffer = _accelerator.Allocate1D<float>(allocSize);
-            }
-
-            // GPU→GPU sub-copy into shared result buffer (no per-call allocation)
-            _meshResultBuffer.View.SubView(0, floatCount).CopyFrom(
-                _meshVertexBuffer.View.SubView(0, floatCount));
-            await _accelerator.SynchronizeAsync();
-
-            // Only unavoidable allocation: the final float[] that gets stored as CpuData
-            var usedVertices = await _meshResultBuffer.CopyToHostAsync(0, floatCount);
-            return (usedVertices, floatCount / 9);
-        }
-        finally
-        {
-            _meshLock.Release();
-        }
+        return result;
     }
 
     public ValueTask DisposeAsync()
     {
-        _meshResultBuffer?.Dispose();
-        _meshCounterBuffer?.Dispose();
-        _meshVertexBuffer?.Dispose();
-        _meshBlockBuffer?.Dispose();
         _permBuffer?.Dispose();
         _accelerator?.Dispose();
         _context?.Dispose();
-        _meshLock.Dispose();
         IsInitialized = false;
         return ValueTask.CompletedTask;
     }

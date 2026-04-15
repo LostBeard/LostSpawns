@@ -49,7 +49,7 @@
         StateHasChanged();
 
         using var canvas = new HTMLCanvasElement(_canvasRef);
-        Renderer.Init(canvas, Engine.Accelerator!);
+        Renderer.Init(canvas, Engine.Accelerator!, World);
 
         _status = "Loading terrain data…";
         StateHasChanged();
@@ -85,15 +85,12 @@
         Renderer.Camera.Yaw = 45f;
         Renderer.Camera.Pitch = -15f;
 
-        // Initial chunks via GPU pipeline (same noise as streaming)
-        var initialChunks = await World.GenerateChunksAsync(
+        // Initial chunks via VoxelEngine greedy mesh GPU pipeline
+        var initialCount = await World.GenerateChunksAsync(
             Renderer.Camera.Position,
             Math.Min(Settings.DrawDistance, 12));
 
-        foreach (var (cx, cz, mesh) in initialChunks)
-            Renderer.UploadChunkMesh(cx, cz, mesh);
-
-        Console.WriteLine($"[Game] Initial GPU load: {initialChunks.Count} chunks");
+        Console.WriteLine($"[Game] Initial GPU load: {initialCount} chunks (GPU-resident, no vertex buffer)");
 
         // Queue remaining chunks — GPU kernel generates heightmaps async
         World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
@@ -123,15 +120,11 @@
         if (dx != 0 || dy != 0)
             Renderer.Camera.ProcessMouseMovement((float)dx, (float)dy);
 
-        // Update desired chunks (dispatches GPU tasks, removes old)
-        var removed = World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
-        foreach (var key in removed)
-            Renderer.RemoveChunkMesh(key.cx, key.cz);
+        // Update desired chunks (dispatches GPU tasks, unloads distant chunks + their GPU buffers)
+        World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
 
-        // Process up to 16 GPU-ready chunks per frame
-        var ready = World.ProcessReadyChunks(16);
-        foreach (var (cx, cz, mesh) in ready)
-            Renderer.UploadChunkMesh(cx, cz, mesh);
+        // Dequeue GPU-ready chunks into the active dictionary (RenderService reads directly)
+        World.ProcessReadyChunks(16);
 
         // Update GPU-rendered HUD (compass bearing, minimap position, animations)
         Hud.Update(deltaTime, Renderer.Camera.Position, Renderer.Camera.Yaw);
