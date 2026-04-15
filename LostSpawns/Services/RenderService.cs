@@ -180,28 +180,29 @@ public class RenderService : IDisposable
         using var pass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView!,
             clearColor: true, new Vector3(0.45f, 0.48f, 0.52f));
 
-        // Update camera uniforms
-        _voxelPipeline.UpdateUniforms(
-            vp,                                          // MVP matrix
-            Vector3.Zero,                                // section offset (world-space)
-            1.0f,                                        // voxel size
-            new Vector3(0.45f, 0.48f, 0.52f),           // fog color (overcast sky)
-            0.0003f,                                     // fog density
-            new Vector3(0.25f, 0.26f, 0.30f),           // ambient color
-            0                                            // time
-        );
-
-        // Draw each visible chunk using its GPU-resident PackedQuad buffer
+        // Draw each visible chunk - UpdateUniforms per chunk with section world offset
         int visible = 0;
         foreach (var ((cx, cz), chunkMesh) in _world.Chunks)
         {
             if (!chunkMesh.HasMesh) continue;
 
-            var min = new Vector3(cx * ChunkData.SizeXZ, 0, cz * ChunkData.SizeXZ);
-            var max = new Vector3(cx * ChunkData.SizeXZ + ChunkData.SizeXZ, ChunkData.Height, cz * ChunkData.SizeXZ + ChunkData.SizeXZ);
+            var sectionOffset = new Vector3(cx * ChunkData.SizeXZ, 0, cz * ChunkData.SizeXZ);
+            var min = sectionOffset;
+            var max = new Vector3(sectionOffset.X + ChunkData.SizeXZ, ChunkData.Height, sectionOffset.Z + ChunkData.SizeXZ);
 
             if (!FrustumCuller.IsBoxVisible(in frustum, min, max))
                 continue;
+
+            // Per-section uniforms: VP matrix + this section's world offset
+            _voxelPipeline.UpdateUniforms(
+                vp,                                      // view-projection matrix
+                sectionOffset,                           // section world-space origin
+                1.0f,                                    // voxel size
+                new Vector3(0.45f, 0.48f, 0.52f),       // fog color (overcast sky)
+                0.0003f,                                 // fog density
+                new Vector3(0.25f, 0.26f, 0.30f),       // ambient color
+                0                                        // time
+            );
 
             _voxelPipeline.DrawSection(pass, chunkMesh.QuadBuffer!, chunkMesh.QuadCount);
             visible++;
