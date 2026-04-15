@@ -31,7 +31,6 @@ public class HeightmapLoader
     /// </summary>
     public async Task LoadAsync(BlazorJSRuntime js, string url)
     {
-        Console.WriteLine($"[HeightmapLoader] Loading: {url}");
 
         using var response = await js.CallAsync<SpawnDev.BlazorJS.JSObjects.Response>("fetch", url);
         using var arrayBuffer = await response.ArrayBuffer();
@@ -49,18 +48,7 @@ public class HeightmapLoader
         // Sea level at voxel Y=64 (gives room for underwater terrain)
         _seaLevelVoxel = 64;
 
-        Console.WriteLine($"[HeightmapLoader] Loaded {_gridSize}x{_gridSize} heightmap ({bytes.Length:N0} bytes)");
-
-        // Log elevation stats
-        short min = short.MaxValue, max = short.MinValue;
-        int waterCount = 0;
-        foreach (var h in _heightmap)
-        {
-            if (h <= 0) waterCount++;
-            if (h < min) min = h;
-            if (h > max) max = h;
-        }
-        Console.WriteLine($"[HeightmapLoader] Elevation: {min}m to {max}m, water: {100.0 * waterCount / sampleCount:F1}%");
+        Console.WriteLine($"[Heightmap] {_gridSize}x{_gridSize}, {bytes.Length:N0} bytes");
     }
 
     /// <summary>

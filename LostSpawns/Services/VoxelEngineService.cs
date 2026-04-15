@@ -35,7 +35,6 @@ public class VoxelEngineService : IAsyncDisposable
     // Pooled int[] for block format conversion (byte -> PackedBlock)
     private int[]? _packedBlocksPool;
 
-    private int _meshCount; // debug: limit log spam
     public Accelerator? Accelerator => _accelerator;
     public bool IsInitialized { get; private set; }
     public string? BackendName { get; private set; }
@@ -69,7 +68,7 @@ public class VoxelEngineService : IAsyncDisposable
         // Pooled array for block conversion
         _packedBlocksPool = new int[Models.ChunkData.Volume];
 
-        Console.WriteLine($"[VoxelEngineService] Initialized: {BackendName} (VoxelEngine greedy mesh pipeline)");
+        Console.WriteLine($"[VoxelEngine] {BackendName}");
         IsInitialized = true;
     }
 
@@ -145,14 +144,6 @@ public class VoxelEngineService : IAsyncDisposable
 
                 if (result.HasMesh)
                     results.Add((sy, result));
-            }
-
-            if (_meshCount < 5)
-            {
-                int totalQuads = 0;
-                foreach (var (_, m) in results) totalQuads += m.QuadCount;
-                Console.WriteLine($"[VoxelEngineService] Chunk: {results.Count}/16 sections with mesh, {totalQuads} total quads");
-                _meshCount++;
             }
 
             return results;

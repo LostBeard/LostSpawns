@@ -1,5 +1,6 @@
 using SpawnDev.BlazorJS;
 using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.ILGPU;
 using SpawnDev.ILGPU.WebGPU;
 using ILGPU.Runtime;
 using System.Numerics;
@@ -38,8 +39,10 @@ public class RenderService : IDisposable
     // World reference (set during init)
     private WorldService? _world;
 
-    private GPUBuffer? _uniformBuffer;
-    private GPUBindGroup? _uniformBindGroup;
+    // Dynamic uniform batching - pre-allocated arrays for visible sections
+    private const int MaxVisibleSections = 512;
+    private readonly GPUBuffer[] _visibleQuadBuffers = new GPUBuffer[MaxVisibleSections];
+    private readonly int[] _visibleQuadCounts = new int[MaxVisibleSections];
 
     private bool _running;
     private bool _disposed;
@@ -86,7 +89,8 @@ public class RenderService : IDisposable
         _queue = nativeAccel.Queue
             ?? throw new InvalidOperationException("WebGPU queue is null");
 
-        _context = canvas.GetContext<GPUCanvasContext>("webgpu");
+        _context = canvas.GetContext<GPUCanvasContext>("webgpu")
+            ?? throw new InvalidOperationException("Failed to get WebGPU canvas context");
 
         using var navigator = _js.Get<Navigator>("navigator");
         using var gpu = navigator.Gpu;
@@ -108,11 +112,12 @@ public class RenderService : IDisposable
         // VoxelEngine vertex-pull pipeline (reads PackedQuad from storage buffers)
         _voxelPipeline = new VertexPullPipeline();
         _voxelPipeline.Init(_device, _queue, _canvasFormat);
+        _voxelPipeline.InitDynamic(MaxVisibleSections);
 
         CreateDepthTexture();
 
         IsInitialized = true;
-        Console.WriteLine($"[RenderService] VertexPullPipeline initialized. No vertex buffer needed.");
+        Console.WriteLine($"[Render] Pipeline ready ({_canvasWidth}x{_canvasHeight})");
     }
 
     public void StartRenderLoop()
@@ -171,19 +176,21 @@ public class RenderService : IDisposable
 
         float aspect = (float)_canvasWidth / _canvasHeight;
         var vp = Camera.GetVpMatrix(aspect);
+        var gpuMvp = GpuMatrix4x4.FromMatrix4x4(vp);
         var frustum = FrustumCuller.ExtractPlanes(vp);
+        var cameraPos = Camera.Position;
+
+        // DayZ-style muted atmosphere
+        var fogColor = new Vector3(0.45f, 0.48f, 0.52f);
+        float fogDensity = 0.006f;
+        var ambientColor = new Vector3(0.25f, 0.26f, 0.30f);
 
         using var colorTexture = _context.GetCurrentTexture();
         using var colorView = colorTexture.CreateView();
-        using var encoder = _device.CreateCommandEncoder();
 
-        // Each section needs its own encoder+submit because queue.WriteBuffer
-        // resolves ALL writes before the NEXT submit. Multiple writes to the same
-        // uniform buffer before one submit = only the last value is seen.
-        // Separate submits ensure each section gets its own uniform data.
-        int visible = 0;
-        bool firstPass = true;
+        // Collect visible sections for dynamic uniform batching
         const int SectionHeight = 16;
+        int slotIndex = 0;
 
         foreach (var ((cx, sy, cz), sectionMesh) in _world.Sections)
         {
@@ -196,33 +203,35 @@ public class RenderService : IDisposable
             if (!FrustumCuller.IsBoxVisible(in frustum, min, max))
                 continue;
 
-            _voxelPipeline.UpdateUniforms(
-                vp, sectionOffset, 1.0f,
-                new Vector3(0.45f, 0.48f, 0.52f), 0.0003f,
-                new Vector3(0.25f, 0.26f, 0.30f), 0);
+            _voxelPipeline.WriteDynamicUniforms(slotIndex, gpuMvp, sectionOffset, 1.0f,
+                fogColor, fogDensity, ambientColor, 0, cameraPos);
+            _visibleQuadBuffers[slotIndex] = sectionMesh.QuadBuffer!;
+            _visibleQuadCounts[slotIndex] = sectionMesh.QuadCount;
+            slotIndex++;
 
-            using var sectionEncoder = _device.CreateCommandEncoder();
-            using var pass = _voxelPipeline.BeginRenderPass(sectionEncoder, colorView, _depthView!,
-                clearColor: firstPass, new Vector3(0.45f, 0.48f, 0.52f));
-            _voxelPipeline.DrawSection(pass, sectionMesh.QuadBuffer!, sectionMesh.QuadCount);
-            pass.End();
-            using var cmdBuf = sectionEncoder.Finish();
-            _queue!.Submit(new[] { cmdBuf });
-
-            firstPass = false;
-            visible++;
+            if (slotIndex >= MaxVisibleSections) break;
         }
-        VisibleChunkCount = visible;
 
-        if (firstPass)
+        int visibleCount = slotIndex;
+        VisibleChunkCount = visibleCount;
+
+        // Single GPU upload for all section uniforms
+        if (visibleCount > 0)
+            _voxelPipeline.FlushDynamicUniforms(visibleCount);
+
+        // Single encoder, single render pass, single submit
+        using var encoder = _device.CreateCommandEncoder();
+        using var pass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView!,
+            clearColor: true, fogColor);
+
+        for (int i = 0; i < visibleCount; i++)
         {
-            using var clearEncoder = _device.CreateCommandEncoder();
-            using var clearPass = _voxelPipeline.BeginRenderPass(clearEncoder, colorView, _depthView!,
-                clearColor: true, new Vector3(0.45f, 0.48f, 0.52f));
-            clearPass.End();
-            using var clearCmd = clearEncoder.Finish();
-            _queue!.Submit(new[] { clearCmd });
+            _voxelPipeline.DrawSectionDynamic(pass, _visibleQuadBuffers[i], _visibleQuadCounts[i], i);
         }
+
+        pass.End();
+        using var cmdBuf = encoder.Finish();
+        _queue!.Submit(new[] { cmdBuf });
 
         // GameUI overlay pass (separate encoder, LoadOp.Load preserves terrain)
         using var uiEncoder = _device.CreateCommandEncoder();

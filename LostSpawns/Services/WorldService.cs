@@ -30,8 +30,6 @@ public class WorldService
     private HeightmapLoader? _heightmapLoader;
     private int _lastCX = int.MinValue;
     private int _lastCZ = int.MinValue;
-    private bool _gpuReady;
-
     private const int MaxConcurrentGpu = 16;
 
     public int Seed { get; private set; }
@@ -64,8 +62,7 @@ public class WorldService
         {
             var noise = new PerlinNoise(seed);
             _engine.SetPermutationTable(noise.PermTable);
-            _gpuReady = true;
-            Console.WriteLine("[WorldService] GPU heightmap + VoxelEngine greedy mesh enabled");
+            Console.WriteLine("[World] GPU meshing enabled");
         }
 
         IsInitialized = true;
@@ -79,13 +76,7 @@ public class WorldService
         _generator = new TerrainGenerator(seed);
         _heightmapLoader = loader;
 
-        if (_engine.IsInitialized)
-        {
-            _gpuReady = true;
-            Console.WriteLine("[WorldService] Heightmap mode: block fill from heightmap + VoxelEngine greedy mesh");
-        }
-
-        Console.WriteLine($"[WorldService] Real-world heightmap loaded: {loader.GridSize}x{loader.GridSize}, {loader.MapSizeInChunks} chunks");
+        Console.WriteLine($"[World] Heightmap: {loader.GridSize}x{loader.GridSize}, {loader.MapSizeInChunks} chunks");
         IsInitialized = true;
     }
 
@@ -207,7 +198,7 @@ public class WorldService
         catch (Exception ex)
         {
             _inFlight.Remove((cx, cz));
-            Console.WriteLine($"[WorldService] GPU pipeline error ({cx},{cz}): {ex.Message}");
+            Console.WriteLine($"[World] Chunk ({cx},{cz}) error: {ex.Message}");
             DispatchGpuPending();
         }
     }
@@ -281,7 +272,7 @@ public class WorldService
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WorldService] Chunk ({cx},{cz}) error: {ex.Message}");
+                Console.WriteLine($"[World] Chunk ({cx},{cz}) error: {ex.Message}");
             }
         }
         return columnCount;
@@ -308,7 +299,6 @@ public class WorldService
         _inFlight.Clear();
         _lastCX = int.MinValue;
         _lastCZ = int.MinValue;
-        _gpuReady = false;
         _generator = null;
         IsInitialized = false;
     }

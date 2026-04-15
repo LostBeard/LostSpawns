@@ -11,7 +11,7 @@ public class SettingsService
     private readonly BlazorJSRuntime _js;
 
     // Video
-    public int DrawDistance { get; private set; } = 400;     // chunks (~6.4km view)
+    public int DrawDistance { get; private set; } = 12;      // chunks (192m view radius)
     public float FieldOfView { get; private set; } = 70f;    // degrees
     public bool Vsync { get; private set; } = true;
 
@@ -26,9 +26,8 @@ public class SettingsService
 
     private void Load()
     {
-        // Force minimum draw distance - clear stale localStorage values
-        var storedDraw = GetInt("lost.settings.drawDistance", 60);
-        DrawDistance = Math.Max(storedDraw, 60);
+        var storedDraw = GetInt("lost.settings.drawDistance", 12);
+        DrawDistance = Math.Clamp(storedDraw, 4, 32);
         FieldOfView = GetFloat("lost.settings.fov", 70f);
         Vsync = GetBool("lost.settings.vsync", true);
         PlayerName = GetString("lost.settings.playerName", "Survivor");

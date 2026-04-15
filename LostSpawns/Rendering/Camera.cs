@@ -13,7 +13,8 @@ public class Camera
     public float Yaw { get; set; } = -90f;   // degrees, -90 = looking along -Z
     public float Pitch { get; set; } = -15f;  // degrees
 
-    public float MovementSpeed { get; set; } = 32f;
+    public float MovementSpeed { get; set; } = 20f;
+    public float SprintMultiplier { get; set; } = 2.5f;
     public float MouseSensitivity { get; set; } = 0.15f;
 
     /// <summary>Forward direction (unit vector) derived from yaw and pitch.</summary>
@@ -45,11 +46,15 @@ public class Camera
     }
 
     /// <summary>
-    /// Process WASD keyboard movement.
+    /// Process WASD keyboard movement with sprint support.
+    /// Shift = sprint, Space = up, Ctrl = down.
     /// </summary>
     public void ProcessKeyboard(HashSet<string> keysDown, float deltaTime)
     {
-        float velocity = MovementSpeed * deltaTime;
+        bool sprinting = keysDown.Contains("ShiftLeft") || keysDown.Contains("ShiftRight");
+        float speed = sprinting ? MovementSpeed * SprintMultiplier : MovementSpeed;
+        float velocity = speed * deltaTime;
+
         // Flatten forward/right to XZ plane for FPS-style movement
         var flatFront = Vector3.Normalize(new Vector3(Front.X, 0, Front.Z));
         var flatRight = Vector3.Normalize(Vector3.Cross(flatFront, Vector3.UnitY));
@@ -59,7 +64,8 @@ public class Camera
         if (keysDown.Contains("KeyA")) Position -= flatRight * velocity;
         if (keysDown.Contains("KeyD")) Position += flatRight * velocity;
         if (keysDown.Contains("Space")) Position += Vector3.UnitY * velocity;
-        if (keysDown.Contains("ShiftLeft")) Position -= Vector3.UnitY * velocity;
+        if (keysDown.Contains("ControlLeft") || keysDown.Contains("ControlRight"))
+            Position -= Vector3.UnitY * velocity;
     }
 
     /// <summary>Returns 4×4 view matrix (column-major, ready for GPU upload).</summary>
