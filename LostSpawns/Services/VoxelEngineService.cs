@@ -105,36 +105,57 @@ public class VoxelEngineService : IAsyncDisposable
     /// Returns GPU-resident MeshResult - no CPU readback, no float[] allocations.
     /// The caller owns the MeshResult and must dispose QuadBuffer when the chunk unloads.
     /// </summary>
-    public async Task<VoxelMeshPipeline.MeshResult> GenerateMeshAsync(byte[] blocks)
+    /// <summary>
+    /// Generate mesh for all 16 vertical sections of a chunk (16x16x256 -> 16x 16x16x16).
+    /// VoxelEngine's occupancy columns are 64-bit, so max section height is 64.
+    /// We split into standard 16-high sections for correct face culling.
+    /// Returns a list of (sectionY, MeshResult) for non-empty sections.
+    /// </summary>
+    public async Task<List<(int sectionY, VoxelMeshPipeline.MeshResult mesh)>> GenerateChunkMeshesAsync(byte[] blocks)
     {
         if (_meshPipeline == null)
             throw new InvalidOperationException("Not initialized");
 
+        var results = new List<(int, VoxelMeshPipeline.MeshResult)>();
+        const int SectionHeight = 16;
+        int sectionsPerColumn = Models.ChunkData.Height / SectionHeight; // 256/16 = 16
+
         await _meshLock.WaitAsync();
         try
         {
-            // Convert byte blocks to PackedBlock int format
-            var packed = _packedBlocksPool!;
-            for (int i = 0; i < blocks.Length && i < packed.Length; i++)
-                packed[i] = blocks[i] > 0 ? PackedBlock.Pack(blocks[i]) : 0;
+            var sectionBlocks = new int[Models.ChunkData.SizeXZ * Models.ChunkData.SizeXZ * SectionHeight]; // 16*16*16 = 4096
 
-            // GPU pipeline: face cull -> greedy merge -> PackedQuad GPU buffer
-            var result = await _meshPipeline.MeshSectionUnpaddedAsync(
-                packed,
-                Models.ChunkData.SizeXZ,
-                Models.ChunkData.Height);
-
-            // Debug: log block stats and mesh result
-            if (_meshCount < 10)
+            for (int sy = 0; sy < sectionsPerColumn; sy++)
             {
-                int solidCount = 0;
-                for (int i = 0; i < packed.Length; i++)
-                    if (packed[i] != 0) solidCount++;
-                Console.WriteLine($"[VoxelEngineService] Blocks: {solidCount}/{packed.Length} solid, mesh: {(result.HasMesh ? result.QuadCount + " quads" : "EMPTY")}");
+                int yOffset = sy * SectionHeight;
+
+                // Extract this section's blocks from the full chunk column
+                for (int y = 0; y < SectionHeight; y++)
+                    for (int z = 0; z < Models.ChunkData.SizeXZ; z++)
+                        for (int x = 0; x < Models.ChunkData.SizeXZ; x++)
+                        {
+                            int srcIdx = x + z * Models.ChunkData.SizeXZ + (yOffset + y) * Models.ChunkData.SizeXZ * Models.ChunkData.SizeXZ;
+                            byte blockType = blocks[srcIdx];
+                            sectionBlocks[x + z * Models.ChunkData.SizeXZ + y * Models.ChunkData.SizeXZ * Models.ChunkData.SizeXZ] =
+                                blockType > 0 ? PackedBlock.Pack(blockType) : 0;
+                        }
+
+                var result = await _meshPipeline.MeshSectionUnpaddedAsync(
+                    sectionBlocks, Models.ChunkData.SizeXZ, SectionHeight);
+
+                if (result.HasMesh)
+                    results.Add((sy, result));
+            }
+
+            if (_meshCount < 5)
+            {
+                int totalQuads = 0;
+                foreach (var (_, m) in results) totalQuads += m.QuadCount;
+                Console.WriteLine($"[VoxelEngineService] Chunk: {results.Count}/16 sections with mesh, {totalQuads} total quads");
                 _meshCount++;
             }
 
-            return result;
+            return results;
         }
         finally
         {

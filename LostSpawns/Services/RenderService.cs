@@ -64,7 +64,8 @@ public class RenderService : IDisposable
     public int CanvasHeight => _canvasHeight;
 
     public int VisibleChunkCount { get; private set; }
-    public int TotalChunkCount => _world?.LoadedCount ?? 0;
+    public int TotalSectionCount => _world?.LoadedSections ?? 0;
+    public int TotalColumnCount => _world?.LoadedColumns ?? 0;
 
     public RenderService(BlazorJSRuntime js)
     {
@@ -176,41 +177,37 @@ public class RenderService : IDisposable
         using var colorView = colorTexture.CreateView();
         using var encoder = _device.CreateCommandEncoder();
 
-        // Draw each visible chunk in its own render pass.
-        // VertexPullPipeline.UpdateUniforms uses queue.WriteBuffer which resolves
-        // before the NEXT submit - so all draws in one pass would use the last uniform.
-        // Separate passes ensure each chunk gets its own section offset.
+        // Draw each visible section in its own render pass.
+        // VertexPullPipeline.UpdateUniforms uses queue.WriteBuffer - all draws in one
+        // pass would see the last write. Separate passes ensure correct per-section uniforms.
         int visible = 0;
         bool firstPass = true;
-        foreach (var ((cx, cz), chunkMesh) in _world.Chunks)
-        {
-            if (!chunkMesh.HasMesh) continue;
+        const int SectionHeight = 16;
 
-            var sectionOffset = new Vector3(cx * ChunkData.SizeXZ, 0, cz * ChunkData.SizeXZ);
+        foreach (var ((cx, sy, cz), sectionMesh) in _world.Sections)
+        {
+            if (!sectionMesh.HasMesh) continue;
+
+            // Section world-space bounds (16x16x16 per section)
+            var sectionOffset = new Vector3(cx * ChunkData.SizeXZ, sy * SectionHeight, cz * ChunkData.SizeXZ);
             var min = sectionOffset;
-            var max = new Vector3(sectionOffset.X + ChunkData.SizeXZ, ChunkData.Height, sectionOffset.Z + ChunkData.SizeXZ);
+            var max = sectionOffset + new Vector3(ChunkData.SizeXZ, SectionHeight, ChunkData.SizeXZ);
 
             if (!FrustumCuller.IsBoxVisible(in frustum, min, max))
                 continue;
 
-            // Bake section offset into MVP: model = translate(sectionOffset)
+            // Bake section offset into MVP
             var model = Matrix4x4.CreateTranslation(sectionOffset);
             var mvp = model * vp;
 
             _voxelPipeline.UpdateUniforms(
-                mvp,                                     // model-view-projection (section baked in)
-                Vector3.Zero,                            // offset already in MVP
-                1.0f,                                    // voxel size
-                new Vector3(0.45f, 0.48f, 0.52f),       // fog color
-                0.0003f,                                 // fog density
-                new Vector3(0.25f, 0.26f, 0.30f),       // ambient color
-                0                                        // time
-            );
+                mvp, Vector3.Zero, 1.0f,
+                new Vector3(0.45f, 0.48f, 0.52f), 0.0003f,
+                new Vector3(0.25f, 0.26f, 0.30f), 0);
 
-            // First chunk clears, subsequent chunks load (preserve previous)
             using var pass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView!,
                 clearColor: firstPass, new Vector3(0.45f, 0.48f, 0.52f));
-            _voxelPipeline.DrawSection(pass, chunkMesh.QuadBuffer!, chunkMesh.QuadCount);
+            _voxelPipeline.DrawSection(pass, sectionMesh.QuadBuffer!, sectionMesh.QuadCount);
             pass.End();
 
             firstPass = false;
@@ -218,7 +215,6 @@ public class RenderService : IDisposable
         }
         VisibleChunkCount = visible;
 
-        // If no chunks were visible, still need to clear the canvas
         if (firstPass)
         {
             using var clearPass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView!,

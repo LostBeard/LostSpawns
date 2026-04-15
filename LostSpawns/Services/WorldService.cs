@@ -18,10 +18,14 @@ namespace LostSpawns.Services;
 public class WorldService
 {
     private readonly VoxelEngineService _engine;
-    private readonly Dictionary<(int cx, int cz), ChunkMesh> _chunks = new();
+    // Sections keyed by (cx, sectionY, cz) - each 16x16x16 section is independently meshed and culled
+    private readonly Dictionary<(int cx, int sy, int cz), ChunkMesh> _chunks = new();
+    // Pending/in-flight track chunk columns (cx, cz) - one column produces up to 16 sections
     private readonly Queue<(int cx, int cz)> _pendingQueue = new();
     private readonly HashSet<(int cx, int cz)> _inFlight = new();
-    private readonly Queue<(int cx, int cz, ChunkMesh mesh)> _readyQueue = new();
+    private readonly Queue<(int cx, int sy, int cz, ChunkMesh mesh)> _readyQueue = new();
+    // Track which columns are loaded (for chunk streaming logic)
+    private readonly HashSet<(int cx, int cz)> _loadedColumns = new();
     private TerrainGenerator? _generator;
     private HeightmapLoader? _heightmapLoader;
     private int _lastCX = int.MinValue;
@@ -32,15 +36,16 @@ public class WorldService
 
     public int Seed { get; private set; }
     public bool IsInitialized { get; private set; }
-    public int LoadedCount => _chunks.Count;
+    public int LoadedSections => _chunks.Count;
+    public int LoadedColumns => _loadedColumns.Count;
     public bool HasPendingChunks => _pendingQueue.Count > 0 || _inFlight.Count > 0 || _readyQueue.Count > 0;
     public int PendingCount => _pendingQueue.Count + _inFlight.Count + _readyQueue.Count;
 
     /// <summary>The heightmap loader, if a real-world map is loaded.</summary>
     public HeightmapLoader? HeightmapLoader => _heightmapLoader;
 
-    /// <summary>All loaded chunks with their GPU mesh data. Used by RenderService for drawing.</summary>
-    public IReadOnlyDictionary<(int cx, int cz), ChunkMesh> Chunks => _chunks;
+    /// <summary>All loaded sections with their GPU mesh data. Used by RenderService for drawing.</summary>
+    public IReadOnlyDictionary<(int cx, int sy, int cz), ChunkMesh> Sections => _chunks;
 
     public WorldService(VoxelEngineService engine)
     {
@@ -89,7 +94,7 @@ public class WorldService
         int pcx = (int)MathF.Floor(playerPos.X / ChunkData.SizeXZ);
         int pcz = (int)MathF.Floor(playerPos.Z / ChunkData.SizeXZ);
 
-        if (pcx == _lastCX && pcz == _lastCZ && (_chunks.Count > 0 || _pendingQueue.Count > 0 || _inFlight.Count > 0))
+        if (pcx == _lastCX && pcz == _lastCZ && (_loadedColumns.Count > 0 || _pendingQueue.Count > 0 || _inFlight.Count > 0))
         {
             DispatchGpuPending();
             return new();
@@ -108,21 +113,28 @@ public class WorldService
         }
 
         var removed = new List<(int, int)>();
-        foreach (var key in _chunks.Keys.ToList())
+        foreach (var col in _loadedColumns.ToList())
         {
-            if (!desired.Contains(key))
+            if (!desired.Contains(col))
             {
-                // Dispose GPU buffer when chunk unloads
-                if (_chunks.TryGetValue(key, out var mesh))
-                    mesh.Dispose();
-                _chunks.Remove(key);
-                removed.Add(key);
+                // Dispose all GPU buffers for sections in this column
+                for (int sy = 0; sy < 16; sy++)
+                {
+                    var key = (col.Item1, sy, col.Item2);
+                    if (_chunks.TryGetValue(key, out var mesh))
+                    {
+                        mesh.Dispose();
+                        _chunks.Remove(key);
+                    }
+                }
+                _loadedColumns.Remove(col);
+                removed.Add(col);
             }
         }
 
         _pendingQueue.Clear();
         var toAdd = desired
-            .Where(k => !_chunks.ContainsKey(k) && !_inFlight.Contains(k))
+            .Where(k => !_loadedColumns.Contains(k) && !_inFlight.Contains(k))
             .OrderBy(k => (k.Item1 - pcx) * (k.Item1 - pcx) + (k.Item2 - pcz) * (k.Item2 - pcz));
 
         foreach (var key in toAdd)
@@ -137,14 +149,14 @@ public class WorldService
         while (_inFlight.Count < MaxConcurrentGpu && _pendingQueue.Count > 0)
         {
             var key = _pendingQueue.Dequeue();
-            if (_chunks.ContainsKey(key)) continue;
+            if (_loadedColumns.Contains(key)) continue;
             _inFlight.Add(key);
             _ = GenerateChunkGpuAsync(key.Item1, key.Item2);
         }
     }
 
     /// <summary>
-    /// Full GPU pipeline: heightmap -> fill blocks -> VoxelEngine greedy mesh.
+    /// Full GPU pipeline: heightmap -> fill blocks -> split into 16x16x16 sections -> greedy mesh each.
     /// Mesh data stays GPU-resident (no CPU readback).
     /// </summary>
     private async Task GenerateChunkGpuAsync(int cx, int cz)
@@ -159,38 +171,35 @@ public class WorldService
             else
             {
                 var heightmap = await _engine.GenerateHeightmapAsync(cx, cz);
-                if (_chunks.ContainsKey((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
+                if (_loadedColumns.Contains((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
                 chunk = _generator!.GenerateChunkFromHeightmap(cx, cz, heightmap);
             }
 
-            if (_chunks.ContainsKey((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
+            if (_loadedColumns.Contains((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
 
-            // VoxelEngine greedy mesh: GPU face cull + greedy merge -> PackedQuad GPU buffer
-            var meshResult = await _engine.GenerateMeshAsync(chunk.Blocks);
+            // VoxelEngine greedy mesh: split chunk into 16x16x16 sections, mesh each
+            var sectionMeshes = await _engine.GenerateChunkMeshesAsync(chunk.Blocks);
 
             _inFlight.Remove((cx, cz));
-            if (_chunks.ContainsKey((cx, cz)))
+            if (_loadedColumns.Contains((cx, cz)))
             {
-                // Chunk was removed while we were generating - dispose the buffer
-                meshResult.QuadBuffer?.Dispose();
+                foreach (var (_, m) in sectionMeshes)
+                    m.QuadBuffer?.Dispose();
                 return;
             }
 
-            if (meshResult.HasMesh)
+            _loadedColumns.Add((cx, cz));
+
+            foreach (var (sy, meshResult) in sectionMeshes)
             {
                 var gpuBuffer = meshResult.QuadBuffer!.GetGPUBuffer();
-                var chunkMesh = new ChunkMesh
+                var sectionMesh = new ChunkMesh
                 {
                     QuadBuffer = gpuBuffer,
                     QuadCount = meshResult.QuadCount,
                     IlgpuBuffer = meshResult.QuadBuffer,
                 };
-                _readyQueue.Enqueue((cx, cz, chunkMesh));
-            }
-            else
-            {
-                // Empty chunk (all air) - mark as loaded with no mesh
-                _chunks[(cx, cz)] = ChunkMesh.Empty;
+                _readyQueue.Enqueue((cx, sy, cz, sectionMesh));
             }
 
             DispatchGpuPending();
@@ -206,19 +215,19 @@ public class WorldService
     /// <summary>
     /// Called per frame. Dequeues fully-meshed chunks and adds them to the active chunks dictionary.
     /// </summary>
-    public int ProcessReadyChunks(int maxCount = 2)
+    public int ProcessReadyChunks(int maxCount = 16)
     {
         int processed = 0;
         while (processed < maxCount && _readyQueue.Count > 0)
         {
-            var (cx, cz, mesh) = _readyQueue.Dequeue();
-            if (_chunks.ContainsKey((cx, cz)))
+            var (cx, sy, cz, mesh) = _readyQueue.Dequeue();
+            var key = (cx, sy, cz);
+            if (_chunks.ContainsKey(key))
             {
-                // Duplicate - dispose the new buffer
                 mesh.Dispose();
                 continue;
             }
-            _chunks[(cx, cz)] = mesh;
+            _chunks[key] = mesh;
             processed++;
         }
         return processed;
@@ -237,11 +246,11 @@ public class WorldService
         {
             if (dx * dx + dz * dz > r2) continue;
             int cx = _lastCX + dx, cz = _lastCZ + dz;
-            if (_chunks.ContainsKey((cx, cz))) continue;
+            if (_loadedColumns.Contains((cx, cz))) continue;
             toGenerate.Add((cx, cz));
         }
 
-        int count = 0;
+        int columnCount = 0;
         foreach (var (cx, cz) in toGenerate)
         {
             try
@@ -255,30 +264,27 @@ public class WorldService
                     chunk = _generator!.GenerateChunkFromHeightmap(cx, cz, heightmap);
                 }
 
-                var meshResult = await _engine.GenerateMeshAsync(chunk.Blocks);
+                var sectionMeshes = await _engine.GenerateChunkMeshesAsync(chunk.Blocks);
 
-                if (meshResult.HasMesh)
+                _loadedColumns.Add((cx, cz));
+                foreach (var (sy, meshResult) in sectionMeshes)
                 {
                     var gpuBuffer = meshResult.QuadBuffer!.GetGPUBuffer();
-                    _chunks[(cx, cz)] = new ChunkMesh
+                    _chunks[(cx, sy, cz)] = new ChunkMesh
                     {
                         QuadBuffer = gpuBuffer,
                         QuadCount = meshResult.QuadCount,
                         IlgpuBuffer = meshResult.QuadBuffer,
                     };
                 }
-                else
-                {
-                    _chunks[(cx, cz)] = ChunkMesh.Empty;
-                }
-                count++;
+                columnCount++;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[WorldService] Chunk ({cx},{cz}) error: {ex.Message}");
             }
         }
-        return count;
+        return columnCount;
     }
 
     public int GetHeightAt(float worldX, float worldZ)
@@ -291,13 +297,13 @@ public class WorldService
     /// <summary>Resets all state so the service can be re-initialized.</summary>
     public void Reset()
     {
-        // Dispose all GPU buffers
         foreach (var mesh in _chunks.Values)
             mesh.Dispose();
         while (_readyQueue.Count > 0)
             _readyQueue.Dequeue().mesh.Dispose();
 
         _chunks.Clear();
+        _loadedColumns.Clear();
         _pendingQueue.Clear();
         _inFlight.Clear();
         _lastCX = int.MinValue;
