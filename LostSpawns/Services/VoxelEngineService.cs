@@ -34,7 +34,7 @@ public class VoxelEngineService : IAsyncDisposable
     private readonly int[] _counterReset = new[] { 0 };
     private int[]? _blockIntsPool;
 
-    private const int MaxOutputFloats = 600_000; // only used portion is ever transferred
+    private const int MaxOutputFloats = 2_000_000; // 222K vertices at 9 floats/vert, 256-height chunks
 
     public Accelerator? Accelerator => _accelerator;
     public bool IsInitialized { get; private set; }
@@ -142,7 +142,10 @@ public class VoxelEngineService : IAsyncDisposable
                 return (Array.Empty<float>(), 0);
 
             if (floatCount > MaxOutputFloats)
+            {
+                Console.WriteLine($"[VoxelEngine] Chunk ({chunkX},{chunkZ}) clamped: {floatCount} -> {MaxOutputFloats} floats");
                 floatCount = MaxOutputFloats;
+            }
 
             // Ensure shared result buffer is large enough
             if (_meshResultBuffer == null || _meshResultBuffer.Length < floatCount)

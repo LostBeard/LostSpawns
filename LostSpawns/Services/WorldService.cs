@@ -22,7 +22,7 @@ public class WorldService
     private int _lastCZ = int.MinValue;
     private bool _gpuReady;
 
-    private const int MaxConcurrentGpu = 4;
+    private const int MaxConcurrentGpu = 16;
 
     public int Seed { get; private set; }
     public bool IsInitialized { get; private set; }
@@ -61,8 +61,8 @@ public class WorldService
 
     /// <summary>
     /// Initialize with a real-world heightmap (e.g., Deer Isle terrain data).
-    /// Falls back to procedural generation for the terrain generator but uses
-    /// the heightmap data for chunk generation when available.
+    /// Block filling from heightmap is a simple array lookup (CPU).
+    /// Mesh generation runs on GPU via ILGPU (the expensive part).
     /// </summary>
     public void InitWithHeightmap(HeightmapLoader loader, int seed = 42)
     {
@@ -71,8 +71,11 @@ public class WorldService
         _generator = new TerrainGenerator(seed);
         _heightmapLoader = loader;
 
-        // GPU terrain gen stays with Perlin for now - heightmap uses CPU path
-        _gpuReady = false;
+        if (_engine.IsInitialized)
+        {
+            _gpuReady = true;
+            Console.WriteLine("[WorldService] Heightmap mode: block fill from heightmap + GPU mesh generation");
+        }
 
         Console.WriteLine($"[WorldService] Real-world heightmap loaded: {loader.GridSize}x{loader.GridSize}, {loader.MapSizeInChunks} chunks");
         IsInitialized = true;
@@ -85,7 +88,10 @@ public class WorldService
 
         if (pcx == _lastCX && pcz == _lastCZ && (_chunks.Count > 0 || _pendingQueue.Count > 0 || _inFlight.Count > 0))
         {
-            if (_gpuReady) DispatchGpuPending();
+            if (_gpuReady)
+                DispatchGpuPending();
+            else
+                ProcessCpuPending();
             return new();
         }
 
@@ -121,8 +127,24 @@ public class WorldService
 
         if (_gpuReady)
             DispatchGpuPending();
+        else
+            ProcessCpuPending();
 
         return removed;
+    }
+
+    /// <summary>Process pending chunks via CPU when GPU heightmap isn't available (heightmap mode).</summary>
+    private void ProcessCpuPending()
+    {
+        // Generate up to 4 chunks per frame to avoid blocking
+        int processed = 0;
+        while (_pendingQueue.Count > 0 && processed < 4)
+        {
+            var key = _pendingQueue.Dequeue();
+            if (_chunks.ContainsKey(key)) continue;
+            FallbackCpuGenerate(key.Item1, key.Item2);
+            processed++;
+        }
     }
 
     private void DispatchGpuPending()
@@ -144,13 +166,21 @@ public class WorldService
     {
         try
         {
-            // Step 1: GPU heightmap
-            var heightmap = await _engine.GenerateHeightmapAsync(cx, cz);
+            Models.ChunkData chunk;
+            if (_heightmapLoader != null)
+            {
+                // Heightmap mode: block fill from real terrain data (simple lookup)
+                chunk = _heightmapLoader.GenerateChunk(cx, cz);
+            }
+            else
+            {
+                // Procedural mode: GPU Perlin heightmap + CPU block fill
+                var heightmap = await _engine.GenerateHeightmapAsync(cx, cz);
+                if (_chunks.ContainsKey((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
+                chunk = _generator!.GenerateChunkFromHeightmap(cx, cz, heightmap);
+            }
 
             if (_chunks.ContainsKey((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
-
-            // Step 2: Fill blocks from heightmap (lightweight CPU work)
-            var chunk = _generator!.GenerateChunkFromHeightmap(cx, cz, heightmap);
 
             // Step 3: GPU meshing — blocks passed as byte[], converted inside semaphore
             var (mesh, vertexCount) = await _engine.GenerateMeshAsync(chunk.Blocks, cx, cz);
@@ -222,26 +252,28 @@ public class WorldService
             toGenerate.Add((cx, cz));
         }
 
-        // Generate sequentially using GPU pipeline (same noise as streaming)
+        // Generate sequentially: heightmap block fill + GPU mesh
         foreach (var (cx, cz) in toGenerate)
         {
             try
             {
-                var heightmap = await _engine.GenerateHeightmapAsync(cx, cz);
-                var chunk = _generator!.GenerateChunkFromHeightmap(cx, cz, heightmap);
+                ChunkData chunk;
+                if (_heightmapLoader != null)
+                    chunk = _heightmapLoader.GenerateChunk(cx, cz);
+                else
+                {
+                    var heightmap = await _engine.GenerateHeightmapAsync(cx, cz);
+                    chunk = _generator!.GenerateChunkFromHeightmap(cx, cz, heightmap);
+                }
+                // GPU mesh generation (ILGPU kernel)
                 var (mesh, vertexCount) = await _engine.GenerateMeshAsync(chunk.Blocks, cx, cz);
                 _chunks[(cx, cz)] = true;
                 if (mesh.Length > 0)
                     results.Add((cx, cz, mesh));
             }
-            catch
+            catch (Exception ex)
             {
-                // CPU fallback
-                var chunk = _generator!.GenerateChunk(cx, cz);
-                var mesh = VoxelMesher.GenerateMesh(chunk);
-                _chunks[(cx, cz)] = true;
-                if (mesh.Length > 0)
-                    results.Add((cx, cz, mesh));
+                Console.WriteLine($"[WorldService] Chunk ({cx},{cz}) error: {ex.Message}");
             }
         }
         return results;

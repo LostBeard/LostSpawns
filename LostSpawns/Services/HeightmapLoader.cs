@@ -76,13 +76,23 @@ public class HeightmapLoader
         float gridX = (worldX + mapSizeMeters / 2) / _cellSizeMeters;
         float gridZ = (worldZ + mapSizeMeters / 2) / _cellSizeMeters;
 
-        int gx = Math.Clamp((int)gridX, 0, _gridSize - 1);
-        int gz = Math.Clamp((int)gridZ, 0, _gridSize - 1);
+        // Bilinear interpolation for smooth terrain between heightmap cells
+        int gx0 = Math.Clamp((int)MathF.Floor(gridX), 0, _gridSize - 2);
+        int gz0 = Math.Clamp((int)MathF.Floor(gridZ), 0, _gridSize - 2);
+        float fx = gridX - gx0;
+        float fz = gridZ - gz0;
 
-        short elevMeters = _heightmap[gz * _gridSize + gx];
+        float h00 = _heightmap[gz0 * _gridSize + gx0];
+        float h10 = _heightmap[gz0 * _gridSize + gx0 + 1];
+        float h01 = _heightmap[(gz0 + 1) * _gridSize + gx0];
+        float h11 = _heightmap[(gz0 + 1) * _gridSize + gx0 + 1];
 
-        // Convert meters to voxel Y: sea level at _seaLevelVoxel
-        return _seaLevelVoxel + elevMeters;
+        float elev = h00 * (1 - fx) * (1 - fz)
+                   + h10 * fx * (1 - fz)
+                   + h01 * (1 - fx) * fz
+                   + h11 * fx * fz;
+
+        return _seaLevelVoxel + (int)MathF.Round(elev);
     }
 
     /// <summary>
@@ -99,7 +109,16 @@ public class HeightmapLoader
             float worldX = chunkX * ChunkData.SizeXZ + x;
             float worldZ = chunkZ * ChunkData.SizeXZ + z;
             int h = GetElevation(worldX, worldZ);
-            FillColumn(chunk, x, z, h);
+
+            // Compute slope by checking neighbor heights (steepness detection)
+            int hN = GetElevation(worldX, worldZ - 1);
+            int hS = GetElevation(worldX, worldZ + 1);
+            int hE = GetElevation(worldX + 1, worldZ);
+            int hW = GetElevation(worldX - 1, worldZ);
+            int slope = Math.Max(Math.Abs(h - hN), Math.Max(Math.Abs(h - hS),
+                        Math.Max(Math.Abs(h - hE), Math.Abs(h - hW))));
+
+            FillColumn(chunk, x, z, h, slope);
         }
 
         PlaceTrees(chunk, chunkX, chunkZ);
@@ -127,9 +146,10 @@ public class HeightmapLoader
         _cellSizeMeters = cellSizeMeters;
     }
 
-    private void FillColumn(ChunkData chunk, int x, int z, int surfaceY)
+    private void FillColumn(ChunkData chunk, int x, int z, int surfaceY, int slope = 0)
     {
         surfaceY = Math.Clamp(surfaceY, 1, ChunkData.Height - 2);
+        int elevAboveSea = surfaceY - _seaLevelVoxel;
 
         for (int y = 0; y < ChunkData.Height; y++)
         {
@@ -141,11 +161,23 @@ public class HeightmapLoader
             }
             else if (y == surfaceY)
             {
-                // Surface block
-                if (surfaceY <= _seaLevelVoxel + 2)
-                    block = BlockType.Sand; // beach/shore
+                // Surface block - biome by elevation + slope
+                if (surfaceY <= _seaLevelVoxel)
+                    block = BlockType.Sand;           // underwater sand
+                else if (elevAboveSea <= 3)
+                    block = BlockType.Sand;           // beach (wider shore)
+                else if (slope >= 4)
+                    block = BlockType.Stone;           // cliff face - steep slope = exposed rock
+                else if (elevAboveSea > 55)
+                    block = BlockType.Stone;           // high altitude = rocky summit
+                else if (elevAboveSea > 45)
+                    block = slope >= 2 ? BlockType.Stone : BlockType.Dirt; // high = sparse vegetation
                 else
-                    block = BlockType.Grass;
+                    block = BlockType.Grass;           // normal terrain
+            }
+            else if (y > surfaceY - 2 && slope >= 4)
+            {
+                block = BlockType.Stone;              // steep slopes are stone deeper too
             }
             else if (y > surfaceY - 4)
             {
@@ -181,7 +213,10 @@ public class HeightmapLoader
                 }
             }
             if (groundY < 0 || groundY > ChunkData.Height - 10) continue;
-            if (groundY <= _seaLevelVoxel + 3) continue; // no trees on beach
+            if (groundY <= _seaLevelVoxel + 4) continue; // no trees on beach
+            if (groundY > _seaLevelVoxel + 55) continue; // no trees on rocky summits
+            // Skip if surface is stone (cliff face)
+            if (chunk.GetBlock(x, groundY, z) == BlockType.Stone) continue;
 
             int trunkH = 4 + rng.Next(3); // 4-6 blocks tall
 

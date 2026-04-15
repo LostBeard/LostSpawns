@@ -4,5 +4,7 @@
     <File Path="Notes.md" />
     <File Path="README.md" />
   </Folder>
+  <Project Path="../../SpawnDev.GameUI/SpawnDev.GameUI/SpawnDev.GameUI/SpawnDev.GameUI.csproj" />
+  <Project Path="../../SpawnDev.VoxelEngine/SpawnDev.VoxelEngine/SpawnDev.VoxelEngine/SpawnDev.VoxelEngine.csproj" />
   <Project Path="LostSpawns/LostSpawns.csproj" />
 </Solution>

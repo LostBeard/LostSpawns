@@ -12,7 +12,7 @@ public class Camera
     public float Yaw { get; set; } = -90f;   // degrees, -90 = looking along -Z
     public float Pitch { get; set; } = -15f;  // degrees
 
-    public float MovementSpeed { get; set; } = 8f;
+    public float MovementSpeed { get; set; } = 32f;
     public float MouseSensitivity { get; set; } = 0.15f;
 
     /// <summary>Forward direction (unit vector) derived from yaw and pitch.</summary>

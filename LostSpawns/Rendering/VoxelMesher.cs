@@ -75,6 +75,12 @@ public static class VoxelMesher
 
             var (r, g, b) = GetBlockColor(block);
 
+            // Per-block color variation (deterministic hash, breaks visual monotony)
+            int wx = worldOffsetX + x, wz = worldOffsetZ + z;
+            int hash = (wx * 73856093) ^ (y * 19349663) ^ (wz * 83492791);
+            float variation = ((hash & 0xFF) / 255f - 0.5f) * 0.06f; // +/- 3%
+            r += variation; g += variation; b += variation;
+
             for (int f = 0; f < 6; f++)
             {
                 var (dx, dy, dz, nx, ny, nz) = Faces[f];

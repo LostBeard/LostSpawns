@@ -157,6 +157,13 @@ public static class TerrainKernels
         // Claim 54 floats (6 vertices × 9 floats each)
         int offset = Atomic.Add(ref counter[0], 54);
 
+        // Bounds check - roll back counter if we'd overflow
+        if (offset + 54 > vertices.Length)
+        {
+            Atomic.Add(ref counter[0], -54); // Roll back so counter stays accurate
+            return;
+        }
+
         // World position base
         float wx = cwx + x;
         float wy = y;
