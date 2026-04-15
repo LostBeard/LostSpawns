@@ -176,12 +176,12 @@ public class RenderService : IDisposable
         using var colorView = colorTexture.CreateView();
         using var encoder = _device.CreateCommandEncoder();
 
-        // Voxel render pass (clears canvas, renders terrain with vertex pulling)
-        using var pass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView!,
-            clearColor: true, new Vector3(0.45f, 0.48f, 0.52f));
-
-        // Draw each visible chunk - UpdateUniforms per chunk with section world offset
+        // Draw each visible chunk in its own render pass.
+        // VertexPullPipeline.UpdateUniforms uses queue.WriteBuffer which resolves
+        // before the NEXT submit - so all draws in one pass would use the last uniform.
+        // Separate passes ensure each chunk gets its own section offset.
         int visible = 0;
+        bool firstPass = true;
         foreach (var ((cx, cz), chunkMesh) in _world.Chunks)
         {
             if (!chunkMesh.HasMesh) continue;
@@ -193,23 +193,38 @@ public class RenderService : IDisposable
             if (!FrustumCuller.IsBoxVisible(in frustum, min, max))
                 continue;
 
-            // Per-section uniforms: VP matrix + this section's world offset
+            // Bake section offset into MVP: model = translate(sectionOffset)
+            var model = Matrix4x4.CreateTranslation(sectionOffset);
+            var mvp = model * vp;
+
             _voxelPipeline.UpdateUniforms(
-                vp,                                      // view-projection matrix
-                sectionOffset,                           // section world-space origin
+                mvp,                                     // model-view-projection (section baked in)
+                Vector3.Zero,                            // offset already in MVP
                 1.0f,                                    // voxel size
-                new Vector3(0.45f, 0.48f, 0.52f),       // fog color (overcast sky)
+                new Vector3(0.45f, 0.48f, 0.52f),       // fog color
                 0.0003f,                                 // fog density
                 new Vector3(0.25f, 0.26f, 0.30f),       // ambient color
                 0                                        // time
             );
 
+            // First chunk clears, subsequent chunks load (preserve previous)
+            using var pass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView!,
+                clearColor: firstPass, new Vector3(0.45f, 0.48f, 0.52f));
             _voxelPipeline.DrawSection(pass, chunkMesh.QuadBuffer!, chunkMesh.QuadCount);
+            pass.End();
+
+            firstPass = false;
             visible++;
         }
         VisibleChunkCount = visible;
 
-        pass.End();
+        // If no chunks were visible, still need to clear the canvas
+        if (firstPass)
+        {
+            using var clearPass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView!,
+                clearColor: true, new Vector3(0.45f, 0.48f, 0.52f));
+            clearPass.End();
+        }
 
         // GameUI overlay pass (HUD, inventory, chat - renders on top of voxel scene)
         OnPostRender?.Invoke(encoder, colorView, _canvasWidth, _canvasHeight);
