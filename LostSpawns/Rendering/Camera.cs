@@ -1,4 +1,5 @@
 using System.Numerics;
+using SpawnDev.VoxelEngine.Rendering;
 
 namespace LostSpawns.Rendering;
 
@@ -67,11 +68,11 @@ public class Camera
         return Matrix4x4.CreateLookAt(Position, Position + Front, Vector3.UnitY);
     }
 
-    /// <summary>Returns 4×4 perspective projection matrix (column-major).</summary>
-    public Matrix4x4 GetProjectionMatrix(float aspectRatio, float fovDegrees = 70f, float near = 0.1f, float far = 500f)
+    /// <summary>Returns reversed-Z infinite perspective projection for VertexPullPipeline.</summary>
+    public Matrix4x4 GetProjectionMatrix(float aspectRatio, float fovDegrees = 70f, float near = 0.1f)
     {
         float fovRad = fovDegrees * MathF.PI / 180f;
-        return Matrix4x4.CreatePerspectiveFieldOfView(fovRad, aspectRatio, near, far);
+        return ReversedZHelper.CreateInfinitePerspective(fovRad, aspectRatio, near);
     }
 
     /// <summary>Returns the combined View*Projection matrix (for frustum culling).</summary>
