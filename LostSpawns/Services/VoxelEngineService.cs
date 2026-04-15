@@ -124,9 +124,13 @@ public class VoxelEngineService : IAsyncDisposable
                 Models.ChunkData.SizeXZ,
                 Models.ChunkData.Height);
 
-            if (result.HasMesh && _meshCount < 5)
+            // Debug: log block stats and mesh result
+            if (_meshCount < 5)
             {
-                Console.WriteLine($"[VoxelEngineService] Mesh result: {result.QuadCount} quads, buffer={result.QuadBuffer?.Length}");
+                int solidCount = 0;
+                for (int i = 0; i < packed.Length; i++)
+                    if (packed[i] != 0) solidCount++;
+                Console.WriteLine($"[VoxelEngineService] Blocks: {solidCount}/{packed.Length} solid, mesh: {(result.HasMesh ? result.QuadCount + " quads" : "EMPTY")}");
                 _meshCount++;
             }
 
