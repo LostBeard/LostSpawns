@@ -29,6 +29,9 @@ public class VoxelEngineService : IAsyncDisposable
     // VoxelEngine greedy mesh pipeline (replaces old per-face MeshKernel)
     private VoxelMeshPipeline? _meshPipeline;
 
+    // Serialize mesh dispatches - VoxelMeshPipeline shares intermediate GPU buffers
+    private readonly SemaphoreSlim _meshLock = new(1, 1);
+
     // Pooled int[] for block format conversion (byte -> PackedBlock)
     private int[]? _packedBlocksPool;
 
@@ -106,18 +109,24 @@ public class VoxelEngineService : IAsyncDisposable
         if (_meshPipeline == null)
             throw new InvalidOperationException("Not initialized");
 
-        // Convert byte blocks to PackedBlock int format
-        var packed = _packedBlocksPool!;
-        for (int i = 0; i < blocks.Length && i < packed.Length; i++)
-            packed[i] = blocks[i] > 0 ? PackedBlock.Pack(blocks[i]) : 0;
+        await _meshLock.WaitAsync();
+        try
+        {
+            // Convert byte blocks to PackedBlock int format
+            var packed = _packedBlocksPool!;
+            for (int i = 0; i < blocks.Length && i < packed.Length; i++)
+                packed[i] = blocks[i] > 0 ? PackedBlock.Pack(blocks[i]) : 0;
 
-        // GPU pipeline: face cull -> greedy merge -> PackedQuad GPU buffer
-        var result = await _meshPipeline.MeshSectionUnpaddedAsync(
-            packed,
-            Models.ChunkData.SizeXZ,
-            Models.ChunkData.Height);
-
-        return result;
+            // GPU pipeline: face cull -> greedy merge -> PackedQuad GPU buffer
+            return await _meshPipeline.MeshSectionUnpaddedAsync(
+                packed,
+                Models.ChunkData.SizeXZ,
+                Models.ChunkData.Height);
+        }
+        finally
+        {
+            _meshLock.Release();
+        }
     }
 
     public ValueTask DisposeAsync()
