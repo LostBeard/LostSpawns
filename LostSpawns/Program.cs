@@ -3,6 +3,7 @@ using LostSpawns.Services;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using SpawnDev.BlazorJS;
+using SpawnDev.GameUI;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
@@ -16,6 +17,10 @@ builder.Services.AddSingleton<InputService>();
 builder.Services.AddSingleton<VoxelEngineService>();
 builder.Services.AddSingleton<WorldService>();
 builder.Services.AddSingleton<RenderService>();
+builder.Services.AddSingleton<HudService>();
+
+// GPU-rendered game UI overlay (SDF fonts, HUD elements, inventory, chat)
+builder.Services.AddGameUI(UITheme.LostSpawns);
 
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 

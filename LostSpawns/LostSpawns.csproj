@@ -17,8 +17,12 @@
 	<ItemGroup>
 		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.3" />
 		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.3" PrivateAssets="all" />
-		<!-- SpawnDev.ILGPU NuGet package (includes ILGPU + ILGPU.Algorithms) -->
-		<PackageReference Include="SpawnDev.ILGPU" Version="4.9.2-rc.1" />
+	</ItemGroup>
+
+	<!-- SpawnDev.GameUI - GPU-rendered game UI overlay -->
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\SpawnDev.GameUI\SpawnDev.GameUI\SpawnDev.GameUI\SpawnDev.GameUI.csproj" />
+		<ProjectReference Include="..\..\..\SpawnDev.VoxelEngine\SpawnDev.VoxelEngine\SpawnDev.VoxelEngine\SpawnDev.VoxelEngine.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

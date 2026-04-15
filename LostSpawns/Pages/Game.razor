@@ -7,6 +7,7 @@
 @inject RenderService Renderer
 @inject WorldService World
 @inject SettingsService Settings
+@inject HudService Hud
 @inject SpawnDev.BlazorJS.BlazorJSRuntime JS
 @implements IAsyncDisposable
 
@@ -21,20 +22,6 @@
         </div>
     </div>
 }
-else
-{
-    <div class="game-hud">
-        <div class="hud-top-left">
-            <span class="badge-status online">@Engine.BackendName</span>
-            <span class="text-dim" style="font-size:0.75rem;">@_fpsText</span>
-            <span class="text-dim" style="font-size:0.65rem;">@_chunkText</span>
-        </div>
-        <div class="hud-top-right">
-            <span class="text-dim" style="font-size: 0.75rem;">Click canvas to capture mouse</span>
-        </div>
-        <div class="hud-crosshair">+</div>
-    </div>
-}
 
 <div class="game-container">
     <canvas id="gameCanvas" @ref="_canvasRef" width="1280" height="720"
@@ -46,7 +33,6 @@ else
     private bool _ready;
     private string _status = "";
     private string _fpsText = "";
-    private string _chunkText = "";
     private int _frameCount;
     private double _fpsTimer;
 
@@ -102,7 +88,7 @@ else
         // Initial chunks via GPU pipeline (same noise as streaming)
         var initialChunks = await World.GenerateChunksAsync(
             Renderer.Camera.Position,
-            Math.Min(Settings.DrawDistance, 3));
+            Math.Min(Settings.DrawDistance, 12));
 
         foreach (var (cx, cz, mesh) in initialChunks)
             Renderer.UploadChunkMesh(cx, cz, mesh);
@@ -113,6 +99,13 @@ else
         World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
 
         Input.Attach();
+
+        // Initialize GPU-rendered HUD overlay (same WebGPU device as voxel renderer)
+        _status = "Initializing HUD...";
+        StateHasChanged();
+
+        Hud.Init(Renderer, _canvasRef);
+
         Renderer.OnUpdate = OnGameUpdate;
 
         _ready = true;
@@ -135,15 +128,15 @@ else
         foreach (var key in removed)
             Renderer.RemoveChunkMesh(key.cx, key.cz);
 
-        // Process up to 2 GPU-ready chunks per frame (fill blocks + mesh + upload)
-        var ready = World.ProcessReadyChunks(2);
+        // Process up to 16 GPU-ready chunks per frame
+        var ready = World.ProcessReadyChunks(16);
         foreach (var (cx, cz, mesh) in ready)
             Renderer.UploadChunkMesh(cx, cz, mesh);
 
-        // HUD
-        string pending = World.HasPendingChunks ? $" +{World.PendingCount} gen" : "";
-        _chunkText = $"{Renderer.VisibleChunkCount}/{Renderer.TotalChunkCount} visible{pending}";
+        // Update GPU-rendered HUD (compass bearing, minimap position, animations)
+        Hud.Update(deltaTime, Renderer.Camera.Position, Renderer.Camera.Yaw);
 
+        // FPS counter (still needed for debug overlay data)
         _frameCount++;
         _fpsTimer += deltaTime;
         if (_fpsTimer >= 1.0)
@@ -151,7 +144,6 @@ else
             _fpsText = $"{_frameCount} FPS";
             _frameCount = 0;
             _fpsTimer = 0;
-            InvokeAsync(StateHasChanged);
         }
     }
 
@@ -172,6 +164,7 @@ else
     public ValueTask DisposeAsync()
     {
         Renderer.StopRenderLoop();
+        Hud.Dispose();
         Renderer.Dispose();
         World.Reset();
         Input.Detach();
@@ -211,33 +204,5 @@ else
         margin-bottom: 0.5rem;
     }
 
-    .game-hud {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 350;
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        padding: 0.5rem 0.75rem;
-        pointer-events: none;
-    }
-    .hud-top-left, .hud-top-right {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        pointer-events: auto;
-    }
-    .hud-crosshair {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        font-size: 1.5rem;
-        color: rgba(90, 184, 160, 0.6);
-        pointer-events: none;
-        z-index: 350;
-        font-weight: 300;
-    }
+    /* HUD is now GPU-rendered by SpawnDev.GameUI - no HTML overlays needed */
 </style>

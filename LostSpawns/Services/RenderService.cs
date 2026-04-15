@@ -2,6 +2,7 @@ using SpawnDev.BlazorJS;
 using SpawnDev.BlazorJS.JSObjects;
 using SpawnDev.ILGPU.WebGPU;
 using ILGPU.Runtime;
+using System.Linq;
 using System.Numerics;
 using LostSpawns.Models;
 using LostSpawns.Rendering;
@@ -37,8 +38,8 @@ public class RenderService : IDisposable
     private readonly Dictionary<(int cx, int cz), ChunkSlot> _slots = new();
 
     private const int BytesPerVertex = 9 * 4;  // 9 floats * 4 bytes
-    private const int InitialCapacityVertices = 3_000_000; // ~108MB, 200% headroom for ~200 chunks
-    private const int MaxBufferVertices = 7_000_000;       // ~252MB (under 256MB default limit)
+    private int _maxBufferVertices;
+    private int _initialCapacityVertices;
 
     // Free-list: slots from removed chunks, sorted large→small for best-fit reuse
     private readonly List<(int firstVertex, int vertexCount)> _freeSlots = new();
@@ -57,6 +58,19 @@ public class RenderService : IDisposable
     public Camera Camera { get; } = new();
     public bool IsInitialized { get; private set; }
     public Action<float>? OnUpdate { get; set; }
+
+    /// <summary>
+    /// Called after the voxel render pass ends, before encoder.Finish().
+    /// GameUI hooks into this to render its overlay pass on the same encoder.
+    /// Parameters: (encoder, colorView, canvasWidth, canvasHeight)
+    /// </summary>
+    public Action<GPUCommandEncoder, GPUTextureView, int, int>? OnPostRender { get; set; }
+
+    public GPUDevice? Device => _device;
+    public GPUQueue? Queue => _queue;
+    public string CanvasFormat => _canvasFormat;
+    public int CanvasWidth => _canvasWidth;
+    public int CanvasHeight => _canvasHeight;
 
     public int VisibleChunkCount { get; private set; }
     public int TotalChunkCount => _slots.Count;
@@ -150,8 +164,17 @@ public class RenderService : IDisposable
 
         CreateDepthTexture();
 
+        // Query device limits for buffer sizing - no hardcoded assumptions
+        var limits = _device.Limits;
+        long maxBufferSize = (long)(limits?.MaxBufferSize ?? 256 * 1024 * 1024); // fallback 256MB
+        int deviceMaxVerts = (int)(maxBufferSize / BytesPerVertex);
+        _maxBufferVertices = Math.Min(deviceMaxVerts * 4 / 10, 20_000_000); // 40% of max, cap 20M
+        _initialCapacityVertices = Math.Min(_maxBufferVertices / 3, 5_000_000);
+
+        Console.WriteLine($"[RenderService] Device maxBufferSize: {maxBufferSize / 1024 / 1024}MB, vertex budget: {_maxBufferVertices} verts ({_maxBufferVertices * (long)BytesPerVertex / 1024 / 1024}MB)");
+
         // Pre-allocate vertex buffer
-        _bufferCapacityVertices = InitialCapacityVertices;
+        _bufferCapacityVertices = _initialCapacityVertices;
         _vertexBuffer = _device.CreateBuffer(new GPUBufferDescriptor
         {
             Size = (ulong)_bufferCapacityVertices * BytesPerVertex,
@@ -161,7 +184,7 @@ public class RenderService : IDisposable
 
         _uniformBuffer = _device.CreateBuffer(new GPUBufferDescriptor
         {
-            Size = 64,
+            Size = 80, // mat4x4 (64) + vec3 camera_pos + padding (16)
             Usage = GPUBufferUsage.Uniform | GPUBufferUsage.CopyDst,
         });
 
@@ -195,39 +218,31 @@ public class RenderService : IDisposable
         if (_slots.Remove(key, out var oldSlot))
             _freeSlots.Add((oldSlot.FirstVertex, oldSlot.VertexCount));
 
-        // Try to reuse a free slot (first-fit: find one big enough)
-        int writeOffset = -1;
-        for (int i = 0; i < _freeSlots.Count; i++)
-        {
-            if (_freeSlots[i].vertexCount >= vertexCount)
-            {
-                var free = _freeSlots[i];
-                writeOffset = free.firstVertex;
-                // If the free slot is much larger, split it: keep the remainder
-                int remainder = free.vertexCount - vertexCount;
-                if (remainder > 100) // only keep if meaningful
-                    _freeSlots[i] = (free.firstVertex + vertexCount, remainder);
-                else
-                    _freeSlots.RemoveAt(i);
-                break;
-            }
-        }
+        // Try to reuse a free slot (first-fit)
+        int writeOffset = TryFreeListAlloc(vertexCount);
 
         // If no free slot, append at end
         if (writeOffset < 0)
         {
             if (_nextFreeVertex + vertexCount > _bufferCapacityVertices)
             {
-                // Grow buffer — GPU→GPU copy, no CPU re-upload stall
+                // Grow buffer - GPU copy, no CPU stall
                 int needed = _nextFreeVertex + vertexCount;
-                int newCap = Math.Min(Math.Max(needed + needed / 4, _bufferCapacityVertices + 500_000), MaxBufferVertices);
-                if (newCap < needed) return; // can't fit
+                int newCap = Math.Min(Math.Max(needed + needed / 4, _bufferCapacityVertices + 1_000_000), _maxBufferVertices);
+                if (newCap < needed)
+                {
+                    // Buffer at max capacity. Don't evict visible chunks - that causes thrashing.
+                    // Just skip this chunk. WorldService's natural movement-based unloading
+                    // will free space as the player moves away from old chunks.
+                    return;
+                }
                 GrowBuffer(newCap);
             }
             writeOffset = _nextFreeVertex;
             _nextFreeVertex += vertexCount;
         }
 
+        writeData:
         // Write to GPU
         var slot = new ChunkSlot { FirstVertex = writeOffset, VertexCount = vertexCount, CpuData = vertices };
         ulong byteOffset = (ulong)writeOffset * BytesPerVertex;
@@ -235,6 +250,46 @@ public class RenderService : IDisposable
         _queue!.WriteBuffer(_vertexBuffer!, byteOffset, jsArray);
 
         _slots[key] = slot;
+    }
+
+    /// <summary>Total vertices currently stored across all chunks.</summary>
+    public int TotalVertices => _slots.Values.Sum(s => s.VertexCount);
+
+    /// <summary>Vertex budget pressure: 0.0 = empty, 1.0 = full.</summary>
+    public float Pressure => (float)TotalVertices / _maxBufferVertices;
+
+    /// <summary>Try to find a free slot that fits the requested vertex count.</summary>
+    private int TryFreeListAlloc(int vertexCount)
+    {
+        for (int i = 0; i < _freeSlots.Count; i++)
+        {
+            var (start, count) = _freeSlots[i];
+            if (count >= vertexCount)
+            {
+                _freeSlots.RemoveAt(i);
+                if (count > vertexCount)
+                    _freeSlots.Add((start + vertexCount, count - vertexCount));
+                return start;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>Evict the chunk farthest from (cx,cz), prioritizing high vertex count. Returns true if evicted.</summary>
+    private bool EvictFarthestChunk(int cameraCx, int cameraCz)
+    {
+        if (_slots.Count == 0) return false;
+
+        // Score = distance^2 * vertexCount (evict far + expensive chunks first)
+        var best = _slots.MaxBy(kv =>
+        {
+            int dx = kv.Key.Item1 - cameraCx;
+            int dz = kv.Key.Item2 - cameraCz;
+            return (long)(dx * dx + dz * dz) * kv.Value.VertexCount;
+        });
+
+        RemoveChunkMesh(best.Key.Item1, best.Key.Item2);
+        return true;
     }
 
     /// <summary>Remove a chunk's slot and add it to the free list for reuse. Coalesces adjacent free slots.</summary>
@@ -358,8 +413,12 @@ public class RenderService : IDisposable
         var vp = Camera.GetVpMatrix(aspect);
 
         Camera.WriteMvp(_mvpFloats, aspect);
-        _mvpBytes ??= new byte[64];
+        // 16 floats MVP + 3 floats camera pos + 1 padding = 80 bytes
+        _mvpBytes ??= new byte[80];
         Buffer.BlockCopy(_mvpFloats, 0, _mvpBytes, 0, 64);
+        var camPos = Camera.Position;
+        var camBytes = new[] { camPos.X, camPos.Y, camPos.Z, 0f };
+        Buffer.BlockCopy(camBytes, 0, _mvpBytes, 64, 16);
         _queue!.WriteBuffer(_uniformBuffer!, 0, _mvpBytes);
 
         var frustum = FrustumCuller.ExtractPlanes(vp);
@@ -413,6 +472,9 @@ public class RenderService : IDisposable
         VisibleChunkCount = visible;
 
         pass.End();
+
+        // GameUI overlay pass (HUD, inventory, chat - renders on top of voxel scene)
+        OnPostRender?.Invoke(encoder, colorView, _canvasWidth, _canvasHeight);
 
         using var commandBuffer = encoder.Finish();
         _queue!.Submit(new[] { commandBuffer });
@@ -485,6 +547,7 @@ public class RenderService : IDisposable
     private const string WgslShaderSource = @"
 struct Uniforms {
     mvp : mat4x4<f32>,
+    camera_pos : vec3<f32>,
 };
 
 @group(0) @binding(0) var<uniform> uniforms : Uniforms;
@@ -562,9 +625,9 @@ fn fs_main(input : VertexOutput) -> @location(0) vec4<f32> {
     color = color * light;
 
     // === Distance fog ===
-    let dist = length(input.world_pos);
-    let fog_start = 80.0;
-    let fog_end = 220.0;
+    let dist = length(input.world_pos - uniforms.camera_pos);
+    let fog_start = 3000.0;
+    let fog_end = 6000.0;
     let fog_color = vec3<f32>(0.45, 0.48, 0.52);  // overcast gray fog
     let fog_factor = clamp((dist - fog_start) / (fog_end - fog_start), 0.0, 1.0);
     let fog_factor_smooth = fog_factor * fog_factor; // quadratic falloff
