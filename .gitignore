@@ -362,3 +362,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsdTerrainData/*.tif
 TerrainData/*.asc
+
+# Large terrain source data (processed into heightmap binary, not needed at runtime)
+TerrainData/
