@@ -177,9 +177,10 @@ public class RenderService : IDisposable
         using var colorView = colorTexture.CreateView();
         using var encoder = _device.CreateCommandEncoder();
 
-        // Draw each visible section in its own render pass.
-        // VertexPullPipeline.UpdateUniforms uses queue.WriteBuffer - all draws in one
-        // pass would see the last write. Separate passes ensure correct per-section uniforms.
+        // Each section needs its own encoder+submit because queue.WriteBuffer
+        // resolves ALL writes before the NEXT submit. Multiple writes to the same
+        // uniform buffer before one submit = only the last value is seen.
+        // Separate submits ensure each section gets its own uniform data.
         int visible = 0;
         bool firstPass = true;
         const int SectionHeight = 16;
@@ -188,7 +189,6 @@ public class RenderService : IDisposable
         {
             if (!sectionMesh.HasMesh) continue;
 
-            // Section world-space bounds (16x16x16 per section)
             var sectionOffset = new Vector3(cx * ChunkData.SizeXZ, sy * SectionHeight, cz * ChunkData.SizeXZ);
             var min = sectionOffset;
             var max = sectionOffset + new Vector3(ChunkData.SizeXZ, SectionHeight, ChunkData.SizeXZ);
@@ -196,16 +196,18 @@ public class RenderService : IDisposable
             if (!FrustumCuller.IsBoxVisible(in frustum, min, max))
                 continue;
 
-            // Pass VP matrix + section offset separately (shader applies offset internally)
             _voxelPipeline.UpdateUniforms(
                 vp, sectionOffset, 1.0f,
                 new Vector3(0.45f, 0.48f, 0.52f), 0.0003f,
                 new Vector3(0.25f, 0.26f, 0.30f), 0);
 
-            using var pass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView!,
+            using var sectionEncoder = _device.CreateCommandEncoder();
+            using var pass = _voxelPipeline.BeginRenderPass(sectionEncoder, colorView, _depthView!,
                 clearColor: firstPass, new Vector3(0.45f, 0.48f, 0.52f));
             _voxelPipeline.DrawSection(pass, sectionMesh.QuadBuffer!, sectionMesh.QuadCount);
             pass.End();
+            using var cmdBuf = sectionEncoder.Finish();
+            _queue!.Submit(new[] { cmdBuf });
 
             firstPass = false;
             visible++;
@@ -214,16 +216,19 @@ public class RenderService : IDisposable
 
         if (firstPass)
         {
-            using var clearPass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView!,
+            using var clearEncoder = _device.CreateCommandEncoder();
+            using var clearPass = _voxelPipeline.BeginRenderPass(clearEncoder, colorView, _depthView!,
                 clearColor: true, new Vector3(0.45f, 0.48f, 0.52f));
             clearPass.End();
+            using var clearCmd = clearEncoder.Finish();
+            _queue!.Submit(new[] { clearCmd });
         }
 
-        // GameUI overlay pass (HUD, inventory, chat - renders on top of voxel scene)
-        OnPostRender?.Invoke(encoder, colorView, _canvasWidth, _canvasHeight);
-
-        using var commandBuffer = encoder.Finish();
-        _queue!.Submit(new[] { commandBuffer });
+        // GameUI overlay pass (separate encoder, LoadOp.Load preserves terrain)
+        using var uiEncoder = _device.CreateCommandEncoder();
+        OnPostRender?.Invoke(uiEncoder, colorView, _canvasWidth, _canvasHeight);
+        using var uiCmd = uiEncoder.Finish();
+        _queue!.Submit(new[] { uiCmd });
     }
 
     private void CreateDepthTexture()
