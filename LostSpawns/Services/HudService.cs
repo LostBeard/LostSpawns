@@ -129,8 +129,9 @@ public class HudService : IDisposable
         // Update compass bearing from camera yaw
         Compass.Bearing = cameraYaw;
 
-        // Update minimap player position (XZ plane)
+        // Update minimap player position (XZ plane + altitude)
         Minimap.PlayerPosition = new Vector2(cameraPosition.X, cameraPosition.Z);
+        Minimap.PlayerAltitude = cameraPosition.Y;
         Minimap.PlayerRotation = cameraYaw * MathF.PI / 180f;
 
         // Update screen overlay effects

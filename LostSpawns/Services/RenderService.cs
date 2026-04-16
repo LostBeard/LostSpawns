@@ -1,6 +1,5 @@
 using SpawnDev.BlazorJS;
 using SpawnDev.BlazorJS.JSObjects;
-using SpawnDev.ILGPU;
 using SpawnDev.ILGPU.WebGPU;
 using ILGPU.Runtime;
 using System.Numerics;
@@ -110,8 +109,19 @@ public class RenderService : IDisposable
         canvas.Height = _canvasHeight;
 
         // VoxelEngine vertex-pull pipeline (reads PackedQuad from storage buffers)
+        // Block colors indexed by BlockType enum (must match LostSpawns.Models.BlockType order)
+        var blockColors = new Vector4[256];
+        blockColors[(int)BlockType.Air]    = new Vector4(0, 0, 0, 0);              // transparent
+        blockColors[(int)BlockType.Dirt]   = new Vector4(0.45f, 0.3f, 0.15f, 1);   // brown
+        blockColors[(int)BlockType.Grass]  = new Vector4(0.3f, 0.6f, 0.2f, 1);     // green
+        blockColors[(int)BlockType.Stone]  = new Vector4(0.5f, 0.5f, 0.5f, 1);     // gray
+        blockColors[(int)BlockType.Sand]   = new Vector4(0.85f, 0.8f, 0.6f, 1);    // tan
+        blockColors[(int)BlockType.Water]  = new Vector4(0.2f, 0.3f, 0.8f, 0.6f);  // blue translucent
+        blockColors[(int)BlockType.Wood]   = new Vector4(0.55f, 0.35f, 0.15f, 1);  // brown
+        blockColors[(int)BlockType.Leaves] = new Vector4(0.2f, 0.45f, 0.1f, 0.8f); // dark green
+
         _voxelPipeline = new VertexPullPipeline();
-        _voxelPipeline.Init(_device, _queue, _canvasFormat);
+        _voxelPipeline.Init(_device, _queue, _canvasFormat, blockColors);
         _voxelPipeline.InitDynamic(MaxVisibleSections);
 
         CreateDepthTexture();
@@ -176,7 +186,7 @@ public class RenderService : IDisposable
 
         float aspect = (float)_canvasWidth / _canvasHeight;
         var vp = Camera.GetVpMatrix(aspect);
-        var gpuMvp = GpuMatrix4x4.FromMatrix4x4(vp);
+        // Raw Matrix4x4 - WGSL column-major reinterpretation handles the transpose
         var frustum = FrustumCuller.ExtractPlanes(vp);
         var cameraPos = Camera.Position;
 
@@ -203,7 +213,7 @@ public class RenderService : IDisposable
             if (!FrustumCuller.IsBoxVisible(in frustum, min, max))
                 continue;
 
-            _voxelPipeline.WriteDynamicUniforms(slotIndex, gpuMvp, sectionOffset, 1.0f,
+            _voxelPipeline.WriteDynamicUniforms(slotIndex, vp, sectionOffset, 1.0f,
                 fogColor, fogDensity, ambientColor, 0, cameraPos);
             _visibleQuadBuffers[slotIndex] = sectionMesh.QuadBuffer!;
             _visibleQuadCounts[slotIndex] = sectionMesh.QuadCount;
