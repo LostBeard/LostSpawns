@@ -600,7 +600,76 @@ Moldable terrain lets players bury anything - supply caches, bodies, mines. That
   - Headphones accessory: beeping is silent to others nearby (stealth scanning)
 - **[LIKELY] Ground disturbance visual** - recent modifications leave a "fresh dirt" texture overlay. Fades over in-game days. Careful attacker can cover tracks with grass/leaf decoration brush.
 - **[LIKELY] Scent-tracking dogs** - AI companion or NPC. Leads player along scent trails. Finds buried corpses and recently-handled items. Countered by scent masking kit.
-- **[UNDECIDED] Ground-penetrating radar** - wearable/backpack unit, mini-display shows buried voids (stash containers) through dirt. Rare, needs careful tuning so it isn't trivializing.
+- **[LIKELY] Ground-penetrating radar (GPR)** - backpack unit with wheeled antenna cart. Sweeping the antenna over suspect ground produces a "B-scan" slice on a mini-display - hyperbolic returns mark buried objects (metal OR non-metal, including wood, plastic, cloth - defeats the non-metal container trick). Design hooks:
+  - **Slow sweep** - walk the antenna at ~2 m/s, no sprint-scanning
+  - **Visible operation** - the cart is obvious, anyone watching knows you're searching
+  - **Skill check on readout** - hyperbola interpretation is non-trivial; novices miss faint returns, experts read soil layers
+  - **Very battery hungry** - scanning a single 10x10 plot drains a full cell
+  - **Rare tier** - military/industrial loot only, not craftable
+  - Defeats non-metal containers. Still defeated by: very-deep burial (below antenna range), burying adjacent to ambient voids (rock/root/existing cave) that muddy the signature, or layered decoy stash sitting on top of the real one
+  - Late-game "arms escalation" tool - emerges once metal detectors saturate at mid-game, restoring tension for players who thought they'd solved the hide problem
+  - Real-world reference: archaeology, utility locating, forensics - finding bodies and caches is its literal IRL use case, perfect survival-horror fit
+
+  **Raid and recon use cases (the big one - not just buried stashes):**
+
+  The same B-scan that reads buried objects reads bodies behind thin walls (wood, drywall, shack walls). Shows silhouettes moving in real time. This turns GPR from "stash-finder" into the signature **raid-planning and raid-support tool** of the game.
+
+  - **[LIKELY] Through-wall silhouette readout** - passive scan shows body-shaped returns behind wooden/drywall/thin-stone walls, moving in real time. Denser materials block or degrade the signal.
+  - **Pre-raid recon** - scan a target base from adjacent cover. Map defender positions, count occupants, learn patrol routes before your squad commits.
+  - **Live raid intel** - one teammate stays outside on scanner, calls movement to the breach team: "Two in the east wing, one moving toward the basement stairs, one stationary in the loft - probably asleep."
+  - **Find the panic room** - a still silhouette among moving ones is someone hiding, almost always near valuables.
+  - **Post-breach sweep** - scan each room through the doorway before entering, avoid ambushes.
+  - **Defender awareness** - if defenders own a scanner too, they see the raid stack forming outside and can prepare. Asymmetric info becomes mutual info.
+
+  **Defender counter-play (material-driven base progression):**
+
+  - **Dense wall materials** block or degrade the scan - concrete, metal plating, reinforced stone walls. Gives players a concrete reason to upgrade from wood → stone → reinforced through the progression curve.
+  - **Faraday/panic rooms** - interior rooms lined with RF-opaque material (foil, mesh). High-cost construction, guarantees privacy.
+  - **Move silently / crouch** - reduces silhouette intensity in some tunings (skill-based counter).
+  - **Decoy movement** - animated dummies, AI pets patrolling, rotating traps that simulate a walking person. Makes the scanner's readout noisy.
+  - **Active RF jammers** - placed appliance draws power, blankets a zone with scan interference. Raiders know "they have a jammer" the moment they step into it (their display noises up).
+  - **Base layout design** - long halls, offset doorways, dense interior walls limit scanner line-of-sight even through thin exteriors.
+
+  **Tactical role: radar operator (real-time voice callouts):**
+
+  The scanner operator becomes a legitimate team role - a position, not just a tool-holder.
+
+  - Trades combat readiness for real-time team intel (scanner is slow + visible, you're exposed while operating)
+  - Standard callout vocabulary over proximity/team voice:
+    - "Two tangos east wing, moving north toward stairs"
+    - "One stationary, basement, behind the vault wall - asleep or looting"
+    - "Runner coming up stairs, third floor, contact in 4 seconds"
+    - "Lost signal on target 3, check for panic room"
+  - High-value target: enemies who spot the operator and take them out blind the assault team
+  - Defensive inverse: the base can have its OWN operator inside, watching the raid stack form up, calling its own team ("Six outside the north wall, stacking for breach - flip the jammer")
+  - Pure emergent tactical moment: squad coordinates breach, operator feeds intel, breacher charges in knowing exactly what waits on the other side
+
+  **[LIKELY] AR tabletop mode (Quest 3S passthrough - headline VR feature):**
+
+  When the scanner operator wears a VR headset in passthrough/AR mode, the 2D mini-display upgrades to a **holographic 3D tabletop**. You see the real world through the headset PLUS a miniature voxel reconstruction of the scanned area floating in front of you - like a tactical hologram from a sci-fi film, but built from your own scan data.
+
+  - **Full underground topology** - base walls, rooms, corridors, buried caches, tunnels - all rendered as a semi-transparent x-ray voxel model
+  - **Real-time defender silhouettes** - animated figures walking the corridors, pausing at doorways, descending stairs - updates live as the scan sweeps
+  - **Walk around the hologram** - physically move around the projection, view from any angle, kneel to see basement levels, lean in to inspect the vault room
+  - **Scale and zoom** - pinch-to-zoom, scale from floor-plan size up to dollhouse, or shrink to palm-sized for discretion
+  - **Shared tactical markers** - drop "stack here," "breach point," "hostage" markers that appear in teammates' HUDs and in THEIR own AR tabletop if they share the view
+  - **Pre-raid war table** - whole squad gathers in a safehouse, plants the hologram on an actual physical table (AR passthrough blends it into the real environment), rehearses the breach
+  - **Frame budget** - scanner overlay is a new render pass, needs to fit Quest 3S foveated budget. Voxel model is already resident in memory - the overlay is projection + silhouette raster, cheap.
+  - **Defender equivalent** - defender operator sees the raid stack forming OUTSIDE their base on their own tabletop. Time to flip the jammer, wake the sleeping teammate, arm the claymore.
+
+  **Why this matters strategically:** AR tabletop is the signature Quest 3S showcase for survival gaming. No competing game has tactical-hologram base recon. This is the demo moment - player pulls up the underground base hologram on their dining room table, watches tiny defenders walk the corridors below, realizes what's possible, tells everyone they know.
+
+  **AR-tabletop gameplay verbs:**
+
+  - Plant the hologram on your actual kitchen table, gather the squad around it, mark the breach point
+  - Kneel to eye level with the miniature basement, spot the guard leaning against the vault wall
+  - Walk a full loop around the hologram searching for the weak point in the east wall
+  - Pinch-zoom into the war room, watch the enemy commander pacing
+  - Drop a "frag through this window" marker, watch it ghost into your breacher's HUD
+  - Shrink the tabletop to palm-size when a stranger walks in, hide the intel
+  - Scan AND watch - move the antenna to reveal more of the base, see the hologram fill in room by room
+
+  **Companion plan note:** base raiding is a huge topic that this doc only touches. Breach charges, alarm systems, holdout rooms, defender reinforcement waves, loot vault design all belong in a dedicated `PLAN-Base-Raiding.md` - flagged for a future brainstorm session.
 - **[COMMIT] Player surveillance** - watch someone from a hillside, note where they dug, come back later. No tool required, just attention and patience. Pure emergent gameplay.
 - **[LIKELY] Corpse clues** - a dead body near disturbed ground is itself a tell. Lets you scout without HUD markers.
 - **[UNDECIDED] Dowsing rods** (unreliable folk tool) - cheap crafted item, noisy hints. "Almost a metal detector" for low-tier players, fun flavor.
