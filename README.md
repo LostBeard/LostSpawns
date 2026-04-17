@@ -4,7 +4,9 @@ A voxel-based 3D survival game built entirely in **Blazor WebAssembly** — show
 
 ## 🎮 Overview
 
-A **WIP**, Lost Spawns is a post-apocalyptic survival game inspired by DayZ. It runs entirely client-side in your web browser using WebGPU for hardware-accelerated 3D rendering and GPU compute — no plugins, no native code, just C# and Blazor.
+A **WIP**, Lost Spawns is a post-apocalyptic survival game inspired by DayZ. It runs entirely client-side in your web browser using WebGPU for hardware-accelerated 3D rendering and GPU compute - no plugins, no native code, just C# and Blazor.
+
+The scope is intentionally ambitious: a full DayZ-scale persistent open world with moldable terrain, dynamic weather, hybrid smooth + blocky environments, flood-fill lighting, and Quest 3S VR native support. All from a single codebase running on WebGPU, WebGL, or Wasm depending on the browser. This is a showcase of what Blazor WASM + SpawnDev.ILGPU can do when pushed hard.
 
 ## ✨ Features
 
@@ -25,6 +27,71 @@ A **WIP**, Lost Spawns is a post-apocalyptic survival game inspired by DayZ. It 
 - **First-Person Camera** — WASD movement + mouse look
 - **Biome-Based Terrain** — Grass, dirt, stone, sand, water, trees
 - **60 FPS** — Smooth, stall-free rendering even while streaming new terrain
+
+## 🌍 The Vision
+
+> "The browser's first Astroneer-scale moldable-terrain DayZ."
+
+What Lost Spawns is growing into:
+
+### 🏔️ Moldable Terrain (The Headliner)
+
+Not just digging. **Sculpting.** The world is clay. Push and pull the ground in real time with a terrain tool. Flatten a hillside into a base plot. Raise a defensive berm. Carve a road up a mountainside. Dig a foxhole mid-firefight and duck into it. Dig now, fill later - material from your canister.
+
+Built on GPU-evaluated Signed Distance Fields + Dual Marching Cubes. Smooth organic deformation, no voxel staircase. Astroneer-class gameplay, browser-native.
+
+### 🗺️ DayZ-Scale Persistent World
+
+2 million sections backing the map, ~2,000 active at any moment. **OPFS region files benchmarked at 310 MB/s read, 118 MB/s write** - 69x faster than IndexedDB. Every scar you leave on the world is there when you come back.
+
+### 🧱 Hybrid Smooth + Blocky Terrain
+
+Natural terrain is smooth SDF. Player-built structures are clean voxel blocks. They coexist in the same world. Build a wooden shack on top of a smoothly-carved hillside. Blast through both with one grenade. One world, two representations, unified carving API.
+
+### ☀️ Full Survival Atmosphere
+
+- **Flood-fill lighting** with torches, sky light, and interior darkness
+- **Cascaded shadow maps** with PCF filtering for soft edges
+- **SSAO + bloom + color grading + film grain + vignette** for DayZ mood
+- **Night vision goggles** with phosphor tint and grain
+- **Dynamic weather**: rain, snow, fog, lightning with delayed thunder
+- **Atmospheric sky** with sun, moon, stars, and dawn/dusk transitions
+- **Water rendering** with Beer-Lambert absorption, caustics, refraction, screen-space reflections
+- **Fluid simulation** - water flows downhill, lava ignites wood
+
+### 🎯 Gameplay Depth
+
+- First-person survival loop with scavenging, crafting, combat
+- Procedural world with roads, military zones, industrial areas, residential buildings
+- Structural integrity - dig out a support pillar, watch the building collapse
+- Destructible terrain with material-aware tools (shovel vs pickaxe vs drill vs demolition charge)
+- Damage overlay cracks before blocks break
+- Persistent modifications - every bullet hole and crater stays
+
+### 🥽 Quest 3S VR Native
+
+Full WebXR stereo rendering, foveated rendering in peripheral vision, controller input mapping, passthrough AR mode for tabletop editor view. Runs adaptive to thermal headroom.
+
+### 🌐 Runs Everywhere
+
+Single codebase, 6 GPU backends via [SpawnDev.ILGPU](https://github.com/LostBeard/SpawnDev.ILGPU): **WebGPU** (Chrome/Edge), **WebGL** (Firefox/Safari), **Wasm** (no-GPU fallback), plus CUDA / OpenCL / CPU for development. Automatic backend selection based on what the browser supports.
+
+---
+
+### 📋 Detailed Plans
+
+For the full technical breakdown, see the [`Plans/`](LostSpawns/Plans/) folder:
+
+- [`PLAN-Terrain-Carving.md`](LostSpawns/Plans/PLAN-Terrain-Carving.md) - moldable terrain brainstorm and carving roadmap
+- [`PLAN-P2P-Reputation-System.md`](LostSpawns/Plans/PLAN-P2P-Reputation-System.md) - distributed trust/reputation
+
+And the engine roadmap lives in the VoxelEngine repo:
+
+- [SpawnDev.VoxelEngine v1.0.0 plan](https://github.com/LostBeard/SpawnDev.VoxelEngine/blob/master/SpawnDev.VoxelEngine/Plans/PLAN-v1.0.0-LostSpawns.md) - 16 engine phases
+
+Research docs covering the tough problems (chunk streaming, palette compression, flood-fill lighting, etc.) live in [`SpawnDev.VoxelEngine/Research/`](https://github.com/LostBeard/SpawnDev.VoxelEngine/tree/master/SpawnDev.VoxelEngine/Research).
+
+---
 
 ## 🛠️ Tech Stack
 
