@@ -82,6 +82,7 @@ Single codebase, 6 GPU backends via [SpawnDev.ILGPU](https://github.com/LostBear
 
 For the full technical breakdown, see the [`Plans/`](Plans/) folder:
 
+- [`PLAN-Vision.md`](Plans/PLAN-Vision.md) - high-level vision, play styles, DayZ inspiration
 - [`PLAN-Terrain-Carving.md`](Plans/PLAN-Terrain-Carving.md) - moldable terrain brainstorm and carving roadmap
 - [`PLAN-P2P-Reputation-System.md`](Plans/PLAN-P2P-Reputation-System.md) - distributed trust/reputation
 
