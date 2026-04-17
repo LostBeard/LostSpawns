@@ -86,6 +86,11 @@ For the full technical breakdown, see the [`Plans/`](Plans/) folder:
 - [`PLAN-Terrain-Carving.md`](Plans/PLAN-Terrain-Carving.md) - moldable terrain, traps, buried stashes, GPR + AR tabletop raid recon
 - [`PLAN-Clothing-Storage.md`](Plans/PLAN-Clothing-Storage.md) - DayZ-style layered clothing, condition tiers, repair, containers
 - [`PLAN-Crafting.md`](Plans/PLAN-Crafting.md) - crafting stations, recipe discovery, tiered progression, signature craftables
+- [`PLAN-Player-Progression.md`](Plans/PLAN-Player-Progression.md) - learn-by-doing skills, Fallout 76-style equipped perk cards, loadouts
+- [`PLAN-Dynamic-World-Events.md`](Plans/PLAN-Dynamic-World-Events.md) - scripted + procedural events, cryptid bosses, radio broadcasts
+- [`PLAN-Environment-Hazards.md`](Plans/PLAN-Environment-Hazards.md) - radiation, chem, bio, weather, NBC gear, F76-style mutations
+- [`PLAN-Base-Building.md`](Plans/PLAN-Base-Building.md) - modular block construction, C.A.M.P. blueprint pack-and-move, structural integrity
+- [`PLAN-Economy.md`](Plans/PLAN-Economy.md) - barter-first, informal currencies, vending machines, faction rep pricing
 - [`PLAN-P2P-Reputation-System.md`](Plans/PLAN-P2P-Reputation-System.md) - distributed trust/reputation
 
 And the engine roadmap lives in the VoxelEngine repo:
