@@ -83,7 +83,9 @@ Single codebase, 6 GPU backends via [SpawnDev.ILGPU](https://github.com/LostBear
 For the full technical breakdown, see the [`Plans/`](Plans/) folder:
 
 - [`PLAN-Vision.md`](Plans/PLAN-Vision.md) - high-level vision, play styles, DayZ inspiration
-- [`PLAN-Terrain-Carving.md`](Plans/PLAN-Terrain-Carving.md) - moldable terrain brainstorm and carving roadmap
+- [`PLAN-Terrain-Carving.md`](Plans/PLAN-Terrain-Carving.md) - moldable terrain, traps, buried stashes, GPR + AR tabletop raid recon
+- [`PLAN-Clothing-Storage.md`](Plans/PLAN-Clothing-Storage.md) - DayZ-style layered clothing, condition tiers, repair, containers
+- [`PLAN-Crafting.md`](Plans/PLAN-Crafting.md) - crafting stations, recipe discovery, tiered progression, signature craftables
 - [`PLAN-P2P-Reputation-System.md`](Plans/PLAN-P2P-Reputation-System.md) - distributed trust/reputation
 
 And the engine roadmap lives in the VoxelEngine repo:
