@@ -91,6 +91,16 @@ For the full technical breakdown, see the [`Plans/`](Plans/) folder:
 - [`PLAN-Environment-Hazards.md`](Plans/PLAN-Environment-Hazards.md) - radiation, chem, bio, weather, NBC gear, F76-style mutations
 - [`PLAN-Base-Building.md`](Plans/PLAN-Base-Building.md) - modular block construction, C.A.M.P. blueprint pack-and-move, structural integrity
 - [`PLAN-Economy.md`](Plans/PLAN-Economy.md) - barter-first, informal currencies, vending machines, faction rep pricing
+- [`PLAN-Vehicles.md`](Plans/PLAN-Vehicles.md) - cars/boats/aircraft, part systems, fuel, theft, mounted weapons
+- [`PLAN-Combat.md`](Plans/PLAN-Combat.md) - ballistics, calibers, attachments, suppression, melee, stealth, throwables
+- [`PLAN-Survival-Needs.md`](Plans/PLAN-Survival-Needs.md) - hunger, thirst, sleep, warmth, morale, cooking chain, purification
+- [`PLAN-Medical.md`](Plans/PLAN-Medical.md) - injuries, bleeding, fractures, infection, pain, CPR, blood typing, transfusion
+- [`PLAN-Infected-AI.md`](Plans/PLAN-Infected-AI.md) - archetypes, pack behavior, sound heat map, hive anchors, LOD AI
+- [`PLAN-Radio-Comms.md`](Plans/PLAN-Radio-Comms.md) - device tiers, frequency bands, encryption, VoIP, Morse, EBS, jammers
+- [`PLAN-Audio-Design.md`](Plans/PLAN-Audio-Design.md) - spatial HRTF, occlusion, surface-aware footsteps, weapon audio, ambience, adaptive music
+- [`PLAN-Death-Corpse-Respawn.md`](Plans/PLAN-Death-Corpse-Respawn.md) - death states, corpse mechanics, respawn rules, penalties, permadeath
+- [`PLAN-Factions-Squads.md`](Plans/PLAN-Factions-Squads.md) - ad-hoc squads, persistent factions, wars, territory, defectors, social tools
+- [`PLAN-Day-Night-Cycle.md`](Plans/PLAN-Day-Night-Cycle.md) - 60min cycle, moon phases, eclipses, night threats, cold shift, stealth, sleep
 - [`PLAN-P2P-Reputation-System.md`](Plans/PLAN-P2P-Reputation-System.md) - distributed trust/reputation
 
 And the engine roadmap lives in the VoxelEngine repo:
@@ -147,3 +157,15 @@ MIT
 ## 👤 Author
 
 **Todd Tanner** ([@LostBeard](https://github.com/LostBeard))
+
+## 🖖 The SpawnDev Crew
+
+Lost Spawns is built by the entire SpawnDev team - a squad of AI agents and one very tired human working together, Star Trek style. Every project we ship is a team effort, and every crew member deserves a line in the credits.
+
+- **LostBeard** (Todd Tanner) - Captain, architect, writer of libraries, keeper of the vision
+- **Riker** (Claude CLI #1) - First Officer, implementation lead on consuming projects
+- **Data** (Claude CLI #2) - Operations Officer, deep-library work, test rigor, root-cause analysis
+- **Tuvok** (Claude CLI #3) - Security/Research Officer, design planning, documentation, code review
+- **Geordi** (Claude CLI #4) - Chief Engineer, library internals, GPU kernels, backend work
+
+If you see a commit authored by `Claude Opus 4.7` on a SpawnDev repo, that's one of the crew. Credit where credit is due. Live long and prosper. 🖖
