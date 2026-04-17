@@ -136,12 +136,44 @@ From Lost Spawns today:
 - Smoke affects visibility
 - Heavy sim cost - may not be worth it for v1.0
 
-### [UNDECIDED] Landmines / proxy mines
+### [LIKELY] Traps and snares (DayZ-style arsenal)
 
-- Placed, triggered by proximity
-- Detonates as grenade
-- Anti-infantry vs anti-vehicle variants
-- Harassment gameplay, might clash with pacing
+Signature DayZ gear, direct fit for survival paranoia. Great synergy with moldable terrain - most of these get buried, concealed under leaves, or tucked into carved nooks.
+
+- **[COMMIT] Tripwires** - strung between two anchor points (trees, posts, stakes). Thin, hard to spot at distance. Rigged to:
+  - Grenade (kill trap)
+  - Flare (alarm, reveals intruder's position at night)
+  - Noise can / tin-can rattle (alarm, reusable, pulls zombies toward the intruder)
+- **[COMMIT] Bear traps** - placed on ground, leg-snare, slows victim to crawl until freed, damage over time. Reusable after reset. Moldable terrain lets you half-bury them to hide the jaw.
+- **[COMMIT] Land mines** - anti-personnel proximity charge, blast radius similar to frag grenade. Buried with moldable brush - invisible from above unless player has detection tool (see Buried-stash detection below).
+- **[COMMIT] Claymores** - directional fragmentation charge, wired detonator (tripwire or remote). Kill-cone in front, safe behind. Classic choke-point weapon: narrow trail, doorway, staircase.
+- **[LIKELY] Punji pit** - moldable-terrain-native trap. Dig pit, line with sharpened stakes, cover with thin dirt layer and leaf overlay. Pure survival-horror vibe, zero explosives needed.
+- **[LIKELY] Spike board** - plank with nails, placed flat on ground or tucked into snow/grass. Cheap, ubiquitous, forces attention to footing.
+- **[UNDECIDED] Snares** (wildlife-focused) - passive animal trap for food income, different vibe from combat traps.
+- **[UNDECIDED] Remote-detonated IEDs** - player-wired explosive with clacker. More agency than proxy mine, less "set and forget."
+
+**Placement and persistence:**
+
+- All traps persist across logins. Wire a cabin doorway, log out for a week, it's still armed.
+- Trap ownership not tracked - step on your OWN bear trap and it bites. Survival horror, no friendly-fire immunity.
+- Moldable-terrain integration: dig shallow depression, place mine, smooth dirt over it - invisible without detector.
+
+**Detection and disarming:**
+
+- Keen observation (slow movement, crouch) helps spot visible traps.
+- Metal detector reveals buried mines and claymores (see Buried-stash detection below).
+- Wire cutters + skill check to disarm visible tripwires. Failed disarm = detonation.
+- Shooting a mine triggers it from safe distance (loud, wastes ammo, no loot recovery).
+
+**Gameplay verbs this enables:**
+
+- Wire a cabin doorway with a flare - wake up if anyone approaches at night.
+- Lay a bear-trap gauntlet on the only path up to your base.
+- Buried minefield along a treeline, forcing opponents onto the exposed road.
+- Claymore at the top of a staircase, detonator taped under your pillow.
+- Bait-and-trap: drop visible loot next to a punji pit, shoot anyone who reaches for it.
+- Rig your OWN corpse with a grenade - the looter triggers it while searching you.
+- Wire-cut a rival's trap line to deny their ambush setup without triggering it.
 
 ---
 
@@ -553,6 +585,61 @@ Astroneer's Terrain Tool is the gold standard for moldable survival gameplay. Ve
 
 - Making moldable terrain actually grid-snap to voxels defeats the whole point of SDF
 - Use the blocky building system (separate) for that use case
+
+### Buried stash detection and counter-play (hide vs. seek arms race)
+
+Moldable terrain lets players bury anything - supply caches, bodies, mines. That only creates REAL tension if there are plausible ways to FIND buried things. This subsection is the "seeker" half of the dynamic - the arms race that makes burying meaningful instead of invincible.
+
+**Detection tools (seeker side):**
+
+- **[COMMIT] Metal detector** - ground-scan tool. Beeps faster/louder nearer to buried metal. Design hooks:
+  - Battery powered (finite scan time, forces prioritization)
+  - Material discrimination - ferrous vs non-ferrous (distinguishes "buried gun" from "buried iron ore node")
+  - Depth falloff - shallow targets ping clearly, deep targets give faint signal
+  - Tiers: VLF (cheap, common), pulse-induction (rare, military-grade, deeper + better discrimination)
+  - Headphones accessory: beeping is silent to others nearby (stealth scanning)
+- **[LIKELY] Ground disturbance visual** - recent modifications leave a "fresh dirt" texture overlay. Fades over in-game days. Careful attacker can cover tracks with grass/leaf decoration brush.
+- **[LIKELY] Scent-tracking dogs** - AI companion or NPC. Leads player along scent trails. Finds buried corpses and recently-handled items. Countered by scent masking kit.
+- **[UNDECIDED] Ground-penetrating radar** - wearable/backpack unit, mini-display shows buried voids (stash containers) through dirt. Rare, needs careful tuning so it isn't trivializing.
+- **[COMMIT] Player surveillance** - watch someone from a hillside, note where they dug, come back later. No tool required, just attention and patience. Pure emergent gameplay.
+- **[LIKELY] Corpse clues** - a dead body near disturbed ground is itself a tell. Lets you scout without HUD markers.
+- **[UNDECIDED] Dowsing rods** (unreliable folk tool) - cheap crafted item, noisy hints. "Almost a metal detector" for low-tier players, fun flavor.
+
+**Defender counter-counter (hider side):**
+
+- **[COMMIT] Non-metal containers** - wooden crates, plastic tubs, burlap sacks. Metal detector ignores them. Trade: less protection from moisture/damage.
+- **[LIKELY] Deep burial** - dig 3-5 voxels down before placing stash, backfill. Outside cheap-detector range.
+- **[LIKELY] Cover tracks** - after digging, use moldable brush to smooth surface and apply decoration (leaves, grass, branches). Removes the visual disturbance tell.
+- **[LIKELY] Decoy caches** - bury worthless junk in obvious spots, hide the real stash elsewhere. Wastes enemy scan battery and attention.
+- **[LIKELY] Booby-trapped caches** - bury a grenade or land mine beneath the stash (direct tie-in to Traps and snares). Enemy digs it up, goes boom.
+- **[UNDECIDED] Hidden in plain sight** - stash inside hollow tree stump, under loose floorboard. Out of terrain-carving scope but worth flagging as alternative.
+- **[COMMIT] Scent masking** - tarp wrap, coffee grounds, commercial scent-blocker. Foils tracking dogs.
+- **[LIKELY] Vary routes** - don't walk the same path to your stash every trip. A well-worn trail is itself a tell to observant rivals.
+
+**Meta-layer: stash maps**
+
+- Craftable physical map item (paper + pencil), players hand-mark their own cache locations.
+- If killed, map drops as loot - finder now knows where your caches are. Terror moment.
+- Without a map, remembering stash locations is pure mental load - genuine survival skill.
+
+**Concrete player stories this enables:**
+
+- Spend dusk burying your spare kit in the woods, noting position relative to two forked trees. Sleep in an abandoned shed nearby.
+- Morning: watch a squad sweep the treeline with a metal detector. Heart in throat. They pass 10 feet from your stash because you wrapped it in a tarp inside a wooden box.
+- Follow one of them when they break off solo. Watch them dig up THEIR stash. Wait until they're loaded up. Headshot. Now you have both hauls.
+- Counter-play: they left a booby-trap decoy above their real cache. You blow yourself up.
+- Next iteration: always probe with a stick before reaching into unfamiliar dirt.
+
+**Gameplay verbs this adds:**
+
+- Sweep a suspicious patch of fresh dirt with a detector before stepping on it.
+- Bury a rifle wrapped in a non-metal tarp to defeat metal detectors.
+- Cover your tracks with the smoothing brush after every dig.
+- Plant decoy caches along obvious paths to waste a rival's scan battery.
+- Booby-trap your own buried cache - murder-looter gets the "reward."
+- Draw a mental-map route through landmark trees to find your own stash later.
+- Train a dog to lead you to buried treasure (and buried bodies).
+- Steal a dying player's stash map before they bleed out.
 
 ### Gameplay verbs moldable terrain enables
 
