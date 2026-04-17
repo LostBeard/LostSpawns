@@ -210,14 +210,18 @@ Weapons are different from clothing - they accumulate fouling from use, not just
 - **Ruined on fail** (catastrophic) - only on already-Badly-Damaged items with emergency substitutes
 - Failure risk shown BEFORE commit - "75% success chance" visible on craft confirm
 
-### [UNDECIDED] Repair stations
+### [LIKELY] Repair stations (shared with crafting stations)
 
-- **Workbench** in base unlocks better tools, faster repair, higher cap
-- **Sewing machine** replaces hand-stitching for big jobs (large tents, coats)
-- **Grinder** for metal tool edges and weapon parts
-- **Gunsmith bench** for weapon-specific work (trigger, barrel, optics)
-- Trade: mobility (field repair) vs quality (base repair)
-- If base stations ship, field repair keeps a lower tier cap (can't reach Pristine without station)
+Repair uses the **same stations as crafting** - one physical workbench, two verbs. Full station system with Fallout 76-inspired ranks, mod slots, scrap-and-mod, portable field workbenches, contested public workshops, and power requirements lives in **[PLAN-Crafting.md](PLAN-Crafting.md)**.
+
+Repair-specific notes:
+
+- **Field repair** (hand + basic tools) caps at Worn tier
+- **Station repair** at Rank 3 unlocks Pristine restoration for the station's material type
+- Station rank gates the repair cap (Rank 1 workbench = Damaged cap, Rank 3 = Pristine)
+- Damaged stations repair at reduced effectiveness
+- Ruined stations can't repair anything until they're themselves repaired (with another station or hand tools at reduced cap)
+- Scrapping a ruined item at its station recovers materials + sometimes unlocks mod recipes (F76 knowledge-scrapping)
 
 ### [REJECT] Instant repair / full-restore "potions"
 

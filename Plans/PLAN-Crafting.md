@@ -51,19 +51,92 @@ Crafting is the verb that turns **scavenging into progression**. Every recipe is
 - Limited to what you can make with hands + basic held tools
 - Examples: bandage from rag, rope from plant fiber, torch from stick + cloth + fuel, splint from branches + cloth
 
-### [COMMIT] Crafting stations (advanced recipes)
+### [COMMIT] Crafting stations (Fallout 76-inspired depth)
 
-Each station unlocks a tier of recipes. Stations are placeable blocks with their own condition + durability.
+Each station unlocks a tier of recipes. Stations are placeable blocks with their own condition + durability + rank progression. **Repair uses the same stations as crafting** - one physical workbench, two verbs.
 
-- **Workbench** - general tools, knife handles, simple wood + metal work
+**Station types:**
+
+- **Workbench** - general tools, knife handles, simple wood + metal work, general repair
 - **Forge** - smelt metal from ore, shape ingots, make nails / hinges / weapon parts
-- **Campfire** - cook food, boil water, purify, smelt small amounts
-- **Sewing station** - faster / better clothing crafts, large garment work (tents, backpacks)
+- **Campfire** - cook food, boil water, purify, smelt small amounts, basic field repair for scavenged gear
+- **Sewing station** - faster / better clothing crafts, large garment work (tents, backpacks), clothing repair
 - **Chemistry bench** - medical, explosives, dyes, fuel refining
-- **Generator + power tools** - industrial-tier crafts (electronics, optics, firearm machining)
-- **Gunsmith bench** - weapon-specific work (barrels, triggers, stocks, scope mounting)
+- **Gunsmith bench** - weapon-specific work (barrels, triggers, stocks, scope mounting), weapon repair + mod install
+- **Armor bench** - armor crafting, plate fitting, armor repair + mod install
+- **Generator + power tools** - powered industrial stations (electronics, optics, firearm machining) require power link
 
-Stations can be damaged or destroyed (base-raiding target - see PLAN-Base-Raiding.md future).
+### [LIKELY] Station ranks (Fallout 76 progression model)
+
+Each station type has Ranks 1-3. Player unlocks higher ranks through progression + material investment.
+
+| Rank | Recipes unlocked | Repair cap |
+|------|------------------|------------|
+| **Rank 1** | Basic survival crafts | Worn |
+| **Rank 2** | Intermediate (most scavenger gear) | slightly above Worn |
+| **Rank 3** | Master-tier (scoped rifles, plate carriers with mod slots) | Pristine |
+
+Rank upgrade costs materials + time (e.g. Rank 2 gunsmith = 50 iron + 20 scrap electronics + rare schematic loot). Rank upgrades are permanent for that specific station block - build a new one and you start at Rank 1 again.
+
+### [COMMIT] Scrap and mod (Fallout 76 parallel)
+
+- **Scrap** - break down any category-matching item at its station for raw materials
+  - Weapons at gunsmith, armor at armor bench, clothing at sewing station
+  - Scrap yield scales with item condition + player skill
+  - **Knowledge scrapping** - scrapping a new weapon/armor variant you haven't seen before TEACHES its mod recipes (F76 mod-learning loop)
+- **Mod install / remove** - modular slots on weapons and armor
+  - Weapons: scope, barrel, stock, grip, underbarrel, ammunition type
+  - Armor: ballistic plates, pouch attachments, camo wrap, insulation liner
+  - Swap mods at station between raids (long-range scope for overwatch, red dot for CQB)
+  - **Removing a mod from a RUINED item saves the mod** - canonical survival-scavenger moment
+
+### [LIKELY] Portable field workbench
+
+- Small deployable station, carried in pack (takes ~20 slots)
+- Craft/repair at Rank 1 equivalent
+- ~2 minutes to deploy/stow
+- Must be crafted at a Rank 2+ workbench first (bootstrapped, can't craft a portable from nothing)
+- Great for extended expeditions and forward caches
+
+### [LIKELY] Contested public workshops (Fallout 76 Workshop system)
+
+- World-spawned stations at fixed map locations (fuel station garage, abandoned factory, ranger post, lumber mill)
+- Any player can USE them without claiming
+- **Claiming** a workshop invests materials, grants:
+  - Priority crafting queue
+  - Slow material generation (one scrap per hour of real time)
+  - Alarm trigger if enemies approach while claimed
+- Claims are PvP-contestable - raiders can destroy the claim or defeat the claimer and re-claim
+- **Natural PvP flashpoint** - creates the "fight for the gas station" dynamic F76 is known for
+- Claim expires after X hours of inactivity, workshop returns to neutral
+
+### [LIKELY] Power requirements
+
+- Industrial / advanced stations (gunsmith Rank 3, chemistry, powered workbenches) need electrical power
+- Sources: gasoline generator (fuel cost), solar panels (daytime only), battery bank (stores solar), water wheel (river-adjacent), wind turbine (exposed placement)
+- Power outage = those stations disabled until restored
+- **Sabotage vector** - enemy raid cuts your power, you can't repair/craft until generator is re-fueled; strike during the blackout you create
+
+### Station condition and raid vulnerability
+
+- Stations degrade with use (heat, mechanical stress)
+- Damaged station drops effective rank (Rank 3 Damaged might work at Rank 2)
+- Ruined station = non-functional, requires major repair with another station or reduced-cap hand tools
+- Explosives + breach charges destroy stations outright
+- **Destroying enemy base's main station cripples their repair/crafting for weeks** - major raid objective
+- Flagged for `PLAN-Base-Raiding.md` (future)
+
+### Gameplay verbs crafting stations enable
+
+- Spend a week leveling your gunsmith bench to Rank 3 to unlock the masterwork rifle recipe
+- Drop a portable field workbench in a cave you carved out, spend the rainy evening repairing armor
+- Return to base, find your armor bench destroyed by raiders, realize you can't fit new plates until it's rebuilt
+- Scrap a ruined plate carrier for its ceramic plates, reuse them on your new vest
+- Swap the long-range scope off your sniper onto your marksman rifle before a specific mission
+- Sabotage the enemy base's generator to disable their stations during the blackout window you've created
+- Claim the fuel-station workshop, defend it against a rival faction for two nights, collect the material yield
+- Teach an ally how to craft scope mounts by demonstrating at your gunsmith station (learn-by-watching)
+- Scrap a looted rifle variant you've never seen before, unlock its mod recipes for future crafts
 
 ### [COMMIT] Recipe knowledge system
 
