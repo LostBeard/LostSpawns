@@ -80,10 +80,10 @@ Single codebase, 6 GPU backends via [SpawnDev.ILGPU](https://github.com/LostBear
 
 ### 📋 Detailed Plans
 
-For the full technical breakdown, see the [`Plans/`](LostSpawns/Plans/) folder:
+For the full technical breakdown, see the [`Plans/`](Plans/) folder:
 
-- [`PLAN-Terrain-Carving.md`](LostSpawns/Plans/PLAN-Terrain-Carving.md) - moldable terrain brainstorm and carving roadmap
-- [`PLAN-P2P-Reputation-System.md`](LostSpawns/Plans/PLAN-P2P-Reputation-System.md) - distributed trust/reputation
+- [`PLAN-Terrain-Carving.md`](Plans/PLAN-Terrain-Carving.md) - moldable terrain brainstorm and carving roadmap
+- [`PLAN-P2P-Reputation-System.md`](Plans/PLAN-P2P-Reputation-System.md) - distributed trust/reputation
 
 And the engine roadmap lives in the VoxelEngine repo:
 
