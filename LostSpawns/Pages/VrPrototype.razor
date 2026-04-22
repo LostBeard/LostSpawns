@@ -3,19 +3,27 @@
 @using SpawnDev.BlazorJS
 @using SpawnDev.BlazorJS.JSObjects
 @using SpawnDev.VoxelEngine.Rendering
+@using LostSpawns.Models
 @implements IAsyncDisposable
+@inject VoxelEngineService Engine
+@inject WorldService World
 
 <PageTitle>Lost Spawns VR</PageTitle>
 
-<h3>Lost Spawns VR - Phase C step 1 (plumbing check)</h3>
+<h3>Lost Spawns VR - Phase C step 2a (real terrain chunk)</h3>
 
 <p>
-    Same VR architecture proven in SpawnDev.VoxelEngine.Demo, running inside
-    the Lost Spawns project. Step 1 of Phase C proves the WebXR + WebGL2 pipeline
-    works against Lost Spawns' DI graph and routing. Placeholder geometry
-    (floor grid + 3 rainbow cubes + controller visuals + trigger-drop cubes)
-    until step 2 wires in real chunk data from <code>WorldService</code> via
-    the hybrid WebGPU to WebGL2 bridge.
+    Phase C step 2a: the VR page now calls <code>VoxelEngineService</code>'s real
+    ILGPU heightmap kernel to generate a 16x16 chunk of Perlin terrain, then feeds
+    each block into the existing instanced render path. Step 1 (plumbing) + step 2a
+    (real terrain via real ILGPU compute) both satisfied. Step 2b will swap per-block
+    instancing for the greedy-mesh + PackedQuad readback path so sections render as
+    single draws instead of per-block instances.
+</p>
+<p style="font-size:0.85em;color:#888;">
+    Scene: 16x16 Perlin heightmap chunk placed 10 m ahead of the spawn point, plus
+    the original VR.2 floor grid, 3 rotating cubes, controller grips + rays + hit
+    markers, and trigger-drop cubes. Aim + squeeze your trigger to drop more cubes.
 </p>
 
 @if (_report != null)
@@ -226,6 +234,18 @@ void main() {
     protected override async Task OnInitializedAsync()
     {
         _report = await RenderPathDetector.DetectAsync(JS);
+        // Bring up VoxelEngine (ILGPU context + accelerator) so terrain generation
+        // can run before the user hits Enter VR. Idempotent: returns immediately if
+        // another page (e.g. /game) already initialized it.
+        try
+        {
+            await Engine.InitAsync();
+            World.Init(seed: 1337);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Engine/World init: {ex.GetType().Name}: {ex.Message}";
+        }
     }
 
     async Task EnterVrAsync()
@@ -285,6 +305,18 @@ void main() {
             _session.OnEnd += OnSessionEnd;
             _sessionActive = true;
             _frameCount = 0;
+
+            // Populate the real-terrain block list. First session only - subsequent
+            // Enter/Exit cycles keep the same terrain in place.
+            if (!_terrainLoaded)
+            {
+                try { await LoadTerrainChunkAsync(); }
+                catch (Exception terrEx)
+                {
+                    _errorMessage = $"Terrain load: {terrEx.GetType().Name}: {terrEx.Message}";
+                }
+            }
+
             _session.RequestAnimationFrame(OnXrFrame);
         }
         catch (Exception ex)
@@ -483,8 +515,8 @@ void main() {
             // Edge-detect trigger presses -> drop a cube at the hit point.
             HandleTriggerSpawnsFromSnaps(snaps);
 
-            // Reupload per-instance attribute buffer if the spawn list changed.
-            if (_instanceDirty && _spawned.Count > 0 && _instanceBuffer != null)
+            // Reupload per-instance attribute buffer if the spawn/terrain list changed.
+            if (_instanceDirty && (_spawned.Count + _terrainBlocks.Count) > 0 && _instanceBuffer != null)
             {
                 UploadInstanceBuffer();
             }
@@ -619,7 +651,7 @@ void main() {
 
     const float RayLength = 2.0f;    // 2m beam
     const float RayThickness = 0.006f; // 6mm thick
-    const int MaxSpawnedCubes = 1000; // instanced rendering makes this essentially free
+    const int MaxSpawnedCubes = 3000; // terrain + user drops share the instanced pipeline
     const float SpawnCubeSize = 0.12f; // 12cm cubes drop at hit points
 
     readonly record struct ControllerModel(float[] Matrix, Vector3 Tint);
@@ -634,6 +666,8 @@ void main() {
     // Little cubes placed by trigger press. Persisted across frames.
     readonly record struct SpawnedCube(float[] Matrix, Vector3 Tint);
     readonly List<SpawnedCube> _spawned = new();
+    readonly List<SpawnedCube> _terrainBlocks = new();   // static Lost Spawns chunk blocks
+    bool _terrainLoaded;
 
     // Edge-detection state: last-frame trigger-held flag per controller handedness.
     readonly Dictionary<string, bool> _triggerHeld = new();
@@ -823,21 +857,102 @@ void main() {
         return MathF.Abs(hx) <= floorHalf && MathF.Abs(hz) <= floorHalf;
     }
 
+    /// <summary>
+    /// Generate a 16x16 heightmap chunk via the real ILGPU heightmap kernel in
+    /// VoxelEngineService, then fan the returned heights out into static instanced
+    /// blocks in _terrainBlocks. Block type (dirt/grass/stone) is picked per-column
+    /// the same way Lost Spawns' TerrainGenerator does it.
+    /// </summary>
+    async Task LoadTerrainChunkAsync()
+    {
+        if (_terrainLoaded) return;
+        if (Engine == null || !Engine.IsInitialized) return;
+        if (World == null || !World.IsInitialized) return;
+
+        const int SizeXZ = 16;       // 16x16 blocks in the chunk
+        const float CubeSize = 0.9f; // 90cm cubes with a small seam so grid is readable
+        // Place the chunk centered 12m ahead of the user with the base 2m below eye.
+        const float ChunkOriginX = -SizeXZ / 2f;
+        const float ChunkOriginY = -2f;
+        const float ChunkOriginZ = -20f;
+
+        // Real heightmap via ILGPU kernel (chunk 0,0). Returns int[256] (SizeXZ * SizeXZ).
+        int[] heights;
+        try { heights = await Engine.GenerateHeightmapAsync(0, 0); }
+        catch { _terrainLoaded = true; return; }
+        if (heights == null || heights.Length < SizeXZ * SizeXZ)
+        {
+            _terrainLoaded = true;
+            return;
+        }
+
+        // Convert heights to columns of blocks. Top block is grass, next 3 are dirt,
+        // everything deeper is stone. Clamp column height so we don't blow the pool.
+        const int MaxColumnHeight = 8;
+        for (int z = 0; z < SizeXZ; z++)
+        {
+            for (int x = 0; x < SizeXZ; x++)
+            {
+                int surfaceAbs = heights[x + z * SizeXZ];
+                // Normalize: terrain kernel emits absolute block height (~64 for Deer Isle).
+                // We want a local 1..MaxColumnHeight scale for this demo chunk.
+                int col = Math.Max(1, Math.Min(MaxColumnHeight, (surfaceAbs - 60) + 4));
+                for (int y = 0; y < col; y++)
+                {
+                    // Classify block by depth-from-top.
+                    bool isTop = (y == col - 1);
+                    int depthFromTop = col - 1 - y;
+                    Vector3 tint = isTop
+                        ? new Vector3(0.30f, 0.60f, 0.20f)      // grass green
+                        : depthFromTop < 4
+                            ? new Vector3(0.45f, 0.30f, 0.15f)  // dirt brown
+                            : new Vector3(0.50f, 0.50f, 0.50f); // stone gray
+
+                    float wx = ChunkOriginX + x + 0.5f;
+                    float wy = ChunkOriginY + y + 0.5f;
+                    float wz = ChunkOriginZ + z + 0.5f;
+
+                    // Translation * uniform-scale matrix (column-major).
+                    var mm = new float[]
+                    {
+                        CubeSize, 0,        0,        0,
+                        0,        CubeSize, 0,        0,
+                        0,        0,        CubeSize, 0,
+                        wx,       wy,       wz,       1,
+                    };
+                    _terrainBlocks.Add(new SpawnedCube(mm, tint));
+                }
+            }
+        }
+
+        _terrainLoaded = true;
+        _instanceDirty = true;
+        JS.CallVoid("console.log", $"[VR] Terrain loaded: {_terrainBlocks.Count} blocks from ILGPU heightmap.");
+    }
+
     void UploadInstanceBuffer()
     {
         if (_gl == null || _instanceBuffer == null) return;
-        int n = _spawned.Count;
+        int terrainN = _terrainBlocks.Count;
+        int spawnN = _spawned.Count;
+        int n = terrainN + spawnN;
+        if (n == 0) { _instanceUploadedCount = 0; _instanceDirty = false; return; }
+
         var data = new float[n * InstanceStrideFloats];
-        for (int i = 0; i < n; i++)
+        int writeIdx = 0;
+        void WriteOne(SpawnedCube sc)
         {
-            var sc = _spawned[i];
-            System.Array.Copy(sc.Matrix, 0, data, i * InstanceStrideFloats, 16);
-            int off = i * InstanceStrideFloats + 16;
+            System.Array.Copy(sc.Matrix, 0, data, writeIdx * InstanceStrideFloats, 16);
+            int off = writeIdx * InstanceStrideFloats + 16;
             data[off + 0] = sc.Tint.X;
             data[off + 1] = sc.Tint.Y;
             data[off + 2] = sc.Tint.Z;
             data[off + 3] = 1f;
+            writeIdx++;
         }
+        for (int i = 0; i < terrainN; i++) WriteOne(_terrainBlocks[i]);
+        for (int i = 0; i < spawnN; i++)   WriteOne(_spawned[i]);
+
         _gl.BindBuffer(GL.ARRAY_BUFFER, _instanceBuffer);
         using (var f32 = new Float32Array(data))
         {
