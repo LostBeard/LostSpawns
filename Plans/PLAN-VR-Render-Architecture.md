@@ -5,7 +5,16 @@
 **Depends on:** Captain's uncommitted `VoxelEngineService.cs` + `WorldService.cs` WIP landing.
 **Related:** `PLAN-VR-Controls.md` (input), `PLAN-Terrain-Carving.md` (carving gameplay), `PLAN-Performance-Targets.md` (budgets).
 
-**Update 2026-04-22 afternoon:** Captain empirically verified on Quest 3S native Meta Quest Browser v146.0: `XRGPUBinding` class present AND prototype methods (`createProjectionLayer`, `getViewSubImage`, `getPreferredColorFormat`) all present. `RenderPath: FullWebGpu`. Meta shipped the full binding (not just compute + depth projection) with v146.0 on 2026-04-21, even though the release notes didn't headline the binding. Functional end-to-end test (does a rendered frame actually reach the headset?) is still pending at Phase VR.1b, but method-existence alone is a much stronger signal than typeof-only and tentatively promotes the primary `FullWebGpu` path to the Quest shipping path. Hybrid fallback is now defensive code for hypothetical future browsers without the binding.
+**Update 2026-04-22 afternoon:** Captain empirically verified on Quest 3S native Meta Quest Browser v146.0: `XRGPUBinding` class present AND prototype methods (`createProjectionLayer`, `getViewSubImage`, `getPreferredColorFormat`) all present. `RenderPath: FullWebGpu`. Tentatively promoted primary `FullWebGpu` path to Quest shipping path.
+
+**Update 2026-04-22 later afternoon (reversal):** Built barebones WebXR+WebGPU prototype at `/vr-prototype-xr` per canonical `immersive-web/webxr-samples/webgpu/vr-barebones.html` pattern. Empirically:
+- Canonical sample requests `requiredFeatures: ['webgpu']` - this is the session-level feature the spec defines.
+- Quest 3S Meta Quest Browser v146.0: session request throws *"The session request contains requiredFeatures and could not be fulfilled."* The 'webgpu' feature is not fulfillable by the runtime.
+- Meta Immersive Web Emulator: same rejection.
+
+**Conclusion:** Meta exposed the `XRGPUBinding` class + prototype method definitions in v146.0 but has NOT wired up the session-level `'webgpu'` feature integration. The API surface is a forward-compat stub - enough to pass our method-existence probe, not enough to actually run a WebXR+WebGPU session. The afternoon's "FullWebGpu is the Quest shipping path" call was premature. **Reversal: the hybrid fallback path (`HybridWebGl2`) IS the Quest 3S shipping path for Lost Spawns v1.** Primary `FullWebGpu` path remains valid for desktop Chrome Canary with both WebXR flags enabled, and for future browser versions that ship the session-feature integration.
+
+The probe's meaning has been re-interpreted: "`FullWebGpu` detected by class + method existence" now means *"API surface present; functional session integration is a separate question that only a live session attempt can answer."* RenderPathDetector's next hardening pass should attempt a brief test session with `['webgpu']` feature to distinguish "API stub" from "fully functional" - but that requires a user gesture, so it can only happen on-demand at consumer init time, not at page load.
 
 ---
 
@@ -15,9 +24,9 @@
 
 For VR specifically:
 
-- **Primary render path (shipping target on both desktop and Quest):** WebXR + WebGPU binding (full WebGPU end-to-end). Code against this API. As of 2026-04-22 afternoon, Quest 3S native browser reports the binding API fully present; functional verification pending Phase VR.1b.
-- **Fallback render path (defensive code only):** WebGPU compute + WebGL2 render (hybrid via `OffscreenCanvas` + `transferToImageBitmap` handoff). Capability-detect at init; use only for browsers that pass the WebGPU+WebXR check but fail the `XRGPUBinding` check. Given current evidence this is an empty set on shipping targets, but keep the code path for defense-in-depth and future browsers that lag on the binding spec.
-- **Dev environment:** Meta's Immersive Web Emulator in desktop Chrome for daily iteration (verified 2026-04-22 on TJ's NVIDIA 4090: `FullWebGpu`); real Quest 3S native browser over HTTPS haproxy at `https://xi.spawndev.com:44365/` for perf validation and functional proof.
+- **Primary render path (shipping target on desktop Chrome Canary with flags):** WebXR + WebGPU binding (full WebGPU end-to-end). Code against this API. As of 2026-04-22 evening, functional only on Chrome Canary with both `WebXR Projection Layers` and `WebXR/WebGPU Bindings` flags enabled. Neither Meta Quest Browser nor Meta's Immersive Web Emulator supports the session-level 'webgpu' feature yet, despite exposing the `XRGPUBinding` class definition.
+- **Shipping render path for Quest 3S v1 (and likely v2 until Meta catches up):** WebGPU compute + WebGL2 render (hybrid via `OffscreenCanvas` + `transferToImageBitmap` handoff). Phase VR.1a becomes the real engineering work. WebXR session uses `XRWebGLLayer` as base layer (well-trodden since ~2019, 90fps proven on Quest 3S); WebGPU does compute off-session and hands results over via the ImageBitmap bridge.
+- **Dev environment:** No clean WebXR+WebGPU dev rig today. Emulator is WebXR+WebGL2 only (its polyfill doesn't satisfy native `XRGPUBinding` constructor). Chrome Canary PCVR + Quest Link has plumbing bugs (frame presentation hangs). Pragmatic dev loop: build for hybrid path, iterate via Emulator (WebXR+WebGL2 side) and real Quest 3S over HTTPS haproxy (full hybrid stack, real perf numbers).
 
 CPU bridge (readback + re-upload) is explicitly rejected. Violates Rule 4's zero-copy mandate and scales terribly on desktop where PCIe is the bottleneck.
 
@@ -42,9 +51,13 @@ WebGPU support without flags. `webgpureport.org` pre-flag run reported:
 - `XRGPUBinding.prototype.createProjectionLayer` is a function: YES
 - `XRGPUBinding.prototype.getViewSubImage` is a function: YES
 - `XRGPUBinding.prototype.getPreferredColorFormat` is a function: YES
-- RenderPath decision: `FullWebGpu`
+- RenderPath probe decision: `FullWebGpu`
 
-Meta shipped the full binding with v146.0 on 2026-04-21, not just compute + depth projection. Release notes didn't headline it, but the API surface is empirically present. **Functional end-to-end verification pending Phase VR.1b** (actually rendering via XRGPUBinding in a real XR session).
+**Session-level integration** (added 2026-04-22 evening via `/vr-prototype-xr`):
+- `navigator.xr.requestSession('immersive-vr', { requiredFeatures: ['webgpu'] })`: **REJECTED** with *"The session request contains requiredFeatures and could not be fulfilled."*
+- Same on Meta's Immersive Web Emulator: REJECTED identically.
+
+**Refined conclusion:** Meta shipped the class definition + prototype methods in v146.0 as a forward-compat stub. The session-level 'webgpu' feature wiring is NOT implemented yet. Probe's class+methods detection is necessary but not sufficient; a functional session attempt is the only definitive test.
 
 ### Native Quest WebXR + WebGL2 rendering
 
