@@ -1,0 +1,971 @@
+@page "/vr"
+@using System.Numerics
+@using SpawnDev.BlazorJS
+@using SpawnDev.BlazorJS.JSObjects
+@using SpawnDev.VoxelEngine.Rendering
+@implements IAsyncDisposable
+
+<PageTitle>Lost Spawns VR</PageTitle>
+
+<h3>Lost Spawns VR - Phase C step 1 (plumbing check)</h3>
+
+<p>
+    Same VR architecture proven in SpawnDev.VoxelEngine.Demo, running inside
+    the Lost Spawns project. Step 1 of Phase C proves the WebXR + WebGL2 pipeline
+    works against Lost Spawns' DI graph and routing. Placeholder geometry
+    (floor grid + 3 rainbow cubes + controller visuals + trigger-drop cubes)
+    until step 2 wires in real chunk data from <code>WorldService</code> via
+    the hybrid WebGPU to WebGL2 bridge.
+</p>
+
+@if (_report != null)
+{
+    <p>Capability: <code style="color:@PathColor(_report.Path)">@_report.Path</code></p>
+}
+
+<div style="margin:12px 0;">
+    @if (!_sessionActive)
+    {
+        <button @onclick="EnterVrAsync" disabled="@(_starting || _report == null || !_report.HasImmersiveVr)">
+            @(_starting ? "Starting VR session..." : (_report?.HasImmersiveVr == true ? "Enter VR" : "VR not available"))
+        </button>
+    }
+</div>
+
+@if (_sessionActive)
+{
+    <button @onclick="ExitVrAsync"
+            style="position:fixed;top:12px;right:12px;z-index:1001;padding:8px 16px;
+                   background:#dc2626;color:white;border:none;border-radius:4px;
+                   cursor:pointer;font-weight:bold;">
+        Exit VR
+    </button>
+}
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <pre style="color:#ef4444;white-space:pre-wrap;">@_errorMessage</pre>
+}
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;">
+    <div>
+        <div style="color:#888;font-size:0.85em;@(_sessionActive ? "display:none;" : "")">
+            WebGL2 context (XR-compatible; drives the XRWebGLLayer framebuffer in VR)
+        </div>
+        <canvas id="lostspawns-vr-canvas" width="1024" height="512"
+                style="@(_sessionActive
+                    ? "position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:1000;background:#000;border:none;"
+                    : "width:512px;height:256px;background:#111;border:1px solid #444;")"></canvas>
+    </div>
+
+    <div style="font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:12px;border:1px solid #444;min-width:360px;">
+        <div style="color:#4ade80;font-weight:bold;">XR session state</div>
+        <div>Session active  : <span style="color:@(_sessionActive ? "#4ade80" : "#888")">@_sessionActive</span></div>
+        <div>Enabled features: @(_enabledFeatures == null ? "(none)" : string.Join(", ", _enabledFeatures))</div>
+        <div>Frames rendered : @_frameCount</div>
+        <div>Views per frame : @_viewsPerFrame</div>
+        <div>Framebuffer dim : @_framebufferDim</div>
+        <div>Reference space : @(_refSpaceTypeLabel ?? "(none)")</div>
+        <div>Draw calls/frame: @_drawsPerFrame</div>
+        <div>Last GL error   : @_lastGlError</div>
+        <div>Debug           : @_debugLine</div>
+    </div>
+</div>
+
+@inject BlazorJSRuntime JS
+
+@code {
+    RenderPathReport? _report;
+
+    HTMLCanvasElement? _canvas;
+    WebGL2RenderingContext? _gl;
+
+    WebGLProgram? _program;
+    WebGLBuffer? _vbo;
+    WebGLBuffer? _ibo;
+    WebGLVertexArrayObject? _vao;
+    WebGLUniformLocation? _uProjection;
+    WebGLUniformLocation? _uView;
+    WebGLUniformLocation? _uModel;
+    WebGLUniformLocation? _uGridAmount;
+    WebGLUniformLocation? _uShape;
+    WebGLUniformLocation? _uTint;
+
+    // Instanced program: one drawElementsInstanced call renders N spawned cubes.
+    WebGLProgram? _instProgram;
+    WebGLVertexArrayObject? _instVao;
+    WebGLBuffer? _instanceBuffer;
+    WebGLUniformLocation? _uInstProjection;
+    WebGLUniformLocation? _uInstView;
+    int _instanceUploadedCount;
+    bool _instanceDirty;
+    const int InstanceStrideFloats = 20;         // 16 matrix + 4 tint
+    const int InstanceStrideBytes = InstanceStrideFloats * 4;
+
+    XRSession? _session;
+    XRWebGLLayer? _xrLayer;
+    XRReferenceSpace? _refSpace;
+    string? _refSpaceTypeLabel;
+    string[]? _enabledFeatures;
+
+    bool _sessionActive;
+    bool _starting;
+    int _frameCount;
+    int _viewsPerFrame;
+    int _drawsPerFrame;
+    string _framebufferDim = "--";
+    string? _errorMessage;
+    string _lastGlError = "--";
+    string _debugLine = "--";
+
+    const int CubeVertexCount = 8;
+    const int FloorVertexCount = 4;
+    const int CubeIndexCount = 36;
+    const int FloorIndexCount = 6;
+    const int CubeIndexOffsetBytes = 0;
+    const int FloorIndexOffsetBytes = CubeIndexCount * sizeof(ushort);
+
+    // Position + axis + rotation speed + scale. First cube is placed right in front
+    // of the viewer and large, so it's unmissable if the scene is rendering at all.
+    readonly (Vector3 Pos, Vector3 Axis, float Speed, float Scale)[] _cubes = new[]
+    {
+        (new Vector3( 0f,   1.5f, -1.5f), new Vector3(0, 1, 0), 0.6f, 0.8f),
+        (new Vector3(-1.7f, 0.9f, -3.5f), new Vector3(1, 0, 0), 0.9f, 0.35f),
+        (new Vector3( 1.5f, 1.6f, -4.2f), Vector3.Normalize(new Vector3(1, 1, 0)), 0.75f, 0.45f),
+    };
+
+    const string VertSrc = @"#version 300 es
+layout(location = 0) in vec3 a_pos;
+layout(location = 1) in vec3 a_color;
+
+uniform mat4 u_projection;
+uniform mat4 u_view;
+uniform mat4 u_model;
+
+out vec3 v_color;
+out vec3 v_world_pos;
+out vec2 v_local_xz;
+
+void main() {
+  vec4 world = u_model * vec4(a_pos, 1.0);
+  v_world_pos = world.xyz;
+  v_local_xz  = a_pos.xz;
+  v_color = a_color;
+  gl_Position = u_projection * u_view * world;
+}
+";
+
+    const string VertSrcInst = @"#version 300 es
+layout(location = 0) in vec3 a_pos;
+layout(location = 1) in vec3 a_color;
+layout(location = 2) in vec4 a_model_c0;
+layout(location = 3) in vec4 a_model_c1;
+layout(location = 4) in vec4 a_model_c2;
+layout(location = 5) in vec4 a_model_c3;
+layout(location = 6) in vec4 a_tint;
+
+uniform mat4 u_projection;
+uniform mat4 u_view;
+
+out vec3 v_color;
+
+void main() {
+  mat4 model = mat4(a_model_c0, a_model_c1, a_model_c2, a_model_c3);
+  v_color = a_color * a_tint.rgb;
+  gl_Position = u_projection * u_view * model * vec4(a_pos, 1.0);
+}
+";
+
+    const string FragSrcInst = @"#version 300 es
+precision mediump float;
+in vec3 v_color;
+layout(location = 0) out vec4 out_color;
+
+void main() {
+  out_color = vec4(v_color, 1.0);
+}
+";
+
+    const string FragSrc = @"#version 300 es
+precision mediump float;
+in vec3 v_color;
+in vec3 v_world_pos;
+in vec2 v_local_xz;
+uniform float u_gridAmount;   // 0 = solid, 1 = draw grid lines on top (floor only)
+uniform float u_shape;        // 0 = cube, 1 = flat disc (circular mask on xz)
+uniform vec3  u_tint;         // multiplied into v_color (or used as solid fill for discs)
+layout(location = 0) out vec4 out_color;
+
+void main() {
+  if (u_shape > 0.5) {
+    // Circular disc: mask out pixels outside radius 0.5 in local xz.
+    float r = length(v_local_xz);
+    if (r > 0.5) discard;
+    // Solid tint with a bright center + slightly darker edge for visual depth.
+    float falloff = 1.0 - smoothstep(0.35, 0.5, r);
+    out_color = vec4(u_tint * (0.55 + 0.45 * falloff), 1.0);
+    return;
+  }
+
+  vec3 col = v_color * u_tint;
+  if (u_gridAmount > 0.001) {
+    // Grid lines every 1.0 world unit (meter) on xz plane.
+    vec2 g = abs(fract(v_world_pos.xz) - 0.5);
+    float line = 1.0 - smoothstep(0.46, 0.50, min(g.x, g.y));
+    // Secondary fine grid every 0.25 m.
+    vec2 g2 = abs(fract(v_world_pos.xz * 4.0) - 0.5);
+    float fine = 1.0 - smoothstep(0.44, 0.50, min(g2.x, g2.y));
+    vec3 gridCol = vec3(0.55, 0.65, 0.80);
+    col = mix(col, gridCol, line * u_gridAmount * 0.75);
+    col = mix(col, gridCol * 0.7, fine * u_gridAmount * 0.25);
+  }
+  out_color = vec4(col, 1.0);
+}
+";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _report = await RenderPathDetector.DetectAsync(JS);
+    }
+
+    async Task EnterVrAsync()
+    {
+        if (_sessionActive || _starting) return;
+        _starting = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            using var nav = new Navigator();
+            using var xr = nav.XR ?? throw new InvalidOperationException("navigator.xr unavailable");
+
+            using var doc = JS.Get<Document>("document");
+            _canvas = doc.GetElementById<HTMLCanvasElement>("lostspawns-vr-canvas")
+                ?? throw new InvalidOperationException("canvas not found");
+            _gl = _canvas.GetContext<WebGL2RenderingContext>("webgl2", new WebGLContextAttributes
+            {
+                XrCompatible = true,
+            }) ?? throw new InvalidOperationException("webgl2 context null");
+
+            SetupGl();
+
+            var init = new XRSessionInit
+            {
+                RequiredFeatures = new[] { "local" },
+                OptionalFeatures = new[] { "local-floor" },
+            };
+            _session = await xr.RequestSession(XRSessionMode.ImmersiveVR, init);
+            try { _enabledFeatures = _session.EnabledFeatures; } catch { _enabledFeatures = null; }
+
+            // Match VR.1c exactly: no XRWebGLLayerInit; defaults already include depth=true.
+            _xrLayer = new XRWebGLLayer(_session, _gl);
+            _framebufferDim = $"{_xrLayer.FramebufferWidth} x {_xrLayer.FramebufferHeight}";
+            // XRRenderStateInit.DepthNear/DepthFar are non-nullable in the current wrapper
+            // and default to 0, which makes projectionMatrix elements [10] and [14] become
+            // NaN. Pass sane values explicitly.
+            _session.UpdateRenderState(new XRRenderStateInit
+            {
+                BaseLayer = _xrLayer,
+                DepthNear = 0.1,
+                DepthFar = 1000.0,
+            });
+
+            try
+            {
+                _refSpace = await _session.RequestReferenceSpace(XRReferenceSpaceType.LocalFloor);
+                _refSpaceTypeLabel = "local-floor";
+            }
+            catch
+            {
+                _refSpace = await _session.RequestReferenceSpace(XRReferenceSpaceType.Local);
+                _refSpaceTypeLabel = "local";
+            }
+
+            _session.OnEnd += OnSessionEnd;
+            _sessionActive = true;
+            _frameCount = 0;
+            _session.RequestAnimationFrame(OnXrFrame);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Enter VR failed: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
+            await CleanupAsync();
+        }
+        finally
+        {
+            _starting = false;
+            StateHasChanged();
+        }
+    }
+
+    void SetupGl()
+    {
+        if (_gl == null) return;
+
+        _program = LinkProgram(VertSrc, FragSrc);
+        _uProjection = _gl.GetUniformLocation(_program, "u_projection");
+        _uView = _gl.GetUniformLocation(_program, "u_view");
+        _uModel = _gl.GetUniformLocation(_program, "u_model");
+        _uGridAmount = _gl.GetUniformLocation(_program, "u_gridAmount");
+        _uShape = _gl.GetUniformLocation(_program, "u_shape");
+        _uTint = _gl.GetUniformLocation(_program, "u_tint");
+
+        _instProgram = LinkProgram(VertSrcInst, FragSrcInst);
+        _uInstProjection = _gl.GetUniformLocation(_instProgram, "u_projection");
+        _uInstView = _gl.GetUniformLocation(_instProgram, "u_view");
+
+        // Shared static vertex + index buffers for all draws.
+        var verts = BuildVertices();
+        var indices = BuildIndices();
+
+        _vbo = _gl.CreateBuffer();
+        _gl.BindBuffer(GL.ARRAY_BUFFER, _vbo);
+        using (var vArr = new Float32Array(verts))
+            _gl.BufferData(GL.ARRAY_BUFFER, vArr, GL.STATIC_DRAW);
+
+        _ibo = _gl.CreateBuffer();
+        _gl.BindBuffer(GL.ELEMENT_ARRAY_BUFFER, _ibo);
+        using (var iArr = new Uint16Array(indices))
+            _gl.BufferData(GL.ELEMENT_ARRAY_BUFFER, iArr, GL.STATIC_DRAW);
+
+        // --- Main (non-instanced) VAO ---
+        _vao = _gl.CreateVertexArray();
+        _gl.BindVertexArray(_vao);
+        _gl.BindBuffer(GL.ARRAY_BUFFER, _vbo);
+        _gl.BindBuffer(GL.ELEMENT_ARRAY_BUFFER, _ibo);
+        _gl.EnableVertexAttribArray(0);
+        _gl.VertexAttribPointer(0, 3, GL.FLOAT, false, 24, 0);
+        _gl.EnableVertexAttribArray(1);
+        _gl.VertexAttribPointer(1, 3, GL.FLOAT, false, 24, 12);
+
+        // --- Instanced VAO: per-vertex from _vbo + per-instance from _instanceBuffer ---
+        _instanceBuffer = _gl.CreateBuffer();
+        _instVao = _gl.CreateVertexArray();
+        _gl.BindVertexArray(_instVao);
+        _gl.BindBuffer(GL.ARRAY_BUFFER, _vbo);
+        _gl.BindBuffer(GL.ELEMENT_ARRAY_BUFFER, _ibo);
+        _gl.EnableVertexAttribArray(0);
+        _gl.VertexAttribPointer(0, 3, GL.FLOAT, false, 24, 0);
+        _gl.EnableVertexAttribArray(1);
+        _gl.VertexAttribPointer(1, 3, GL.FLOAT, false, 24, 12);
+
+        _gl.BindBuffer(GL.ARRAY_BUFFER, _instanceBuffer);
+        // 4 x vec4 for the model matrix columns, at locations 2..5.
+        for (int col = 0; col < 4; col++)
+        {
+            uint loc = (uint)(2 + col);
+            _gl.EnableVertexAttribArray(loc);
+            _gl.VertexAttribPointer(loc, 4, GL.FLOAT, false, InstanceStrideBytes, col * 16);
+            _gl.VertexAttribDivisor(loc, 1);
+        }
+        // 1 x vec4 for the tint, at location 6 (.a unused).
+        _gl.EnableVertexAttribArray(6);
+        _gl.VertexAttribPointer(6, 4, GL.FLOAT, false, InstanceStrideBytes, 64);
+        _gl.VertexAttribDivisor(6, 1);
+
+        // Restore main VAO as the default bound state.
+        _gl.BindVertexArray(_vao);
+    }
+
+    WebGLProgram LinkProgram(string vertSrc, string fragSrc)
+    {
+        using var vert = _gl!.CreateShader(GL.VERTEX_SHADER);
+        _gl.ShaderSource(vert, vertSrc);
+        _gl.CompileShader(vert);
+        if (!_gl.GetShaderParameter<bool>(vert, GL.COMPILE_STATUS))
+            throw new InvalidOperationException("Vertex shader: " + _gl.GetShaderInfoLog(vert));
+
+        using var frag = _gl.CreateShader(GL.FRAGMENT_SHADER);
+        _gl.ShaderSource(frag, fragSrc);
+        _gl.CompileShader(frag);
+        if (!_gl.GetShaderParameter<bool>(frag, GL.COMPILE_STATUS))
+            throw new InvalidOperationException("Fragment shader: " + _gl.GetShaderInfoLog(frag));
+
+        var prog = _gl.CreateProgram();
+        _gl.AttachShader(prog, vert);
+        _gl.AttachShader(prog, frag);
+        _gl.LinkProgram(prog);
+        if (!_gl.GetProgramParameter<bool>(prog, GL.LINK_STATUS))
+            throw new InvalidOperationException("Link: " + _gl.GetProgramInfoLog(prog));
+        return prog;
+    }
+
+    static float[] BuildVertices()
+    {
+        var v = new float[(CubeVertexCount + FloorVertexCount) * 6];
+        int k = 0;
+        v[k++] = -0.5f; v[k++] = -0.5f; v[k++] = -0.5f; v[k++] = 0.1f;  v[k++] = 0.1f;  v[k++] = 0.1f;
+        v[k++] =  0.5f; v[k++] = -0.5f; v[k++] = -0.5f; v[k++] = 1.0f;  v[k++] = 0.1f;  v[k++] = 0.1f;
+        v[k++] =  0.5f; v[k++] =  0.5f; v[k++] = -0.5f; v[k++] = 1.0f;  v[k++] = 1.0f;  v[k++] = 0.1f;
+        v[k++] = -0.5f; v[k++] =  0.5f; v[k++] = -0.5f; v[k++] = 0.1f;  v[k++] = 1.0f;  v[k++] = 0.1f;
+        v[k++] = -0.5f; v[k++] = -0.5f; v[k++] =  0.5f; v[k++] = 0.1f;  v[k++] = 0.1f;  v[k++] = 1.0f;
+        v[k++] =  0.5f; v[k++] = -0.5f; v[k++] =  0.5f; v[k++] = 1.0f;  v[k++] = 0.1f;  v[k++] = 1.0f;
+        v[k++] =  0.5f; v[k++] =  0.5f; v[k++] =  0.5f; v[k++] = 1.0f;  v[k++] = 1.0f;  v[k++] = 1.0f;
+        v[k++] = -0.5f; v[k++] =  0.5f; v[k++] =  0.5f; v[k++] = 0.1f;  v[k++] = 1.0f;  v[k++] = 1.0f;
+
+        const float F = 5f;
+        v[k++] = -F; v[k++] = 0f; v[k++] = -F; v[k++] = 0.25f; v[k++] = 0.30f; v[k++] = 0.35f;
+        v[k++] =  F; v[k++] = 0f; v[k++] = -F; v[k++] = 0.35f; v[k++] = 0.25f; v[k++] = 0.30f;
+        v[k++] =  F; v[k++] = 0f; v[k++] =  F; v[k++] = 0.25f; v[k++] = 0.40f; v[k++] = 0.30f;
+        v[k++] = -F; v[k++] = 0f; v[k++] =  F; v[k++] = 0.40f; v[k++] = 0.30f; v[k++] = 0.25f;
+        return v;
+    }
+
+    static ushort[] BuildIndices()
+    {
+        return new ushort[]
+        {
+            0, 1, 2,   0, 2, 3,
+            4, 5, 6,   4, 6, 7,
+            0, 3, 7,   0, 7, 4,
+            1, 2, 6,   1, 6, 5,
+            0, 1, 5,   0, 5, 4,
+            3, 2, 6,   3, 6, 7,
+            8, 9, 10,  8, 10, 11,
+        };
+    }
+
+    void OnXrFrame(double time, XRFrame? frame)
+    {
+        if (!_sessionActive || frame == null || _session == null || _refSpace == null
+            || _gl == null || _xrLayer == null || _program == null || _vao == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _session.RequestAnimationFrame(OnXrFrame);
+
+            using var pose = frame.GetViewerPose(_refSpace);
+            if (pose == null) return;
+
+            // Use the raw-JSRef bindFramebuffer call that VR.1c uses (known good).
+            using var fb = _xrLayer.Framebuffer;
+            _gl.JSRef!.CallVoid("bindFramebuffer", GL.FRAMEBUFFER, fb);
+
+            // Per-frame state reset. Paranoia; belts and suspenders.
+            _gl.Disable(GL.CULL_FACE);
+            _gl.Enable(GL.DEPTH_TEST);
+            _gl.DepthFunc(GL.LEQUAL);
+            _gl.DepthMask(true);
+
+            int fbW = _xrLayer.FramebufferWidth;
+            int fbH = _xrLayer.FramebufferHeight;
+            _gl.Viewport(0, 0, fbW, fbH);
+
+            // Dark night-sky background.
+            _gl.ClearColor(0.04f, 0.05f, 0.09f, 1f);
+            _gl.ClearDepth(1f);
+            _gl.Clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
+
+            _gl.UseProgram(_program);
+            _gl.BindVertexArray(_vao);
+
+            float t = (float)(time / 1000.0);
+            var identityModel = Identity();
+            var modelMatrices = new float[_cubes.Length][];
+            for (int i = 0; i < _cubes.Length; i++)
+            {
+                var c = _cubes[i];
+                modelMatrices[i] = Compose(c.Pos, c.Axis, t * c.Speed, c.Scale);
+            }
+
+            // Single pass over inputSources per frame: read pose matrices and
+            // trigger once per controller, then derive all render lists from
+            // the cached snapshots. Cuts per-frame JSInterop roughly in half.
+            var snaps = SnapshotControllers(frame);
+            var controllerModels = BuildControllerModelsFromSnaps(snaps);
+            var controllerRays = BuildControllerRaysFromSnaps(snaps);
+            var floorHits = BuildFloorHitsFromSnaps(snaps);
+
+            // Edge-detect trigger presses -> drop a cube at the hit point.
+            HandleTriggerSpawnsFromSnaps(snaps);
+
+            // Reupload per-instance attribute buffer if the spawn list changed.
+            if (_instanceDirty && _spawned.Count > 0 && _instanceBuffer != null)
+            {
+                UploadInstanceBuffer();
+            }
+
+            int viewCount = 0;
+            int drawCount = 0;
+            string? frame0Debug = null;
+
+            foreach (var view in pose.Views)
+            {
+                using (view)
+                {
+                    using var vp = _xrLayer.GetViewport(view);
+                    _gl.Viewport(vp.X, vp.Y, vp.Width, vp.Height);
+
+                    using var proj = view.ProjectionMatrix;
+                    using var xform = view.Transform;
+                    using var xformInv = xform.Inverse;
+                    using var viewMat = xformInv.Matrix;
+
+                    _gl.UniformMatrix4fv(_uProjection!, false, proj);
+                    _gl.UniformMatrix4fv(_uView!, false, viewMat);
+
+                    // Floor - with grid overlay, no tint, rectangular.
+                    _gl.Uniform1f(_uGridAmount!, 1f);
+                    _gl.Uniform1f(_uShape!, 0f);
+                    _gl.Uniform3f(_uTint!, 1f, 1f, 1f);
+                    _gl.UniformMatrix4fv(_uModel!, false, identityModel);
+                    _gl.DrawElements(GL.TRIANGLES, FloorIndexCount, GL.UNSIGNED_SHORT, FloorIndexOffsetBytes);
+                    drawCount++;
+
+                    // Solid cubes - no grid, no tint (raw rainbow colors).
+                    _gl.Uniform1f(_uGridAmount!, 0f);
+                    _gl.Uniform1f(_uShape!, 0f);
+                    _gl.Uniform3f(_uTint!, 1f, 1f, 1f);
+                    for (int i = 0; i < _cubes.Length; i++)
+                    {
+                        _gl.UniformMatrix4fv(_uModel!, false, modelMatrices[i]);
+                        _gl.DrawElements(GL.TRIANGLES, CubeIndexCount, GL.UNSIGNED_SHORT, CubeIndexOffsetBytes);
+                        drawCount++;
+                    }
+
+                    // Controller cubes - no grid, handedness tint.
+                    foreach (var cm in controllerModels)
+                    {
+                        _gl.Uniform3f(_uTint!, cm.Tint.X, cm.Tint.Y, cm.Tint.Z);
+                        _gl.UniformMatrix4fv(_uModel!, false, cm.Matrix);
+                        _gl.DrawElements(GL.TRIANGLES, CubeIndexCount, GL.UNSIGNED_SHORT, CubeIndexOffsetBytes);
+                        drawCount++;
+                    }
+
+                    // Persistent cubes dropped by previous trigger presses:
+                    // rendered via instancing, deferred until after everything else
+                    // so we don't thrash the program/VAO inside this inner loop.
+
+                    // Controller rays - thin 2m beams. Same cube geometry, stretched.
+                    foreach (var ray in controllerRays)
+                    {
+                        _gl.Uniform3f(_uTint!, ray.Tint.X, ray.Tint.Y, ray.Tint.Z);
+                        _gl.UniformMatrix4fv(_uModel!, false, ray.Matrix);
+                        _gl.DrawElements(GL.TRIANGLES, CubeIndexCount, GL.UNSIGNED_SHORT, CubeIndexOffsetBytes);
+                        drawCount++;
+                    }
+
+                    // Floor hit markers - circular discs at ray/floor intersections
+                    // (u_shape=1 makes the fragment shader mask to a circle).
+                    _gl.Uniform1f(_uShape!, 1f);
+                    foreach (var hit in floorHits)
+                    {
+                        _gl.Uniform3f(_uTint!, hit.Tint.X, hit.Tint.Y, hit.Tint.Z);
+                        _gl.UniformMatrix4fv(_uModel!, false, hit.Matrix);
+                        _gl.DrawElements(GL.TRIANGLES, CubeIndexCount, GL.UNSIGNED_SHORT, CubeIndexOffsetBytes);
+                        drawCount++;
+                    }
+                    _gl.Uniform1f(_uShape!, 0f);
+
+                    // Spawned cubes: single instanced draw for all of them.
+                    if (_instanceUploadedCount > 0 && _instProgram != null && _instVao != null)
+                    {
+                        _gl.UseProgram(_instProgram);
+                        _gl.BindVertexArray(_instVao);
+                        _gl.UniformMatrix4fv(_uInstProjection!, false, proj);
+                        _gl.UniformMatrix4fv(_uInstView!, false, viewMat);
+                        _gl.DrawElementsInstanced(GL.TRIANGLES, CubeIndexCount, GL.UNSIGNED_SHORT, CubeIndexOffsetBytes, _instanceUploadedCount);
+                        drawCount++;
+                        // Restore main program + VAO so the next eye's pass starts clean.
+                        _gl.UseProgram(_program);
+                        _gl.BindVertexArray(_vao);
+                    }
+
+                    if (_frameCount == 0 && viewCount == 0)
+                    {
+                        // Capture frame-0 diagnostic snapshot. Stringify the matrix components
+                        // rather than marshalling the float[] through BlazorJS - JSON.NET refuses
+                        // NaN/Inf and would throw SpecialNumberValuesNotSupported.
+                        float[] projArr, viewArr;
+                        try { projArr = proj.ToArray(); } catch { projArr = System.Array.Empty<float>(); }
+                        try { viewArr = viewMat.ToArray(); } catch { viewArr = System.Array.Empty<float>(); }
+                        string projStr = projArr.Length == 16
+                            ? $"({projArr[0]:F2},{projArr[5]:F2},{projArr[10]:F2},{projArr[14]:F2})"
+                            : "(unreadable)";
+                        string viewStr = viewArr.Length == 16
+                            ? $"({viewArr[12]:F2},{viewArr[13]:F2},{viewArr[14]:F2})"
+                            : "(unreadable)";
+                        frame0Debug = $"vp=({vp.X},{vp.Y},{vp.Width},{vp.Height}) " +
+                                      $"proj[0,5,10,14]={projStr} view[12,13,14]={viewStr}";
+                        JS.CallVoid("console.log", "[VR.2 frame 0] " + frame0Debug);
+                    }
+                    viewCount++;
+                }
+            }
+
+            uint err = _gl.GetError();
+            if (err != 0)
+            {
+                _lastGlError = $"0x{err:X} at frame {_frameCount}";
+                JS.CallVoid("console.warn", $"[VR.2 frame {_frameCount}] gl.getError = 0x{err:X}");
+            }
+            if (frame0Debug != null) _debugLine = frame0Debug;
+
+            _viewsPerFrame = viewCount;
+            _drawsPerFrame = drawCount;
+            _frameCount++;
+            if (_frameCount % 30 == 0) InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Frame {_frameCount}: {ex.GetType().Name}: {ex.Message}";
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    const float RayLength = 2.0f;    // 2m beam
+    const float RayThickness = 0.006f; // 6mm thick
+    const int MaxSpawnedCubes = 1000; // instanced rendering makes this essentially free
+    const float SpawnCubeSize = 0.12f; // 12cm cubes drop at hit points
+
+    readonly record struct ControllerModel(float[] Matrix, Vector3 Tint);
+
+    // Per-frame cached read of each input source: grip + ray pose + trigger.
+    readonly record struct ControllerSnapshot(
+        string Handedness,
+        float[]? GripMatrix,
+        float[]? RayMatrix,
+        float Trigger);
+
+    // Little cubes placed by trigger press. Persisted across frames.
+    readonly record struct SpawnedCube(float[] Matrix, Vector3 Tint);
+    readonly List<SpawnedCube> _spawned = new();
+
+    // Edge-detection state: last-frame trigger-held flag per controller handedness.
+    readonly Dictionary<string, bool> _triggerHeld = new();
+
+    List<ControllerSnapshot> SnapshotControllers(XRFrame frame)
+    {
+        var snaps = new List<ControllerSnapshot>();
+        if (_session == null || _refSpace == null) return snaps;
+
+        using var sources = _session.InputSources;
+        if (sources == null) return snaps;
+
+        int count = sources.Length;
+        for (int i = 0; i < count; i++)
+        {
+            using var src = sources.GetItem(i);
+            if (src == null) continue;
+
+            string hand = src.Handedness;
+            if (string.IsNullOrEmpty(hand)) hand = $"idx{i}";
+
+            float[]? gripMat = TryReadSpacePose(frame, src.GripSpace);
+            float[]? rayMat  = TryReadSpacePose(frame, src.TargetRaySpace);
+
+            float trigger = 0f;
+            using (var gp = src.Gamepad)
+            {
+                if (gp != null)
+                {
+                    var btns = gp.Buttons;
+                    if (btns != null)
+                    {
+                        if (btns.Length > 0 && btns[0] != null)
+                        {
+                            try { trigger = (float)btns[0].Value; } catch { }
+                        }
+                        for (int bi = 0; bi < btns.Length; bi++) btns[bi]?.Dispose();
+                    }
+                }
+            }
+
+            snaps.Add(new ControllerSnapshot(hand, gripMat, rayMat, trigger));
+        }
+        return snaps;
+    }
+
+    float[]? TryReadSpacePose(XRFrame frame, XRSpace? space)
+    {
+        if (space == null || _refSpace == null) return null;
+        try
+        {
+            using (space)
+            {
+                using var pose = frame.GetPose(space, _refSpace);
+                if (pose == null) return null;
+                using var xform = pose.Transform;
+                using var matrix = xform.Matrix;
+                var m = matrix.ToArray();
+                return m.Length == 16 ? m : null;
+            }
+        }
+        catch { return null; }
+    }
+
+    List<ControllerModel> BuildControllerModelsFromSnaps(List<ControllerSnapshot> snaps)
+    {
+        var list = new List<ControllerModel>(snaps.Count);
+        const float CtrlScale = 0.06f;
+        foreach (var s in snaps)
+        {
+            if (s.GripMatrix == null) continue;
+            var m = (float[])s.GripMatrix.Clone();
+            for (int col = 0; col < 3; col++)
+                for (int row = 0; row < 3; row++)
+                    m[col * 4 + row] *= CtrlScale;
+
+            Vector3 tint = s.Handedness switch
+            {
+                "left"  => new Vector3(0.55f, 0.95f, 1.15f),
+                "right" => new Vector3(1.25f, 0.75f, 0.45f),
+                _        => new Vector3(1f,    1f,    1f),
+            };
+            list.Add(new ControllerModel(m, tint));
+        }
+        return list;
+    }
+
+    static readonly float[] _rayLocal =
+    {
+        RayThickness, 0,            0,           0,
+        0,            RayThickness, 0,           0,
+        0,            0,            RayLength,   0,
+        0,            0,           -RayLength/2, 1,
+    };
+
+    List<ControllerModel> BuildControllerRaysFromSnaps(List<ControllerSnapshot> snaps)
+    {
+        var list = new List<ControllerModel>(snaps.Count);
+        foreach (var s in snaps)
+        {
+            if (s.RayMatrix == null) continue;
+            var modelMat = Mul4(s.RayMatrix, _rayLocal);
+
+            Vector3 tint = s.Handedness switch
+            {
+                "left"  => new Vector3(0.7f, 1.4f, 1.6f),
+                "right" => new Vector3(1.7f, 1.0f, 0.5f),
+                _        => new Vector3(1.3f, 1.3f, 1.3f),
+            };
+            list.Add(new ControllerModel(modelMat, tint));
+        }
+        return list;
+    }
+
+    List<ControllerModel> BuildFloorHitsFromSnaps(List<ControllerSnapshot> snaps)
+    {
+        var list = new List<ControllerModel>(snaps.Count);
+        const float FloorHalf = 5f;
+        foreach (var s in snaps)
+        {
+            if (s.RayMatrix == null) continue;
+            if (!RayFloorHit(s.RayMatrix, FloorHalf, out float hx, out float hz)) continue;
+
+            float radius = 0.10f + 0.10f * s.Trigger;
+            var markerMat = new float[]
+            {
+                radius * 2f, 0,     0,           0,
+                0,           0.01f, 0,           0,
+                0,           0,     radius * 2f, 0,
+                hx,          0.02f, hz,          1,
+            };
+
+            float g = 0.9f + 1.5f * s.Trigger;
+            var tint = new Vector3(1.4f * g, 0.7f * g, 0.35f * g);
+            list.Add(new ControllerModel(markerMat, tint));
+        }
+        return list;
+    }
+
+    void HandleTriggerSpawnsFromSnaps(List<ControllerSnapshot> snaps)
+    {
+        const float FloorHalf = 5f;
+        foreach (var s in snaps)
+        {
+            bool held = s.Trigger > 0.6f;
+            _triggerHeld.TryGetValue(s.Handedness, out bool wasHeld);
+            _triggerHeld[s.Handedness] = held;
+            if (!held || wasHeld) continue;
+
+            if (s.RayMatrix == null) continue;
+            if (!RayFloorHit(s.RayMatrix, FloorHalf, out float hx, out float hz)) continue;
+
+            float yaw = _spawned.Count * 0.37f;
+            float cy = MathF.Cos(yaw), sy = MathF.Sin(yaw);
+            float sc = SpawnCubeSize;
+            var mm = new float[]
+            {
+                sc * cy,  0,  sc * -sy, 0,
+                0,        sc, 0,        0,
+                sc * sy,  0,  sc * cy,  0,
+                hx,       sc / 2f + 0.001f, hz, 1,
+            };
+
+            Vector3 tint = s.Handedness switch
+            {
+                "left"  => new Vector3(0.65f, 1.10f, 1.30f),
+                "right" => new Vector3(1.40f, 0.85f, 0.50f),
+                _        => new Vector3(1.10f, 1.10f, 1.10f),
+            };
+
+            _spawned.Add(new SpawnedCube(mm, tint));
+            if (_spawned.Count > MaxSpawnedCubes) _spawned.RemoveAt(0);
+            _instanceDirty = true;
+        }
+    }
+
+    static bool RayFloorHit(float[] m, float floorHalf, out float hx, out float hz)
+    {
+        hx = 0; hz = 0;
+        float ox = m[12], oy = m[13], oz = m[14];
+        float dx = -m[8], dy = -m[9], dz = -m[10];
+        if (dy >= -1e-5f) return false;
+        float t = -oy / dy;
+        if (t <= 0f || t > 100f) return false;
+        hx = ox + t * dx;
+        hz = oz + t * dz;
+        return MathF.Abs(hx) <= floorHalf && MathF.Abs(hz) <= floorHalf;
+    }
+
+    void UploadInstanceBuffer()
+    {
+        if (_gl == null || _instanceBuffer == null) return;
+        int n = _spawned.Count;
+        var data = new float[n * InstanceStrideFloats];
+        for (int i = 0; i < n; i++)
+        {
+            var sc = _spawned[i];
+            System.Array.Copy(sc.Matrix, 0, data, i * InstanceStrideFloats, 16);
+            int off = i * InstanceStrideFloats + 16;
+            data[off + 0] = sc.Tint.X;
+            data[off + 1] = sc.Tint.Y;
+            data[off + 2] = sc.Tint.Z;
+            data[off + 3] = 1f;
+        }
+        _gl.BindBuffer(GL.ARRAY_BUFFER, _instanceBuffer);
+        using (var f32 = new Float32Array(data))
+        {
+            _gl.BufferData(GL.ARRAY_BUFFER, f32, GL.DYNAMIC_DRAW);
+        }
+        _instanceUploadedCount = n;
+        _instanceDirty = false;
+    }
+
+    // Column-major 4x4 multiply: r = a * b.
+    static float[] Mul4(float[] a, float[] b)
+    {
+        var r = new float[16];
+        for (int col = 0; col < 4; col++)
+        {
+            for (int row = 0; row < 4; row++)
+            {
+                float sum = 0f;
+                for (int k = 0; k < 4; k++)
+                    sum += a[k * 4 + row] * b[col * 4 + k];
+                r[col * 4 + row] = sum;
+            }
+        }
+        return r;
+    }
+
+    static float[] Identity() => new float[]
+    {
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1,
+    };
+
+    static float[] Compose(Vector3 pos, Vector3 axis, float angle, float scale)
+    {
+        float c = MathF.Cos(angle);
+        float s = MathF.Sin(angle);
+        float omc = 1f - c;
+        var n = Vector3.Normalize(axis);
+
+        float r00 = c + n.X * n.X * omc;
+        float r01 = n.Y * n.X * omc + n.Z * s;
+        float r02 = n.Z * n.X * omc - n.Y * s;
+
+        float r10 = n.X * n.Y * omc - n.Z * s;
+        float r11 = c + n.Y * n.Y * omc;
+        float r12 = n.Z * n.Y * omc + n.X * s;
+
+        float r20 = n.X * n.Z * omc + n.Y * s;
+        float r21 = n.Y * n.Z * omc - n.X * s;
+        float r22 = c + n.Z * n.Z * omc;
+
+        return new float[]
+        {
+            r00 * scale, r01 * scale, r02 * scale, 0f,
+            r10 * scale, r11 * scale, r12 * scale, 0f,
+            r20 * scale, r21 * scale, r22 * scale, 0f,
+            pos.X,       pos.Y,       pos.Z,       1f,
+        };
+    }
+
+    void OnSessionEnd(XRSessionEvent e)
+    {
+        _sessionActive = false;
+        _ = CleanupAsync();
+        InvokeAsync(StateHasChanged);
+    }
+
+    async Task ExitVrAsync()
+    {
+        if (_session != null)
+        {
+            try { await _session.End(); }
+            catch (Exception ex) { _errorMessage = $"Exit: {ex.Message}"; }
+        }
+    }
+
+    async Task CleanupAsync()
+    {
+        if (_session != null)
+        {
+            try { _session.OnEnd -= OnSessionEnd; } catch { }
+        }
+        _xrLayer?.Dispose(); _xrLayer = null;
+        _refSpace?.Dispose(); _refSpace = null;
+        _session?.Dispose(); _session = null;
+        _sessionActive = false;
+        _refSpaceTypeLabel = null;
+
+        _uProjection?.Dispose(); _uProjection = null;
+        _uView?.Dispose(); _uView = null;
+        _uModel?.Dispose(); _uModel = null;
+        _uGridAmount?.Dispose(); _uGridAmount = null;
+        _uShape?.Dispose(); _uShape = null;
+        _uTint?.Dispose(); _uTint = null;
+        _uInstProjection?.Dispose(); _uInstProjection = null;
+        _uInstView?.Dispose(); _uInstView = null;
+        _vao?.Dispose(); _vao = null;
+        _instVao?.Dispose(); _instVao = null;
+        _vbo?.Dispose(); _vbo = null;
+        _ibo?.Dispose(); _ibo = null;
+        _instanceBuffer?.Dispose(); _instanceBuffer = null;
+        _program?.Dispose(); _program = null;
+        _instProgram?.Dispose(); _instProgram = null;
+        _gl?.Dispose(); _gl = null;
+        _canvas?.Dispose(); _canvas = null;
+
+        _spawned.Clear();
+        _triggerHeld.Clear();
+        _instanceUploadedCount = 0;
+        _instanceDirty = false;
+
+        await Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _sessionActive = false;
+        await CleanupAsync();
+    }
+
+    static string PathColor(RenderPath p) => p switch
+    {
+        RenderPath.FullWebGpu => "#4ade80",
+        RenderPath.HybridWebGl2 => "#facc15",
+        RenderPath.WebGpuOnly => "#60a5fa",
+        RenderPath.None => "#ef4444",
+        _ => "#888",
+    };
+}
