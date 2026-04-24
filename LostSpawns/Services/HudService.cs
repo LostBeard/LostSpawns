@@ -117,6 +117,7 @@ public class HudService : IDisposable
         _inventory.OnInventoryChanged += SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
         _inventory.OnItemConsumed += HandleItemConsumed;
+        _inventory.OnItemPickedUp += HandleItemPickedUp;
         _stats.OnDamageTaken += HandleDamageTaken;
         _stats.OnHealed += HandleHealed;
         _weather.OnLightningStrike += HandleLightningStrike;
@@ -127,6 +128,14 @@ public class HudService : IDisposable
         // Bright white + pale-blue flash, 0.25s fade. Alpha deliberately high so
         // the strike reads as a real lightning bolt through closed eyes.
         ScreenOverlay?.Flash(System.Drawing.Color.FromArgb(230, 240, 245, 255), 0.25f);
+    }
+
+    private void HandleItemPickedUp(InventoryItem item)
+    {
+        // Soft green edge flash - confirms the chop paid off without being as
+        // loud as a full damage flash. 0.25s fade to match the existing
+        // heal flash cadence.
+        ScreenOverlay?.Flash(System.Drawing.Color.FromArgb(60, 80, 200, 100), 0.25f);
     }
 
     private void HandleItemConsumed(string name, string verb, ItemEffect effect)
@@ -1247,6 +1256,7 @@ public class HudService : IDisposable
         _inventory.OnInventoryChanged -= RefreshCraftingButtons;
         _inventory.OnActiveHotbarChanged -= SyncActiveHotbar;
         _inventory.OnItemConsumed -= HandleItemConsumed;
+        _inventory.OnItemPickedUp -= HandleItemPickedUp;
         _stats.OnDamageTaken -= HandleDamageTaken;
         _stats.OnHealed -= HandleHealed;
         _weather.OnLightningStrike -= HandleLightningStrike;

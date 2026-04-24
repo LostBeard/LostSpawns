@@ -138,6 +138,9 @@ public class InventoryService
     /// <summary>Fired when an item is successfully consumed. Args: item name, verb, effect applied.</summary>
     public event Action<string, string, ItemEffect>? OnItemConsumed;
 
+    /// <summary>Fired when an item is added via TryAdd. Arg: the item added (Count always 1 for MVP drops).</summary>
+    public event Action<InventoryItem>? OnItemPickedUp;
+
     /// <summary>
     /// Move the item between two slots. Source and target are encoded as
     /// (fromHotbar, index): fromHotbar==true means hotbar[index], false means backpack[index].
@@ -247,6 +250,7 @@ public class InventoryService
         if (slot < HotbarSize) _hotbar[slot] = item;
         else _backpack[slot - HotbarSize] = item;
         OnInventoryChanged?.Invoke();
+        OnItemPickedUp?.Invoke(item);
         return true;
     }
 }
