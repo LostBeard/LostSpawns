@@ -68,6 +68,17 @@ public class EntityService
     /// <summary>Seconds an entity walks in one direction before picking a new one (jittered).</summary>
     public float WanderRetargetSeconds { get; set; } = 3f;
 
+    /// <summary>Max active wandering entities - respawn tick stops once this is reached.</summary>
+    public int MaxEntities { get; set; } = 5;
+
+    /// <summary>Seconds between respawn attempts once the population is below cap.</summary>
+    public float RespawnIntervalSeconds { get; set; } = 45f;
+
+    /// <summary>How far around the player a respawned entity appears (min/max blocks).</summary>
+    public (float Min, float Max) RespawnRange { get; set; } = (12f, 22f);
+
+    private float _respawnTimer;
+
     /// <summary>
     /// Populate the list with the starter set of 5 entities near the given
     /// spawn point. Heights are samples of the heightmap; each entity gets a
@@ -178,6 +189,47 @@ public class EntityService
             int groundY = world.GetHeightAt(e.Position.X, e.Position.Z) + 1;
             e.Position = new Vector3(e.Position.X, groundY, e.Position.Z);
         }
+
+        // Respawn tick - only advances while population is below cap so a
+        // fully-stocked world doesn't accumulate progress and dump a wave
+        // of new entities the instant the player kills one.
+        if (Entities.Count < MaxEntities)
+        {
+            _respawnTimer += dt;
+            if (_respawnTimer >= RespawnIntervalSeconds)
+            {
+                _respawnTimer = 0;
+                RespawnOneNear(playerPos, world);
+            }
+        }
+        else
+        {
+            _respawnTimer = 0;
+        }
+    }
+
+    /// <summary>
+    /// Pick a random EntityKind and a random position in a ring around the
+    /// player (so new critters don't materialize on top of the camera) and
+    /// spawn one. Kind distribution favors rabbits, which is also how the
+    /// starter set skews. Position uses polar sampling + uniform angle so
+    /// spawn direction is evenly spread rather than biased to an axis.
+    /// </summary>
+    private void RespawnOneNear(Vector3 playerPos, WorldService world)
+    {
+        // 40% rabbit, 30% boar, 30% crow.
+        double roll = _rng.NextDouble();
+        EntityKind kind = roll < 0.4 ? EntityKind.Rabbit
+                        : roll < 0.7 ? EntityKind.Boar
+                                     : EntityKind.Crow;
+
+        double angle = _rng.NextDouble() * Math.PI * 2;
+        float dist = RespawnRange.Min
+                   + (float)_rng.NextDouble() * (RespawnRange.Max - RespawnRange.Min);
+        float dx = (float)Math.Cos(angle) * dist;
+        float dz = (float)Math.Sin(angle) * dist;
+        var pos = new Vector3(playerPos.X + dx, 0, playerPos.Z + dz);
+        Spawn(kind, pos, world);
     }
 
     /// <summary>
