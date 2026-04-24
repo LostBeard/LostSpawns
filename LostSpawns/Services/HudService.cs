@@ -1390,6 +1390,21 @@ public class HudService : IDisposable
             });
         }
 
+        // Upsert a marker for each active campfire so the player can navigate
+        // back to base at any time. Extinguished fires (Fuel <= 0) drop off
+        // the map so you're not misled about warmth availability.
+        foreach (var f in _fires.Fires)
+        {
+            if (f.Fuel <= 0) continue;
+            Minimap.AddMarker(new MapMarker
+            {
+                Id = $"fire.{f.Id}",
+                Label = "Fire",
+                WorldPosition = new Vector2(f.Position.X, f.Position.Z),
+                Type = MapMarkerType.POI,
+            });
+        }
+
         // Update screen overlay effects
         ScreenOverlay.Update(deltaTime);
 
