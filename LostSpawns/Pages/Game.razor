@@ -239,8 +239,9 @@
 
                 // On landing, apply fall damage scaled to the peak downward speed
                 // seen during this airborne segment. Reset so the next fall starts
-                // fresh.
-                if (justLanded && _peakFallSpeed > SafeFallSpeed)
+                // fresh. Water landings are safe - belly-flop a cliff into a pond
+                // without paying the HP cost.
+                if (justLanded && _peakFallSpeed > SafeFallSpeed && !inWater)
                 {
                     float excess = _peakFallSpeed - SafeFallSpeed;
                     float dmg = excess * FallDamageScale;

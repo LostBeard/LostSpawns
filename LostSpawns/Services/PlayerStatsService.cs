@@ -119,6 +119,9 @@ public class PlayerStatsService
     /// <summary>HP drain per real-world second while hunger or thirst is at 0.</summary>
     public float StarvationDamageRate { get; set; } = 0.005f;
 
+    /// <summary>HP regen per second while all survival stats are healthy (see Tick).</summary>
+    public float HealthRegenRate { get; set; } = 0.008f;
+
     /// <summary>
     /// How fast body temperature drifts toward its ambient target. Lower = slower
     /// response; warm clothing / gear effectively reduces this on the consuming side.
@@ -163,6 +166,17 @@ public class PlayerStatsService
         if (_thirst <= 0f) TakeDamage(dt * StarvationDamageRate);
         if (_temperature < 0.15f) TakeDamage(dt * HypothermiaDamageRate);
         if (_temperature > 0.85f) TakeDamage(dt * HeatstrokeDamageRate);
+
+        // Passive HP regen when every survival stat is in its healthy band.
+        // Gives the player a reason to maintain hunger/thirst/warmth beyond
+        // avoiding immediate death - recovery from damage flows through food
+        // + water + shelter instead of requiring scarce bandages.
+        if (_health < 1f &&
+            _hunger > 0.5f && _thirst > 0.5f && _stamina > 0.5f &&
+            _temperature > 0.30f && _temperature < 0.75f)
+        {
+            Heal(dt * HealthRegenRate);
+        }
     }
 
     /// <summary>Reset all stats to full (for respawn, new character, test harness).</summary>
