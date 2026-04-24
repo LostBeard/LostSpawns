@@ -114,6 +114,7 @@
         Hud.OnRespawnClicked += HandleRespawnClicked;
         Stats.OnDied += HandleDied;
         Wildlife.OnEntityKilled += HandleEntityKilled;
+        Wildlife.OnContactAttack += HandleEntityContactAttack;
 
         Renderer.OnUpdate = OnGameUpdate;
 
@@ -531,6 +532,12 @@
         else Hud.NotifyWarning($"Inventory full - {drop.Name} lost");
     }
 
+    private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
+    {
+        Stats.TakeDamage(damage);
+        Hud.NotifyDamage($"{e.Kind} hit you!");
+    }
+
     private static LostSpawns.Services.InventoryItem? DropForBlockType(LostSpawns.Models.BlockType t) => t switch
     {
         LostSpawns.Models.BlockType.Wood   => new("material.wood",   "Wood",   1, LostSpawns.Services.ItemCategory.Material),
@@ -692,7 +699,7 @@
         Stats.Tick(deltaTime, ambient, sprinting);
         // Wildlife wanders each frame; gated by the same active-play branch so
         // critters hold still while the player is paused / in menus.
-        Wildlife.Tick(deltaTime, World);
+        Wildlife.Tick(deltaTime, World, Renderer.Camera.Position);
 
         // Auto-save every SaveService.AutoSaveIntervalSeconds seconds of active
         // play. Never fires while in a menu (we're gated above by IsAnyMenuOpen).
@@ -848,6 +855,7 @@
         Hud.OnRespawnClicked -= HandleRespawnClicked;
         Stats.OnDied -= HandleDied;
         Wildlife.OnEntityKilled -= HandleEntityKilled;
+        Wildlife.OnContactAttack -= HandleEntityContactAttack;
 
         Renderer.StopRenderLoop();
         Hud.Dispose();

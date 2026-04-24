@@ -101,8 +101,15 @@ public class EntityService
         return e;
     }
 
+    /// <summary>
+    /// Fires when a charging entity has closed to contact range with the
+    /// player. Float payload is the damage amount. Game.razor subscribes to
+    /// route this to PlayerStatsService.TakeDamage + a HUD shake / toast.
+    /// </summary>
+    public event Action<WanderingEntity, float>? OnContactAttack;
+
     /// <summary>Advance every entity. Call from the active-play branch only.</summary>
-    public void Tick(float dt, WorldService world)
+    public void Tick(float dt, WorldService world, Vector3 playerPos)
     {
         foreach (var e in Entities)
         {
@@ -119,10 +126,14 @@ public class EntityService
                 }
                 else
                 {
+                    // A charging entity chases the player's current position,
+                    // not where the player was when it got hit - so it doesn't
+                    // blindly run past if the player has moved.
+                    var chaseTarget = e.Alert == AlertMode.Charge ? playerPos : e.LastAlertSource;
                     var toward = new Vector3(
-                        e.LastAlertSource.X - e.Position.X,
+                        chaseTarget.X - e.Position.X,
                         0,
-                        e.LastAlertSource.Z - e.Position.Z);
+                        chaseTarget.Z - e.Position.Z);
                     float len = toward.Length();
                     if (len > 1e-3f)
                     {
@@ -131,6 +142,20 @@ public class EntityService
                         // Flee flips the sign so the entity runs the other way.
                         if (e.Alert == AlertMode.Flee) dir = -dir;
                         e.Velocity = dir * speed;
+                    }
+
+                    // Contact-damage window for chargers. 1.5 blocks matches
+                    // the player collision radius plus a small forgiveness.
+                    // After a hit the entity drops back to Idle so we don't
+                    // loop-damage every frame - a second strike requires
+                    // player or AI re-engagement.
+                    if (e.Alert == AlertMode.Charge && len < 1.5f)
+                    {
+                        OnContactAttack?.Invoke(e, ContactDamageForKind(e.Kind));
+                        e.Alert = AlertMode.Idle;
+                        e.AlertTimer = 0;
+                        PickRandomDirection(e);
+                        e.WanderRetargetIn = WanderRetargetSeconds;
                     }
                 }
             }
@@ -166,6 +191,19 @@ public class EntityService
         EntityKind.Rabbit => 2.8f,
         EntityKind.Crow   => 2.4f,
         _                 => 2.0f,
+    };
+
+    /// <summary>
+    /// Damage dealt to the player on a successful contact hit. Rabbits / crows
+    /// don't charge so they never call this, but the switch returns a small
+    /// nonzero for them so any future "rabid rabbit" variant has a bite.
+    /// </summary>
+    private static float ContactDamageForKind(EntityKind k) => k switch
+    {
+        EntityKind.Boar   => 0.20f,
+        EntityKind.Rabbit => 0.05f,
+        EntityKind.Crow   => 0.05f,
+        _                 => 0.05f,
     };
 
     private void PickRandomDirection(WanderingEntity e)
