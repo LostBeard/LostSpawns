@@ -96,6 +96,34 @@ public class AudioService : IDisposable
         PlayBeep(180f, 0.10f, 0.22f, "square");
     }
 
+    /// <summary>Long descending death tone - dramatic fade on player death.</summary>
+    public void PlayDeath()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "triangle";
+            double t = _ctx.CurrentTime;
+            // 180 Hz dropping to 60 Hz over 2 seconds gives the "lights out"
+            // feel. Gain hits 0.25 briefly then fades on a long tail.
+            osc.Frequency.SetValueAtTime(180f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(60f, t + 2.0);
+            gain.Gain.SetValueAtTime(0f, t);
+            gain.Gain.LinearRampToValueAtTime(0.25f, t + 0.05);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 2.2);
+            osc.Connect(gain);
+            gain.Connect(_ctx.Destination);
+            osc.Start();
+            osc.Stop((float)(t + 2.2));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayDeath failed: {ex.Message}");
+        }
+    }
+
     /// <summary>Short upward blip - player jump push-off.</summary>
     public void PlayJump()
     {

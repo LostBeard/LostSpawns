@@ -871,6 +871,7 @@
         Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(180, 180, 20, 20), 0.8f);
         Hud.NotifyDamage("You died");
         Hud.ShowDeathScreen();
+        Audio.PlayDeath();
     }
 
     private void HandleRespawnClicked()
