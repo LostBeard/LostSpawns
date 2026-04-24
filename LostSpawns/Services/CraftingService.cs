@@ -9,7 +9,8 @@ namespace LostSpawns.Services;
 public sealed record CraftingRecipe(
     string DisplayName,
     (string Id, int Count)[] Inputs,
-    InventoryItem Output);
+    InventoryItem Output,
+    int RequiredLevel = 1);
 
 /// <summary>
 /// Static recipe registry + craft-attempt helper. Kept tiny for MVP - a real
@@ -24,15 +25,17 @@ public sealed record CraftingRecipe(
 public class CraftingService
 {
     private readonly InventoryService _inventory;
+    private readonly PlayerStatsService _stats;
 
     /// <summary>Fired after a successful craft. Arg = the recipe that produced it.</summary>
     public event Action<CraftingRecipe>? OnCrafted;
 
     public IReadOnlyList<CraftingRecipe> Recipes { get; }
 
-    public CraftingService(InventoryService inventory)
+    public CraftingService(InventoryService inventory, PlayerStatsService stats)
     {
         _inventory = inventory;
+        _stats = stats;
         Recipes = new[]
         {
             new CraftingRecipe(
@@ -62,7 +65,8 @@ public class CraftingService
             new CraftingRecipe(
                 "Fur Coat",
                 new[] { ("material.pelt", 2), ("material.rope", 1) },
-                new InventoryItem("gear.fur_coat", "Fur Coat", 1, ItemCategory.Tool)),
+                new InventoryItem("gear.fur_coat", "Fur Coat", 1, ItemCategory.Tool),
+                RequiredLevel: 2),
         };
 
         // Register effects for any new outputs the crafting system introduces.
@@ -72,9 +76,10 @@ public class CraftingService
         _inventory.Effects["craft.stew"]  = new ItemEffect(Hunger: 0.45f, Thirst: 0.45f, DisplayVerb: "Ate");
     }
 
-    /// <summary>True if every input of the recipe is present in sufficient count.</summary>
+    /// <summary>True if the player meets the level gate AND has every input in sufficient count.</summary>
     public bool CanCraft(CraftingRecipe recipe)
     {
+        if (_stats.Level < recipe.RequiredLevel) return false;
         foreach (var (id, count) in recipe.Inputs)
             if (CountById(id) < count) return false;
         return true;
