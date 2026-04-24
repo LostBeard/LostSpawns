@@ -147,8 +147,14 @@ public class HudService : IDisposable
         _inventory.OnItemPickedUp += HandleItemPickedUp;
         _stats.OnDamageTaken += HandleDamageTaken;
         _stats.OnHealed += HandleHealed;
+        _stats.OnLevelUp += HandleLevelUp;
         _weather.OnLightningStrike += HandleLightningStrike;
         _entities.OnEntityKilled += HandleEntityDespawned;
+    }
+
+    private void HandleLevelUp(int newLevel)
+    {
+        NotifyAchievement($"Level {newLevel}!");
     }
 
     private void HandleEntityDespawned(WanderingEntity e)
@@ -1641,7 +1647,7 @@ public class HudService : IDisposable
             _debugLabel.Text =
                 $"{(int)_fpsSmoothed} fps    " +
                 $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}    " +
-                $"XP {_stats.Experience}";
+                $"Lv {_stats.Level}  XP {_stats.Experience}";
         }
 
         // Update compass bearing from camera yaw
@@ -1789,6 +1795,7 @@ public class HudService : IDisposable
         _inventory.OnItemPickedUp -= HandleItemPickedUp;
         _stats.OnDamageTaken -= HandleDamageTaken;
         _stats.OnHealed -= HandleHealed;
+        _stats.OnLevelUp -= HandleLevelUp;
         _weather.OnLightningStrike -= HandleLightningStrike;
         _entities.OnEntityKilled -= HandleEntityDespawned;
         if (_renderer != null)

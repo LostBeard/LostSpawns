@@ -20,16 +20,31 @@ public class PlayerStatsService
     private float _thirst = 0.7f;
     private float _temperature = 0.5f;
 
-    /// <summary>Accumulated XP - gained from kills, chops, crafts. No leveling effect yet.</summary>
+    /// <summary>Accumulated XP - gained from kills, chops, crafts.</summary>
     public int Experience { get; private set; }
 
-    /// <summary>Grant XP and fire OnStatsChanged so the HUD refreshes.</summary>
+    /// <summary>
+    /// Player level derived from accumulated XP. Formula: floor(sqrt(XP /
+    /// 50)) + 1 so level 1 = 0-49 XP, level 2 = 50-199, level 3 = 200-449,
+    /// etc. Keeps early progression fast then slows as the player scales
+    /// past the survival basics. Future gates (recipe unlocks, stat caps)
+    /// read this property.
+    /// </summary>
+    public int Level => (int)MathF.Floor(MathF.Sqrt(Experience / 50f)) + 1;
+
+    /// <summary>Grant XP and fire OnStatsChanged + OnLevelUp if a threshold is crossed.</summary>
     public void AwardXp(int amount)
     {
         if (amount <= 0) return;
+        int before = Level;
         Experience += amount;
+        int after = Level;
         OnStatsChanged?.Invoke();
+        if (after > before) OnLevelUp?.Invoke(after);
     }
+
+    /// <summary>Fires once per level-up. Arg = the new level reached.</summary>
+    public event Action<int>? OnLevelUp;
 
     /// <summary>Fired whenever any stat changes to a new value.</summary>
     public event Action? OnStatsChanged;
