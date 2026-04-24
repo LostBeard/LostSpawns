@@ -29,6 +29,7 @@ public class HudService : IDisposable
     private readonly CraftingService _crafting;
     private readonly WeatherService _weather;
     private readonly EntityService _entities;
+    private readonly CampfireService _fires;
 
     // Rain particle state. Each particle stores its current Y, per-particle speed,
     // and X (randomized once at spawn). Updated in Update(dt); drawn in OnPostRender
@@ -106,7 +107,7 @@ public class HudService : IDisposable
     /// <summary>True while the death screen is on top of the screen stack.</summary>
     public bool IsDead => _ui.Screens.ActiveScreen == "death";
 
-    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather, EntityService entities)
+    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather, EntityService entities, CampfireService fires)
     {
         _ui = ui;
         _stats = stats;
@@ -116,6 +117,7 @@ public class HudService : IDisposable
         _crafting = crafting;
         _weather = weather;
         _entities = entities;
+        _fires = fires;
         _inventory.OnInventoryChanged += SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
         _inventory.OnItemConsumed += HandleItemConsumed;
@@ -938,6 +940,60 @@ public class HudService : IDisposable
         return anchor;
     }
 
+    /// <summary>
+    /// Project active campfires into screen space and render them as a stack
+    /// of pulsing orange rects that fake a flame. Drawn BEFORE entities so a
+    /// wandering creature can block line-of-sight to the fire without its
+    /// flame leaking over the billboard. Particles are procedural per-frame -
+    /// the phase jitter combined with the sin() gives enough randomness for
+    /// the pulse to feel alive without any particle state.
+    /// </summary>
+    private void DrawCampfires(int viewportWidth, int viewportHeight)
+    {
+        if (_renderer == null || _fires.Fires.Count == 0) return;
+
+        float aspect = (float)viewportWidth / viewportHeight;
+        var vp = _renderer.Camera.GetVpMatrix(aspect);
+
+        float t = (float)(DateTime.UtcNow.Ticks % TimeSpan.TicksPerSecond) / TimeSpan.TicksPerSecond;
+        float pulse = 0.8f + 0.2f * MathF.Sin(t * MathF.PI * 2f);
+
+        foreach (var f in _fires.Fires)
+        {
+            var worldPos = new System.Numerics.Vector4(
+                f.Position.X, f.Position.Y + 0.4f, f.Position.Z, 1f);
+            var clip = System.Numerics.Vector4.Transform(worldPos, vp);
+            if (clip.W <= 0.001f) continue;
+
+            float ndcX = clip.X / clip.W;
+            float ndcY = clip.Y / clip.W;
+            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
+            if (screenX < -80 || screenX > viewportWidth + 80) continue;
+            if (screenY < -80 || screenY > viewportHeight + 80) continue;
+
+            float dist = MathF.Max(0.1f, clip.W);
+            float size = Math.Clamp(120f / dist, 10f, 90f) * pulse;
+
+            // Base ember layer - dark red at the bottom.
+            var ember  = System.Drawing.Color.FromArgb(220, 120, 30, 10);
+            var flame  = System.Drawing.Color.FromArgb(220, 240, 140, 40);
+            var tip    = System.Drawing.Color.FromArgb(200, 255, 220, 120);
+
+            float x = screenX - size / 2f;
+            float yBottom = screenY + size * 0.3f;
+
+            // 3 stacked rects fake flame layers without needing a particle system.
+            _ui.Renderer.DrawRect(x, yBottom - size * 0.30f, size, size * 0.30f, ember);
+            _ui.Renderer.DrawRect(
+                x + size * 0.15f, yBottom - size * 0.60f,
+                size * 0.70f, size * 0.30f, flame);
+            _ui.Renderer.DrawRect(
+                x + size * 0.32f, yBottom - size * 0.85f,
+                size * 0.36f, size * 0.25f, tip);
+        }
+    }
+
     private void DrawEntityBillboards(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null || _entities.Entities.Count == 0) return;
@@ -1337,6 +1393,10 @@ public class HudService : IDisposable
 
             // Draw the HUD screen stack
             _ui.Screens.Draw(_ui.Renderer);
+
+            // Campfires render first so entity billboards paint on top - a
+            // critter standing in front of the fire occludes it naturally.
+            DrawCampfires(viewportWidth, viewportHeight);
 
             // Entity billboards: 2D colored squares at each entity's projected
             // screen position. Renders on top of terrain, below rain + flashes.

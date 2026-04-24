@@ -12,6 +12,7 @@
 @inject WorldTimeService Time
 @inject WeatherService Weather
 @inject EntityService Wildlife
+@inject CampfireService Fires
 @inject InventoryService Inventory
 @inject SaveService Save
 @inject SpawnDev.BlazorJS.BlazorJSRuntime JS
@@ -145,6 +146,21 @@
         // radius so GetHeightAt calls are cheap. Entities appear as colored dots
         // on the minimap immediately; 3D rendering of their bodies is a follow-up.
         Wildlife.SpawnStarter(Renderer.Camera.Position, World);
+
+        // Drop a starter campfire a couple blocks east of spawn. Gives the
+        // player an obvious warmth anchor and a target for future "cook meat"
+        // interactions without forcing them to gather fuel before they can
+        // survive their first cold tick.
+        if (Fires.Fires.Count == 0)
+        {
+            var fireXZ = new System.Numerics.Vector3(3, 0, 0);
+            int fireY = World.GetHeightAt(Renderer.Camera.Position.X + fireXZ.X,
+                                          Renderer.Camera.Position.Z + fireXZ.Z) + 1;
+            Fires.Spawn(new System.Numerics.Vector3(
+                Renderer.Camera.Position.X + fireXZ.X,
+                fireY,
+                Renderer.Camera.Position.Z + fireXZ.Z));
+        }
 
         // Restore save if one exists - applies stats / inventory / time / clock
         // and teleports the camera to the saved position. Blocks lost on reload
@@ -695,7 +711,11 @@
         Weather.Tick(deltaTime);
         // Rain shifts temperature target colder (wet + wind = chill). Clothing
         // system will eventually scale this, but for now rain always bites.
-        float ambient = Time.TargetTemperature - Weather.RainIntensity * 0.1f;
+        // Campfire warmth bonus is additive on top - stand next to the fire
+        // during a cold rain and the bonus can fully cancel the chill.
+        float ambient = Time.TargetTemperature
+                      - Weather.RainIntensity * 0.1f
+                      + Fires.GetWarmthBonusAt(Renderer.Camera.Position);
         Stats.Tick(deltaTime, ambient, sprinting);
         // Wildlife wanders each frame; gated by the same active-play branch so
         // critters hold still while the player is paused / in menus.
