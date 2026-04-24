@@ -1024,15 +1024,21 @@
 
         if (targetEntity is not null)
         {
-            Hud.Crosshair.IsTargeting = true;
+            // Hostile tint for entity aim - the crosshair goes red so the
+            // player sees "this is a kill swing" at a glance.
+            Hud.Crosshair.TargetType = SpawnDev.GameUI.Elements.CrosshairTarget.Hostile;
             Hud.InteractionPrompt.Text = $"[LMB] Attack {targetEntity.Kind}";
+        }
+        else if (targetHit.DidHit)
+        {
+            // Green interactive tint for breakable blocks.
+            Hud.Crosshair.TargetType = SpawnDev.GameUI.Elements.CrosshairTarget.Interactive;
+            Hud.InteractionPrompt.Text = BuildInteractionPromptText((LostSpawns.Models.BlockType)targetHit.BlockType);
         }
         else
         {
-            Hud.Crosshair.IsTargeting = targetHit.DidHit;
-            Hud.InteractionPrompt.Text = targetHit.DidHit
-                ? BuildInteractionPromptText((LostSpawns.Models.BlockType)targetHit.BlockType)
-                : "";
+            Hud.Crosshair.TargetType = SpawnDev.GameUI.Elements.CrosshairTarget.None;
+            Hud.InteractionPrompt.Text = "";
         }
 
         // Update desired chunks (dispatches GPU tasks, unloads distant chunks + their GPU buffers)
