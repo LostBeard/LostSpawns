@@ -125,6 +125,7 @@
         Stats.OnLevelUp += HandleLevelUpSound;
         Wildlife.OnEntitySpawned += HandleEntitySpawned;
         Inventory.OnItemConsumed += HandleItemConsumedSound;
+        Weather.OnLightningStrike += HandleLightningSound;
 
         Renderer.OnUpdate = OnGameUpdate;
 
@@ -649,6 +650,8 @@
     {
         Audio.PlayConsume();
     }
+
+    private void HandleLightningSound() => Audio.PlayThunder();
 
     private void HandleFeedFire()
     {
@@ -1192,6 +1195,7 @@
         Stats.OnLevelUp -= HandleLevelUpSound;
         Wildlife.OnEntitySpawned -= HandleEntitySpawned;
         Inventory.OnItemConsumed -= HandleItemConsumedSound;
+        Weather.OnLightningStrike -= HandleLightningSound;
 
         Renderer.StopRenderLoop();
         Hud.Dispose();

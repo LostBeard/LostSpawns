@@ -111,6 +111,36 @@ public class AudioService : IDisposable
         PlayBeep(altPhase ? 130f : 110f, 0.04f, 0.06f, "sine");
     }
 
+    /// <summary>Deep rumbling thunder - long triangle fade after a lightning strike.</summary>
+    public void PlayThunder()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "triangle";
+            double t = _ctx.CurrentTime;
+            // Two-frequency rumble - starts low, wavers up, decays over
+            // nearly 2 seconds for weight. Small frequency sweep gives the
+            // "rolling" feel that distinguishes thunder from a single hit.
+            osc.Frequency.SetValueAtTime(65f, t);
+            osc.Frequency.LinearRampToValueAtTime(85f, t + 0.6);
+            osc.Frequency.LinearRampToValueAtTime(55f, t + 1.6);
+            gain.Gain.SetValueAtTime(0f, t);
+            gain.Gain.LinearRampToValueAtTime(0.35f, t + 0.05);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 1.8);
+            osc.Connect(gain);
+            gain.Connect(_ctx.Destination);
+            osc.Start();
+            osc.Stop((float)(t + 1.8));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayThunder failed: {ex.Message}");
+        }
+    }
+
     /// <summary>Short rising chime for consuming food / water / medical.</summary>
     public void PlayConsume()
     {
