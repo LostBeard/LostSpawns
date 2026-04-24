@@ -41,6 +41,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired whenever the inventory-toggle key is pressed (default I/Tab).</summary>
     public event Action? OnInventoryTogglePressed;
 
+    /// <summary>Fired on E key press. Used for "interact / break block in crosshair" gameplay.</summary>
+    public event Action? OnInteractPressed;
+
     /// <summary>Dev-only: fired on F9 to simulate taking damage. Lets the probe exercise the damage flow without gameplay content.</summary>
     public event Action? OnDebugDamagePressed;
 
@@ -107,6 +110,10 @@ public class InputService : IAsyncDisposable
         // handles the actual open/close logic - this only fires the intent.
         if (!e.Repeat && (e.Key == "i" || e.Key == "I" || e.Key == "Tab"))
             OnInventoryTogglePressed?.Invoke();
+
+        // Interact / break block in crosshair on E.
+        if (!e.Repeat && (e.Key == "e" || e.Key == "E"))
+            OnInteractPressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
         if (!e.Repeat && e.Key == "F9")

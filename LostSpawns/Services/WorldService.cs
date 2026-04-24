@@ -5,6 +5,7 @@ using SpawnDev.BlazorJS.JSObjects;
 using SpawnDev.ILGPU.WebGPU;
 using SpawnDev.VoxelEngine;
 using SpawnDev.VoxelEngine.Meshing;
+using SpawnDev.VoxelEngine.Physics;
 using LostSpawns.Models;
 using LostSpawns.Rendering;
 
@@ -355,6 +356,144 @@ public class WorldService
         if (_heightmapLoader != null)
             return _heightmapLoader.GetElevation(worldX, worldZ);
         return _generator?.GetHeight(worldX, worldZ) ?? 30;
+    }
+
+    private static readonly VoxelEngineConfig _raycastConfig = new()
+    {
+        VoxelSize = 1.0f,
+        SectionSize = 16,
+        BaseY = 0f,
+    };
+
+    /// <summary>
+    /// Cast a ray through the loaded world and return the first solid block hit, or
+    /// RaycastHit.None if the ray exits the loaded area without hitting anything.
+    /// Thin wrapper over SpawnDev.VoxelEngine.Physics.VoxelRaycast.CastWorld that
+    /// adapts our byte[] column cache to the library's int[] PackedBlock section view.
+    /// Water blocks are treated as transparent for interaction.
+    /// </summary>
+    public RaycastHit Raycast(Vector3 origin, Vector3 dir, float maxDistance)
+    {
+        return VoxelRaycast.CastWorld(
+            GetSectionBlocksForRaycast,
+            _raycastConfig,
+            origin,
+            Vector3.Normalize(dir),
+            maxDistance,
+            packed =>
+            {
+                // Stop on everything except water (so rays pass through water).
+                var type = (BlockType)PackedBlock.GetType(packed);
+                return type != BlockType.Water;
+            });
+    }
+
+    /// <summary>Adapter: flat byte[] column cache -> int[] 16x16x16 section in PackedBlock format.</summary>
+    private int[]? GetSectionBlocksForRaycast(SectionCoord coord)
+    {
+        const int ss = 16;
+        if (!_blocksCache.TryGetValue((coord.Cx, coord.Cz), out var col))
+            return null;
+        if (coord.Sy < 0 || (coord.Sy + 1) * ss > ChunkData.Height)
+            return null;
+
+        var section = new int[ss * ss * ss];
+        int yStart = coord.Sy * ss;
+        for (int y = 0; y < ss; y++)
+        {
+            int srcYBase = (yStart + y) * ChunkData.SizeXZ * ChunkData.SizeXZ;
+            int dstYBase = y * ss * ss;
+            for (int z = 0; z < ss; z++)
+                for (int x = 0; x < ss; x++)
+                {
+                    byte b = col[x + z * ChunkData.SizeXZ + srcYBase];
+                    // byte -> PackedBlock int (lower 12 bits = block type)
+                    section[x + z * ss + dstYBase] = b;
+                }
+        }
+        return section;
+    }
+
+    /// <summary>
+    /// Break the block at the given world-space integer voxel position. Zeroes the
+    /// byte in the column cache, fires off a re-mesh of the affected column (and any
+    /// XZ-neighbor column if the block sat on the boundary), and returns the
+    /// original BlockType so the caller can decide what item to drop.
+    /// Returns BlockType.Air if the target position is out of bounds, in an unloaded
+    /// chunk, or was already air.
+    /// </summary>
+    public BlockType TryBreakBlock(int worldX, int worldY, int worldZ)
+    {
+        if (worldY < 0 || worldY >= ChunkData.Height) return BlockType.Air;
+
+        int cx = (int)MathF.Floor(worldX / (float)ChunkData.SizeXZ);
+        int cz = (int)MathF.Floor(worldZ / (float)ChunkData.SizeXZ);
+        if (!_blocksCache.TryGetValue((cx, cz), out var col)) return BlockType.Air;
+
+        int lx = worldX - cx * ChunkData.SizeXZ;
+        int lz = worldZ - cz * ChunkData.SizeXZ;
+        int idx = lx + lz * ChunkData.SizeXZ + worldY * ChunkData.SizeXZ * ChunkData.SizeXZ;
+
+        byte original = col[idx];
+        if (original == 0) return BlockType.Air;
+
+        col[idx] = 0;
+
+        // Re-mesh this column + any edge-neighbor columns that share the boundary.
+        _ = ReMeshColumnAsync(cx, cz);
+        if (lx == 0) _ = ReMeshColumnAsync(cx - 1, cz);
+        if (lx == ChunkData.SizeXZ - 1) _ = ReMeshColumnAsync(cx + 1, cz);
+        if (lz == 0) _ = ReMeshColumnAsync(cx, cz - 1);
+        if (lz == ChunkData.SizeXZ - 1) _ = ReMeshColumnAsync(cx, cz + 1);
+
+        return (BlockType)original;
+    }
+
+    private async Task ReMeshColumnAsync(int cx, int cz)
+    {
+        if (!_blocksCache.TryGetValue((cx, cz), out var blocks)) return;
+        var nxMinus = _blocksCache.TryGetValue((cx - 1, cz), out var a) ? a : null;
+        var nxPlus  = _blocksCache.TryGetValue((cx + 1, cz), out var b) ? b : null;
+        var nzMinus = _blocksCache.TryGetValue((cx, cz - 1), out var c) ? c : null;
+        var nzPlus  = _blocksCache.TryGetValue((cx, cz + 1), out var d) ? d : null;
+
+        List<(int sectionY, VoxelMeshPipeline.MeshResult mesh)> sectionMeshes;
+        try
+        {
+            sectionMeshes = await _engine.GenerateChunkMeshesAsync(
+                blocks, nxMinus, nxPlus, nzMinus, nzPlus);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[World] Re-mesh ({cx},{cz}) failed: {ex.Message}");
+            return;
+        }
+
+        // Swap the column's sections with the fresh meshes. Dispose any old sections
+        // the new pass didn't produce (they're now all-air after the break).
+        var freshSyIndices = new HashSet<int>(sectionMeshes.Select(s => s.sectionY));
+        for (int sy = 0; sy < 16; sy++)
+        {
+            var key = (cx, sy, cz);
+            if (_chunks.TryGetValue(key, out var old) && !freshSyIndices.Contains(sy))
+            {
+                old.Dispose();
+                _chunks.Remove(key);
+            }
+        }
+        foreach (var (sy, meshResult) in sectionMeshes)
+        {
+            var key = (cx, sy, cz);
+            if (_chunks.TryGetValue(key, out var old)) old.Dispose();
+
+            var gpuBuffer = meshResult.QuadBuffer!.GetGPUBuffer();
+            _chunks[key] = new ChunkMesh
+            {
+                QuadBuffer = gpuBuffer,
+                QuadCount = meshResult.QuadCount,
+                IlgpuBuffer = meshResult.QuadBuffer,
+            };
+        }
     }
 
     /// <summary>Resets all state so the service can be re-initialized.</summary>

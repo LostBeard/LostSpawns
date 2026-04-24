@@ -10,6 +10,7 @@
 @inject HudService Hud
 @inject PlayerStatsService Stats
 @inject WorldTimeService Time
+@inject InventoryService Inventory
 @inject SpawnDev.BlazorJS.BlazorJSRuntime JS
 @inject NavigationManager Nav
 @implements IAsyncDisposable
@@ -97,6 +98,7 @@
         Input.OnEscapePressed += HandleEscape;
         Input.OnPointerLockChanged += HandlePointerLockChanged;
         Input.OnInventoryTogglePressed += HandleInventoryToggle;
+        Input.OnInteractPressed += HandleInteract;
         Input.OnDebugDamagePressed += HandleDebugDamage;
         Input.OnDebugHealPressed += HandleDebugHeal;
         Hud.OnResumeClicked += HandleResumeClicked;
@@ -170,6 +172,44 @@
     // consumption sources replace them.
     private void HandleDebugDamage() => Stats.TakeDamage(0.1f);
     private void HandleDebugHeal()   => Stats.Heal(0.1f);
+
+    private void HandleInteract()
+    {
+        // Interaction is locked behind active gameplay - pause / inventory / loading
+        // all short-circuit via IsAnyMenuOpen so accidentally chopping through a menu
+        // doesn't happen.
+        if (Hud.IsAnyMenuOpen) return;
+
+        var origin = Renderer.Camera.Position;
+        var dir = Renderer.Camera.Front;
+        var hit = World.Raycast(origin, dir, maxDistance: 5f);
+        if (!hit.DidHit) return;
+
+        var brokenType = World.TryBreakBlock(hit.BlockX, hit.BlockY, hit.BlockZ);
+        if (brokenType == LostSpawns.Models.BlockType.Air) return;
+
+        var drop = DropForBlockType(brokenType);
+        if (drop is null)
+        {
+            Hud.Notify($"Broke {brokenType}");
+            return;
+        }
+
+        bool added = Inventory.TryAdd(drop);
+        if (added) Hud.NotifySuccess($"+1 {drop.Name}");
+        else Hud.NotifyWarning($"Inventory full - {drop.Name} dropped");
+    }
+
+    private static LostSpawns.Services.InventoryItem? DropForBlockType(LostSpawns.Models.BlockType t) => t switch
+    {
+        LostSpawns.Models.BlockType.Wood   => new("material.wood",   "Wood",   1, LostSpawns.Services.ItemCategory.Material),
+        LostSpawns.Models.BlockType.Leaves => new("material.leaves", "Leaves", 1, LostSpawns.Services.ItemCategory.Material),
+        LostSpawns.Models.BlockType.Stone  => new("material.stone",  "Stone",  1, LostSpawns.Services.ItemCategory.Material),
+        LostSpawns.Models.BlockType.Dirt   => new("material.dirt",   "Dirt",   1, LostSpawns.Services.ItemCategory.Material),
+        LostSpawns.Models.BlockType.Grass  => new("material.dirt",   "Dirt",   1, LostSpawns.Services.ItemCategory.Material),
+        LostSpawns.Models.BlockType.Sand   => new("material.sand",   "Sand",   1, LostSpawns.Services.ItemCategory.Material),
+        _ => null,
+    };
 
     private void HandlePointerLockChanged(bool locked)
     {
@@ -287,6 +327,7 @@
         Input.OnEscapePressed -= HandleEscape;
         Input.OnPointerLockChanged -= HandlePointerLockChanged;
         Input.OnInventoryTogglePressed -= HandleInventoryToggle;
+        Input.OnInteractPressed -= HandleInteract;
         Input.OnDebugDamagePressed -= HandleDebugDamage;
         Input.OnDebugHealPressed -= HandleDebugHeal;
         Hud.OnResumeClicked -= HandleResumeClicked;
