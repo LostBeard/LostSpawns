@@ -594,10 +594,36 @@
     private void HandleFeedFire()
     {
         if (Hud.IsAnyMenuOpen) return;
-        if (Fires.TryFeedNearest(Renderer.Camera.Position, Inventory, out var reason))
-            Hud.NotifySuccess("Fed the fire");
-        else if (!string.IsNullOrEmpty(reason))
-            Hud.NotifyWarning(reason);
+
+        // Feed fire takes precedence when one's in range AND the player is
+        // holding fuel. Falls through to drink-water when there's no fire
+        // to feed, so F is one key for "do a useful context action here".
+        if (Fires.FindNearest(Renderer.Camera.Position) is not null)
+        {
+            if (Fires.TryFeedNearest(Renderer.Camera.Position, Inventory, out var reason))
+                Hud.NotifySuccess("Fed the fire");
+            else if (!string.IsNullOrEmpty(reason))
+                Hud.NotifyWarning(reason);
+            return;
+        }
+
+        // Drink water: raycast the camera forward. If the hit is on a Water
+        // block, restore thirst + toast. Range matches block-break so any
+        // water you could fill-a-bucket at is also drinkable.
+        var hit = World.Raycast(Renderer.Camera.Position, Renderer.Camera.Front, 5f);
+        if (hit.DidHit && (LostSpawns.Models.BlockType)hit.BlockType == LostSpawns.Models.BlockType.Water)
+        {
+            if (Stats.Thirst >= 0.999f)
+            {
+                Hud.Notify("Not thirsty");
+                return;
+            }
+            Stats.Thirst = Math.Min(1f, Stats.Thirst + 0.30f);
+            Hud.NotifySuccess("Drank water");
+            return;
+        }
+
+        Hud.NotifyWarning("Nothing to interact with");
     }
 
     private void HandleSleep()
