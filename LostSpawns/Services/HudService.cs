@@ -38,6 +38,15 @@ public class HudService : IDisposable
     private readonly float[] _rainX = new float[140];
     private readonly float[] _rainY = new float[140];
     private readonly float[] _rainSpeed = new float[140];
+
+    // Breath-puff particles for cold weather. Shorter-lived + fewer than rain;
+    // emitted only when the player's temperature is low. Each particle rises
+    // a few pixels as it fades. Age runs 0 -> 1 (1 = dead).
+    private const int BreathMax = 8;
+    private readonly float[] _breathX = new float[BreathMax];
+    private readonly float[] _breathY = new float[BreathMax];
+    private readonly float[] _breathAge = new float[BreathMax];
+    private float _breathEmitTimer = 0f;
     private bool _rainSeeded;
     private readonly Random _rainRng = new();
     private RenderService? _renderer;
@@ -120,6 +129,10 @@ public class HudService : IDisposable
         _entities = entities;
         _fires = fires;
         _ground = ground;
+        // Seed breath puffs past their lifetime so they aren't rendered as a
+        // ghost ring at (0, 0) on the first few frames before the emitter
+        // has had a chance to spawn real ones.
+        for (int i = 0; i < BreathMax; i++) _breathAge[i] = 2f;
         _inventory.OnInventoryChanged += SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
         _inventory.OnItemConsumed += HandleItemConsumed;
@@ -1260,6 +1273,59 @@ public class HudService : IDisposable
         }
     }
 
+    /// <summary>
+    /// When the player is cold enough their breath should fog - emit small
+    /// rising puffs near screen-center (the camera direction). Age each
+    /// puff toward 1 (dead). No cap check needed: we re-use the oldest
+    /// index so the array acts as a ring buffer.
+    /// </summary>
+    private void UpdateBreath(float dt)
+    {
+        // Age existing puffs.
+        for (int i = 0; i < BreathMax; i++)
+            if (_breathAge[i] < 1f) _breathAge[i] = MathF.Min(1f, _breathAge[i] + dt * 0.8f);
+
+        // Emit only when temperature is low enough. Cadence ~0.6s between
+        // puffs - matches a slow, visible breath rhythm.
+        if (_stats.Temperature > 0.30f || _renderer == null)
+        {
+            _breathEmitTimer = 0;
+            return;
+        }
+        _breathEmitTimer += dt;
+        if (_breathEmitTimer < 0.6f) return;
+        _breathEmitTimer = 0;
+
+        // Find the oldest (highest age) slot and reuse it.
+        int oldest = 0;
+        for (int i = 1; i < BreathMax; i++)
+            if (_breathAge[i] > _breathAge[oldest]) oldest = i;
+
+        int vw = _renderer.CanvasWidth;
+        int vh = _renderer.CanvasHeight;
+        _breathX[oldest] = vw * 0.5f + ((float)_rainRng.NextDouble() - 0.5f) * 40f;
+        _breathY[oldest] = vh * 0.55f + ((float)_rainRng.NextDouble() - 0.5f) * 10f;
+        _breathAge[oldest] = 0f;
+    }
+
+    private void DrawBreath(int viewportWidth, int viewportHeight)
+    {
+        for (int i = 0; i < BreathMax; i++)
+        {
+            float age = _breathAge[i];
+            if (age >= 1f) continue;
+            // Alpha peaks at mid-life, fades toward the end.
+            int alpha = (int)(150 * (1f - age) * (age < 0.5f ? age * 2f : 1f));
+            float rise = age * 40f;
+            float size = 6f + age * 10f;
+            _ui.Renderer.DrawRect(
+                _breathX[i] - size * 0.5f,
+                _breathY[i] - rise - size * 0.5f,
+                size, size,
+                System.Drawing.Color.FromArgb(alpha, 240, 240, 245));
+        }
+    }
+
     private void DrawRain(int viewportWidth, int viewportHeight)
     {
         float t = _weather.RainIntensity;
@@ -1548,6 +1614,9 @@ public class HudService : IDisposable
         // then recycled when they fall off the bottom of the viewport.
         UpdateRain(deltaTime);
 
+        // Breath puffs in cold - emitted only when player's temperature is low.
+        UpdateBreath(deltaTime);
+
         // GameUI per-frame update (input polling, animations, focus)
         _ui.Update(deltaTime);
     }
@@ -1587,6 +1656,10 @@ public class HudService : IDisposable
 
             // Rain particles render on top of the voxel scene but below menus.
             DrawRain(viewportWidth, viewportHeight);
+
+            // Breath puffs render after rain so they're never occluded by the
+            // streaks - the player's own breath should always be visible.
+            DrawBreath(viewportWidth, viewportHeight);
 
             // Draw screen overlay effects (damage flash, etc.) on top
             ScreenOverlay.Draw(_ui.Renderer, viewportWidth, viewportHeight);
