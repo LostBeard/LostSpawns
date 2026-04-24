@@ -22,6 +22,7 @@ builder.Services.AddSingleton<PlayerStatsService>();
 builder.Services.AddSingleton<InventoryService>();
 builder.Services.AddSingleton<CraftingService>();
 builder.Services.AddSingleton<WorldTimeService>();
+builder.Services.AddSingleton<WeatherService>();
 builder.Services.AddSingleton<HudService>();
 
 // GPU-rendered game UI overlay (SDF fonts, HUD elements, inventory, chat)

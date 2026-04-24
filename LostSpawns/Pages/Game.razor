@@ -10,6 +10,7 @@
 @inject HudService Hud
 @inject PlayerStatsService Stats
 @inject WorldTimeService Time
+@inject WeatherService Weather
 @inject InventoryService Inventory
 @inject SpawnDev.BlazorJS.BlazorJSRuntime JS
 @inject NavigationManager Nav
@@ -548,7 +549,11 @@
         // Temperature target comes from WorldTimeService so nights feel cold and
         // days warm; future clothing system can modulate this before passing in.
         Time.Tick(deltaTime);
-        Stats.Tick(deltaTime, Time.TargetTemperature, sprinting);
+        Weather.Tick(deltaTime);
+        // Rain shifts temperature target colder (wet + wind = chill). Clothing
+        // system will eventually scale this, but for now rain always bites.
+        float ambient = Time.TargetTemperature - Weather.RainIntensity * 0.1f;
+        Stats.Tick(deltaTime, ambient, sprinting);
 
         // Camera sees the sprint gate too so we can't sprint-speed when stamina is
         // empty even if Shift is still held.

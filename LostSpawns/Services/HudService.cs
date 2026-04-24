@@ -27,6 +27,16 @@ public class HudService : IDisposable
     private readonly SettingsService _settings;
     private readonly WorldTimeService _worldTime;
     private readonly CraftingService _crafting;
+    private readonly WeatherService _weather;
+
+    // Rain particle state. Each particle stores its current Y, per-particle speed,
+    // and X (randomized once at spawn). Updated in Update(dt); drawn in OnPostRender
+    // using the UI renderer's DrawRect so the streaks land on top of the voxel scene.
+    private readonly float[] _rainX = new float[140];
+    private readonly float[] _rainY = new float[140];
+    private readonly float[] _rainSpeed = new float[140];
+    private bool _rainSeeded;
+    private readonly Random _rainRng = new();
     private RenderService? _renderer;
     private UIGrid? _backpackGrid;
     private UIGrid? _inventoryHotbarRow;
@@ -88,7 +98,7 @@ public class HudService : IDisposable
     /// <summary>True while the death screen is on top of the screen stack.</summary>
     public bool IsDead => _ui.Screens.ActiveScreen == "death";
 
-    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting)
+    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather)
     {
         _ui = ui;
         _stats = stats;
@@ -96,6 +106,7 @@ public class HudService : IDisposable
         _settings = settings;
         _worldTime = worldTime;
         _crafting = crafting;
+        _weather = weather;
         _inventory.OnInventoryChanged += SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
         _inventory.OnItemConsumed += HandleItemConsumed;
@@ -887,6 +898,51 @@ public class HudService : IDisposable
         return anchor;
     }
 
+    private void UpdateRain(float dt)
+    {
+        if (_weather.RainIntensity <= 0.01f) return;
+        if (_renderer == null) return;
+
+        int vw = _renderer.CanvasWidth;
+        int vh = _renderer.CanvasHeight;
+        if (!_rainSeeded)
+        {
+            for (int i = 0; i < _rainX.Length; i++)
+            {
+                _rainX[i] = (float)(_rainRng.NextDouble() * vw);
+                _rainY[i] = (float)(_rainRng.NextDouble() * vh);
+                _rainSpeed[i] = 600f + (float)(_rainRng.NextDouble() * 400f);
+            }
+            _rainSeeded = true;
+        }
+
+        for (int i = 0; i < _rainX.Length; i++)
+        {
+            _rainY[i] += _rainSpeed[i] * dt;
+            if (_rainY[i] > vh)
+            {
+                _rainY[i] = -20f;
+                _rainX[i] = (float)(_rainRng.NextDouble() * vw);
+            }
+        }
+    }
+
+    private void DrawRain(int viewportWidth, int viewportHeight)
+    {
+        float t = _weather.RainIntensity;
+        if (t <= 0.01f) return;
+
+        // Fewer visible streaks at low intensity so drizzle vs downpour looks
+        // different. Alpha scales with intensity too.
+        int count = (int)(_rainX.Length * t);
+        int alpha = (int)(120 * t);
+        var color = System.Drawing.Color.FromArgb(alpha, 140, 170, 200);
+        for (int i = 0; i < count; i++)
+        {
+            _ui.Renderer.DrawRect(_rainX[i], _rainY[i], 2f, 14f, color);
+        }
+    }
+
     private void SyncActiveHotbar(int idx)
     {
         if (Hotbar != null) Hotbar.SelectedSlot = idx;
@@ -1115,6 +1171,10 @@ public class HudService : IDisposable
         // Update screen overlay effects
         ScreenOverlay.Update(deltaTime);
 
+        // Rain particles: falling 2D streaks that land in OnPostRender. Seeded once,
+        // then recycled when they fall off the bottom of the viewport.
+        UpdateRain(deltaTime);
+
         // GameUI per-frame update (input polling, animations, focus)
         _ui.Update(deltaTime);
     }
@@ -1135,6 +1195,9 @@ public class HudService : IDisposable
 
             // Draw the HUD screen stack
             _ui.Screens.Draw(_ui.Renderer);
+
+            // Rain particles render on top of the voxel scene but below menus.
+            DrawRain(viewportWidth, viewportHeight);
 
             // Draw screen overlay effects (damage flash, etc.) on top
             ScreenOverlay.Draw(_ui.Renderer, viewportWidth, viewportHeight);
