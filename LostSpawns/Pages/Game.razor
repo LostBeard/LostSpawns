@@ -144,10 +144,13 @@
     // the fly-forever behavior of the old code.
     private float _verticalVelocity;
     private bool _grounded;
+    private float _peakFallSpeed; // max |negative velocity| seen this airborne segment
     private const float Gravity = 20f;         // units/sec^2
     private const float JumpImpulse = 7f;      // units/sec; peak ~1.2 blocks
     private const float EyeHeight = 1.8f;      // camera above feet
     private const float GroundCheckRange = 3f; // raycast distance below camera
+    private const float SafeFallSpeed = 8f;    // u/s; ~3-block fall, no damage
+    private const float FallDamageScale = 0.15f; // HP damage per (speed - safe) u/s
 
     // Cooldown between successive block actions (break or place). Tuned so a fast
     // double-click chops exactly once; rapid auto-fire is blocked at the source.
@@ -206,16 +209,30 @@
             {
                 pos.Y = minEyeY;
                 if (_verticalVelocity < 0) _verticalVelocity = 0;
+                bool justLanded = !_grounded;
                 _grounded = true;
+
+                // On landing, apply fall damage scaled to the peak downward speed
+                // seen during this airborne segment. Reset so the next fall starts
+                // fresh.
+                if (justLanded && _peakFallSpeed > SafeFallSpeed)
+                {
+                    float excess = _peakFallSpeed - SafeFallSpeed;
+                    float dmg = excess * FallDamageScale;
+                    Stats.TakeDamage(dmg);
+                }
+                _peakFallSpeed = 0;
             }
             else
             {
                 _grounded = false;
+                if (-_verticalVelocity > _peakFallSpeed) _peakFallSpeed = -_verticalVelocity;
             }
         }
         else
         {
             _grounded = false;
+            if (-_verticalVelocity > _peakFallSpeed) _peakFallSpeed = -_verticalVelocity;
         }
 
         // Jump only works grounded. Eats a bit of stamina so you can't hop-spam
