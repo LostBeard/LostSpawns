@@ -136,6 +136,26 @@
 
     private int _initialLoadExpectedColumns = 49; // radius 4 circle fallback
 
+    // Cooldown between successive block actions (break or place). Tuned so a fast
+    // double-click chops exactly once; rapid auto-fire is blocked at the source.
+    private const float BlockActionCooldownSec = 0.25f;
+    private const float BlockActionStaminaCost = 0.04f;
+    private DateTime _lastBlockActionTime = DateTime.MinValue;
+
+    private bool BlockActionReady()
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastBlockActionTime).TotalSeconds < BlockActionCooldownSec) return false;
+        if (Stats.Stamina < BlockActionStaminaCost) return false;
+        return true;
+    }
+
+    private void ConsumeBlockActionCost()
+    {
+        _lastBlockActionTime = DateTime.UtcNow;
+        Stats.Stamina = Stats.Stamina - BlockActionStaminaCost;
+    }
+
     private static int CountColumnsInRadius(int radius)
     {
         int r2 = radius * radius;
@@ -181,6 +201,7 @@
         // all short-circuit via IsAnyMenuOpen so accidentally chopping through a menu
         // doesn't happen.
         if (Hud.IsAnyMenuOpen) return;
+        if (!BlockActionReady()) return;
 
         var origin = Renderer.Camera.Position;
         var dir = Renderer.Camera.Front;
@@ -202,6 +223,10 @@
 
         var brokenType = World.TryBreakBlock(hit.BlockX, hit.BlockY, hit.BlockZ);
         if (brokenType == LostSpawns.Models.BlockType.Air) return;
+
+        // Successful swing charges the cooldown + stamina cost. Missed swings (air,
+        // out of range, wrong tool) don't cost anything so the player can re-aim.
+        ConsumeBlockActionCost();
 
         var drop = DropForBlockType(brokenType);
         if (drop is null)
@@ -253,6 +278,7 @@
     private void HandlePlaceBlock()
     {
         if (Hud.IsAnyMenuOpen) return;
+        if (!BlockActionReady()) return;
 
         var item = Inventory.ActiveItem;
         if (item is null) return;
@@ -265,6 +291,8 @@
 
         bool placed = World.TryPlaceBlock(hit.AdjacentX, hit.AdjacentY, hit.AdjacentZ, blockType.Value);
         if (!placed) return;
+
+        ConsumeBlockActionCost();
 
         // Decrement active hotbar slot. Clearing at 0 leaves the slot empty so the
         // player can't keep placing out of thin air.
