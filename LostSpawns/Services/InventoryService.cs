@@ -14,6 +14,18 @@ public record InventoryItem(string Id, string Name, int Count = 1);
 public readonly record struct InventoryDragData(bool FromHotbar, int Index);
 
 /// <summary>
+/// What using an item restores. Deltas are normalized [0,1] and clamped at 1 by
+/// PlayerStatsService setters, so piling up food past full just caps the bar.
+/// DisplayVerb is shown in the "Used: X" toast (e.g. "Ate", "Drank", "Used").
+/// </summary>
+public readonly record struct ItemEffect(
+    float Health = 0,
+    float Hunger = 0,
+    float Thirst = 0,
+    float Stamina = 0,
+    string DisplayVerb = "Used");
+
+/// <summary>
 /// Player inventory: 9-slot hotbar plus a backpack grid. Display-only for v1 -
 /// drag/drop and move between containers come later. Hotbar items power the
 /// on-screen quick-access bar; backpack items are only visible when the
@@ -31,9 +43,41 @@ public class InventoryService
     public const int BackpackRows = 4;
     public const int BackpackSize = BackpackColumns * BackpackRows;
 
+    private readonly PlayerStatsService _stats;
+
+    public InventoryService(PlayerStatsService stats)
+    {
+        _stats = stats;
+        // Starter load matches the pre-service hardcoded HUD: Axe on 1, Pick on 2, Bandage on 5, Map on 9.
+        _hotbar[0] = new InventoryItem("tool.axe", "Axe");
+        _hotbar[1] = new InventoryItem("tool.pick", "Pick");
+        _hotbar[4] = new InventoryItem("med.bandage", "Bandage");
+        _hotbar[8] = new InventoryItem("tool.map", "Map");
+
+        // Starter backpack so the inventory screen has something visible on first open.
+        _backpack[0] = new InventoryItem("consume.water", "Water", 2);
+        _backpack[1] = new InventoryItem("consume.beans", "Beans", 3);
+        _backpack[2] = new InventoryItem("material.cloth", "Cloth", 5);
+        _backpack[3] = new InventoryItem("material.rope", "Rope");
+        _backpack[8] = new InventoryItem("tool.flare", "Flare", 2);
+        _backpack[9] = new InventoryItem("med.painkiller", "Painkiller");
+    }
+
     private readonly InventoryItem?[] _hotbar = new InventoryItem?[HotbarSize];
     private readonly InventoryItem?[] _backpack = new InventoryItem?[BackpackSize];
     private int _activeHotbarIndex;
+
+    /// <summary>
+    /// Effect table keyed by item Id. Unknown items are not usable. Exposed so
+    /// gameplay code can extend it (e.g. cooking adds "cooked.meat" at runtime).
+    /// </summary>
+    public Dictionary<string, ItemEffect> Effects { get; } = new()
+    {
+        ["consume.water"]    = new(Thirst: 0.30f, DisplayVerb: "Drank"),
+        ["consume.beans"]    = new(Hunger: 0.30f, DisplayVerb: "Ate"),
+        ["med.bandage"]      = new(Health: 0.30f, DisplayVerb: "Applied"),
+        ["med.painkiller"]   = new(Health: 0.20f, Stamina: 0.15f, DisplayVerb: "Took"),
+    };
 
     /// <summary>Fired whenever any slot changes (set, clear, move).</summary>
     public event Action? OnInventoryChanged;
@@ -67,24 +111,8 @@ public class InventoryService
     /// <summary>Read-only view of the backpack slots (length = BackpackSize).</summary>
     public IReadOnlyList<InventoryItem?> Backpack => _backpack;
 
-    public InventoryService()
-    {
-        // Starter load matches the pre-service hardcoded HUD: Axe on 1, Pick on 2, Bandage on 5, Map on 9.
-        // Index 0 is key "1" on screen; UIHotbar labels slots 1..9 left to right.
-        _hotbar[0] = new InventoryItem("tool.axe", "Axe");
-        _hotbar[1] = new InventoryItem("tool.pick", "Pick");
-        _hotbar[4] = new InventoryItem("med.bandage", "Bandage");
-        _hotbar[8] = new InventoryItem("tool.map", "Map");
-
-        // Starter backpack so the inventory screen has something visible on first open.
-        // Gives the player a reason to open inventory + immediate drag-drop targets.
-        _backpack[0] = new InventoryItem("consume.water", "Water", 2);
-        _backpack[1] = new InventoryItem("consume.beans", "Beans", 3);
-        _backpack[2] = new InventoryItem("material.cloth", "Cloth", 5);
-        _backpack[3] = new InventoryItem("material.rope", "Rope");
-        _backpack[8] = new InventoryItem("tool.flare", "Flare", 2);
-        _backpack[9] = new InventoryItem("med.painkiller", "Painkiller");
-    }
+    /// <summary>Fired when an item is successfully consumed. Args: item name, verb, effect applied.</summary>
+    public event Action<string, string, ItemEffect>? OnItemConsumed;
 
     /// <summary>
     /// Move the item between two slots. Source and target are encoded as
@@ -151,6 +179,37 @@ public class InventoryService
         for (int i = 0; i < BackpackSize; i++)
             if (_backpack[i] is null) return HotbarSize + i;
         return -1;
+    }
+
+    /// <summary>
+    /// Try to use the item at the given slot. If the item's Id is in Effects, applies
+    /// the effect to PlayerStats, decrements Count (clears slot at 0), fires
+    /// OnItemConsumed, and returns true. Non-consumable items return false without
+    /// touching state.
+    /// </summary>
+    public bool TryUseSlot(bool fromHotbar, int index)
+    {
+        var slots = fromHotbar ? _hotbar : _backpack;
+        int max = fromHotbar ? HotbarSize : BackpackSize;
+        if ((uint)index >= (uint)max) return false;
+        var item = slots[index];
+        if (item is null) return false;
+        if (!Effects.TryGetValue(item.Id, out var effect)) return false;
+
+        if (effect.Health  > 0) _stats.Heal(effect.Health);
+        if (effect.Hunger  > 0) _stats.Hunger  = _stats.Hunger  + effect.Hunger;
+        if (effect.Thirst  > 0) _stats.Thirst  = _stats.Thirst  + effect.Thirst;
+        if (effect.Stamina > 0) _stats.Stamina = _stats.Stamina + effect.Stamina;
+
+        // Decrement count; clear slot when exhausted.
+        if (item.Count > 1)
+            slots[index] = item with { Count = item.Count - 1 };
+        else
+            slots[index] = null;
+
+        OnItemConsumed?.Invoke(item.Name, effect.DisplayVerb, effect);
+        OnInventoryChanged?.Invoke();
+        return true;
     }
 
     /// <summary>

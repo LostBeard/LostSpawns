@@ -179,15 +179,23 @@ while (elapsed < waitSec)
         var (_, action) = keyEvents[nextKeyIdx];
         try
         {
-            // Format "click:X/Y" -> mouse click at pixel (X,Y). Anything else is treated
-            // as a keyboard key name passed to page.Keyboard.PressAsync.
-            if (action.StartsWith("click:", StringComparison.OrdinalIgnoreCase))
+            // Format "click:X/Y" -> left mouse click at pixel (X,Y).
+            // Format "rclick:X/Y" -> right mouse click at pixel (X,Y).
+            // Anything else is treated as a keyboard key name.
+            if (action.StartsWith("click:", StringComparison.OrdinalIgnoreCase) ||
+                action.StartsWith("rclick:", StringComparison.OrdinalIgnoreCase))
             {
-                var coords = action.Substring("click:".Length).Split('/', 2, StringSplitOptions.TrimEntries);
+                bool right = action.StartsWith("rclick:", StringComparison.OrdinalIgnoreCase);
+                string coordPart = action.Substring(right ? "rclick:".Length : "click:".Length);
+                var coords = coordPart.Split('/', 2, StringSplitOptions.TrimEntries);
                 if (coords.Length == 2 &&
                     float.TryParse(coords[0], out var mx) && float.TryParse(coords[1], out var my))
                 {
-                    await page.Mouse.ClickAsync(mx, my);
+                    var opts = new Microsoft.Playwright.MouseClickOptions
+                    {
+                        Button = right ? MouseButton.Right : MouseButton.Left,
+                    };
+                    await page.Mouse.ClickAsync(mx, my, opts);
                 }
             }
             else

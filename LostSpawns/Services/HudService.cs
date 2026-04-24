@@ -77,8 +77,22 @@ public class HudService : IDisposable
         _settings = settings;
         _inventory.OnInventoryChanged += SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
+        _inventory.OnItemConsumed += HandleItemConsumed;
         _stats.OnDamageTaken += HandleDamageTaken;
         _stats.OnHealed += HandleHealed;
+    }
+
+    private void HandleItemConsumed(string name, string verb, ItemEffect effect)
+    {
+        // Phrase the toast to match the dominant effect: food shows "+XX% Hunger" etc.
+        string bump =
+            effect.Hunger > 0 ? $"+{(int)(effect.Hunger * 100)}% Hunger" :
+            effect.Thirst > 0 ? $"+{(int)(effect.Thirst * 100)}% Thirst" :
+            effect.Health > 0 ? $"+{(int)(effect.Health * 100)}% HP" :
+            effect.Stamina > 0 ? $"+{(int)(effect.Stamina * 100)}% Stamina" :
+            "";
+        string msg = string.IsNullOrEmpty(bump) ? $"{verb} {name}" : $"{verb} {name} ({bump})";
+        NotifySuccess(msg);
     }
 
     private void HandleDamageTaken(float amount)
@@ -554,6 +568,9 @@ public class HudService : IDisposable
             if (item is null) return;
             _ui.DragDrop.BeginDrag(new InventoryDragData(false, idx), item.Name);
         };
+        // Right-click / secondary action: consume the item if it has an effect entry.
+        // Silently ignores non-consumables so clicking an Axe doesn't spam warnings.
+        _backpackGrid.OnCellSecondary = idx => _inventory.TryUseSlot(false, idx);
         panel.AddChild(_backpackGrid);
 
         // Hotbar row below the backpack as a UIGrid (1 row x HotbarSize cols) so it
@@ -582,6 +599,7 @@ public class HudService : IDisposable
             if (item is null) return;
             _ui.DragDrop.BeginDrag(new InventoryDragData(true, idx), item.Name);
         };
+        _inventoryHotbarRow.OnCellSecondary = idx => _inventory.TryUseSlot(true, idx);
         panel.AddChild(_inventoryHotbarRow);
 
         // Register both grids as drop targets. On drop, read the grid's HoveredIndex
@@ -786,6 +804,7 @@ public class HudService : IDisposable
     {
         _inventory.OnInventoryChanged -= SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged -= SyncActiveHotbar;
+        _inventory.OnItemConsumed -= HandleItemConsumed;
         _stats.OnDamageTaken -= HandleDamageTaken;
         _stats.OnHealed -= HandleHealed;
         if (_renderer != null)

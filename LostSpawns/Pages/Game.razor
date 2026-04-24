@@ -144,8 +144,10 @@
     private void HandleEscape()
     {
         // Priority unwinds the screen stack one at a time, top first: settings
-        // overlay (pushed from pause menu) -> inventory -> pause. Prevents the
-        // "hit Escape and two modals fight each other" trap.
+        // overlay (pushed from pause menu) -> inventory -> pause. Loading ignores
+        // Escape entirely because stacking another modal over it would orphan the
+        // loading screen (HideLoadingScreen only pops when loading is on top).
+        if (Hud.IsLoading) return;
         if (Hud.IsSettingsOpen)  { Hud.HideSettings();  return; }
         if (Hud.IsInventoryOpen) { Hud.HideInventory(); return; }
         if (Hud.IsPaused) HandleResumeClicked();
@@ -154,8 +156,12 @@
 
     private void HandleInventoryToggle()
     {
-        // Don't let inventory open on top of the pause menu - pause wins.
-        if (Hud.IsPaused) return;
+        // Don't let inventory open on top of another modal - loading, pause, and
+        // settings all own the screen and should not be pushed over. If the
+        // inventory itself is already up, the toggle closes it (handled inside
+        // Hud.ToggleInventory).
+        if (Hud.IsInventoryOpen) { Hud.ToggleInventory(); return; }
+        if (Hud.IsLoading || Hud.IsPaused || Hud.IsSettingsOpen) return;
         Hud.ToggleInventory();
     }
 
