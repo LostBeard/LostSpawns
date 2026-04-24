@@ -33,9 +33,33 @@ public class InventoryService
 
     private readonly InventoryItem?[] _hotbar = new InventoryItem?[HotbarSize];
     private readonly InventoryItem?[] _backpack = new InventoryItem?[BackpackSize];
+    private int _activeHotbarIndex;
 
     /// <summary>Fired whenever any slot changes (set, clear, move).</summary>
     public event Action? OnInventoryChanged;
+
+    /// <summary>Fired whenever the active (equipped) hotbar slot changes.</summary>
+    public event Action<int>? OnActiveHotbarChanged;
+
+    /// <summary>
+    /// Currently equipped hotbar slot index [0, HotbarSize). The UIHotbar widget
+    /// tracks its own selection too; call Set here (not directly on the widget)
+    /// so gameplay code, the inventory screen, and the HUD all stay in sync.
+    /// </summary>
+    public int ActiveHotbarIndex
+    {
+        get => _activeHotbarIndex;
+        set
+        {
+            int clamped = Math.Clamp(value, 0, HotbarSize - 1);
+            if (clamped == _activeHotbarIndex) return;
+            _activeHotbarIndex = clamped;
+            OnActiveHotbarChanged?.Invoke(clamped);
+        }
+    }
+
+    /// <summary>Shorthand for the item currently in the active hotbar slot, or null.</summary>
+    public InventoryItem? ActiveItem => _hotbar[_activeHotbarIndex];
 
     /// <summary>Read-only view of the hotbar slots (length = HotbarSize).</summary>
     public IReadOnlyList<InventoryItem?> Hotbar => _hotbar;

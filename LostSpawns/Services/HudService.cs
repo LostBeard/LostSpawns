@@ -62,6 +62,7 @@ public class HudService : IDisposable
         _stats = stats;
         _inventory = inventory;
         _inventory.OnInventoryChanged += SyncInventoryToHud;
+        _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
     }
 
     /// <summary>
@@ -107,7 +108,11 @@ public class HudService : IDisposable
 
         // === Hotbar (bottom-center) ===
         Hotbar = new UIHotbar { SlotCount = InventoryService.HotbarSize };
-        Hotbar.SelectedSlot = 0;
+        Hotbar.SelectedSlot = _inventory.ActiveHotbarIndex;
+        // UIHotbar handles 1-9 keys + scroll wheel + click internally; we just push
+        // the widget's selection into InventoryService so gameplay code / the
+        // inventory screen / the HUD share one canonical "active slot" value.
+        Hotbar.OnSlotChanged = idx => _inventory.ActiveHotbarIndex = idx;
         root.AddAnchored(Hotbar, Anchor.BottomCenter, offsetY: -12);
 
         // === Crosshair (center) ===
@@ -352,6 +357,12 @@ public class HudService : IDisposable
         return anchor;
     }
 
+    private void SyncActiveHotbar(int idx)
+    {
+        if (Hotbar != null) Hotbar.SelectedSlot = idx;
+        if (_inventoryHotbarRow != null) _inventoryHotbarRow.SelectedIndex = idx;
+    }
+
     private void SyncInventoryToHud()
     {
         if (Hotbar != null)
@@ -454,6 +465,7 @@ public class HudService : IDisposable
     public void Dispose()
     {
         _inventory.OnInventoryChanged -= SyncInventoryToHud;
+        _inventory.OnActiveHotbarChanged -= SyncActiveHotbar;
         if (_renderer != null)
             _renderer.OnPostRender = null;
     }
