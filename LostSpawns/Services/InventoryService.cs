@@ -29,7 +29,7 @@ public enum ItemCategory
     Marker,
 }
 
-public record InventoryItem(string Id, string Name, int Count = 1, ItemCategory Category = ItemCategory.None);
+public record InventoryItem(string Id, string Name, int Count = 1, ItemCategory Category = ItemCategory.None, int? UsesRemaining = null);
 
 /// <summary>
 /// Payload carried by GameUIService.DragDropManager during an inventory drag.
@@ -73,8 +73,8 @@ public class InventoryService
     {
         _stats = stats;
         // Starter load matches the pre-service hardcoded HUD: Axe on 1, Pick on 2, Bandage on 5, Map on 9.
-        _hotbar[0] = new InventoryItem("tool.axe",       "Axe",       1, ItemCategory.Tool);
-        _hotbar[1] = new InventoryItem("tool.pick",      "Pick",      1, ItemCategory.Tool);
+        _hotbar[0] = new InventoryItem("tool.axe",  "Axe",  1, ItemCategory.Tool, UsesRemaining: 100);
+        _hotbar[1] = new InventoryItem("tool.pick", "Pick", 1, ItemCategory.Tool, UsesRemaining: 100);
         _hotbar[4] = new InventoryItem("med.bandage",    "Bandage",   1, ItemCategory.Medical);
         _hotbar[8] = new InventoryItem("tool.map",       "Map",       1, ItemCategory.Marker);
 
@@ -300,6 +300,30 @@ public class InventoryService
 
         OnInventoryChanged?.Invoke();
         return true;
+    }
+
+    /// <summary>
+    /// If the active hotbar item has a UsesRemaining counter, decrement by
+    /// one and return (brokeNow, toolName). `brokeNow` means the tool just
+    /// ran out and has been cleared from the slot; caller toasts accordingly.
+    /// Items with null UsesRemaining (no durability) are ignored - hands +
+    /// any non-tool item degrade nothing.
+    /// </summary>
+    public (bool BrokeNow, string? ToolName) DegradeActiveTool()
+    {
+        var item = ActiveItem;
+        if (item is null || item.UsesRemaining is null) return (false, null);
+
+        int next = item.UsesRemaining.Value - 1;
+        if (next <= 0)
+        {
+            _hotbar[_activeHotbarIndex] = null;
+            OnInventoryChanged?.Invoke();
+            return (true, item.Name);
+        }
+        _hotbar[_activeHotbarIndex] = item with { UsesRemaining = next };
+        OnInventoryChanged?.Invoke();
+        return (false, item.Name);
     }
 
     private int FindSlotById(string id)

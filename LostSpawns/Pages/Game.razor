@@ -421,6 +421,19 @@
         Renderer.Camera.Pitch = Math.Clamp(Renderer.Camera.Pitch + 2.5f, -89f, 89f);
     }
 
+    /// <summary>
+    /// Tick the active tool's durability once per successful swing and toast
+    /// on break. Tools with no durability (hands + most items) no-op. Kept
+    /// out of InventoryService so the gameplay-facing toast phrasing lives
+    /// with the other combat / block-break side effects.
+    /// </summary>
+    private void DegradeActiveToolWithFeedback()
+    {
+        var (broke, toolName) = Inventory.DegradeActiveTool();
+        if (broke && toolName is not null)
+            Hud.NotifyWarning($"{toolName} broke");
+    }
+
     private void HandleInteract()
     {
         // Interaction is locked behind active gameplay - pause / inventory / loading
@@ -443,6 +456,7 @@
             Wildlife.ApplyDamage(target, dmg, origin);
             ConsumeBlockActionCost();
             ApplyCameraKick();
+            DegradeActiveToolWithFeedback();
             return;
         }
 
@@ -469,6 +483,7 @@
         // out of range, wrong tool) don't cost anything so the player can re-aim.
         ConsumeBlockActionCost();
         ApplyCameraKick();
+        DegradeActiveToolWithFeedback();
 
         var drop = DropForBlockType(brokenType);
         if (drop is null)

@@ -202,6 +202,7 @@ public class SaveService
                 Name = it.Name,
                 Count = it.Count,
                 Category = (int)it.Category,
+                UsesRemaining = it.UsesRemaining,
             };
         }
         return result;
@@ -214,7 +215,8 @@ public class SaveService
             dto.Id ?? "",
             dto.Name ?? "",
             dto.Count,
-            (ItemCategory)dto.Category);
+            (ItemCategory)dto.Category,
+            dto.UsesRemaining);
     }
 
     public sealed class SaveState
@@ -245,6 +247,7 @@ public class SaveService
         public string? Name { get; set; }
         public int Count { get; set; }
         public int Category { get; set; }
+        public int? UsesRemaining { get; set; }
     }
 
     public sealed class CampfireDto
