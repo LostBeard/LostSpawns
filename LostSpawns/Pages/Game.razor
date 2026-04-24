@@ -1025,9 +1025,12 @@
         if (targetEntity is not null)
         {
             // Hostile tint for entity aim - the crosshair goes red so the
-            // player sees "this is a kill swing" at a glance.
+            // player sees "this is a kill swing" at a glance. Prompt includes
+            // HP % so the player can tell if the next swing will finish the
+            // kill without having to squint at the billboard bar.
             Hud.Crosshair.TargetType = SpawnDev.GameUI.Elements.CrosshairTarget.Hostile;
-            Hud.InteractionPrompt.Text = $"[LMB] Attack {targetEntity.Kind}";
+            int hpPct = (int)(100f * targetEntity.Health / Math.Max(0.001f, targetEntity.MaxHealth));
+            Hud.InteractionPrompt.Text = $"[LMB] Attack {targetEntity.Kind} ({hpPct}%)";
         }
         else if (targetHit.DidHit)
         {
