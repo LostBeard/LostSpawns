@@ -90,6 +90,36 @@ public class PlayerStatsService
         if (applied > 0) OnHealed?.Invoke(applied);
     }
 
+    /// <summary>Hunger drain per real-world second while Tick is called.</summary>
+    public float HungerDecayRate { get; set; } = 0.003f;
+
+    /// <summary>Thirst drain per real-world second. Slightly faster than hunger per PLAN-Survival-Needs.</summary>
+    public float ThirstDecayRate { get; set; } = 0.004f;
+
+    /// <summary>Stamina regen per real-world second (clamped to 1.0).</summary>
+    public float StaminaRegenRate { get; set; } = 0.10f;
+
+    /// <summary>HP drain per real-world second while hunger or thirst is at 0.</summary>
+    public float StarvationDamageRate { get; set; } = 0.005f;
+
+    /// <summary>
+    /// Advance the survival simulation by `dt` seconds. Drains hunger + thirst,
+    /// regens stamina, damages HP when starving or dehydrated. Call from the game
+    /// loop only while unpaused (pausing should stop the tick).
+    /// </summary>
+    public void Tick(float dt)
+    {
+        if (dt <= 0) return;
+        Hunger = _hunger - dt * HungerDecayRate;
+        Thirst = _thirst - dt * ThirstDecayRate;
+        Stamina = _stamina + dt * StaminaRegenRate;
+
+        // Starvation / dehydration HP drain. Either condition alone is enough;
+        // both simultaneously double the rate (two TakeDamage calls).
+        if (_hunger <= 0f) TakeDamage(dt * StarvationDamageRate);
+        if (_thirst <= 0f) TakeDamage(dt * StarvationDamageRate);
+    }
+
     /// <summary>Reset all stats to full (for respawn, new character, test harness).</summary>
     public void ResetToDefaults()
     {

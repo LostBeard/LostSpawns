@@ -216,6 +216,10 @@
             return;
         }
 
+        // Survival simulation runs only while the player is actually playing -
+        // paused / inventory / settings / loading all short-circuit above this point.
+        Stats.Tick(deltaTime);
+
         Renderer.Camera.ProcessKeyboard(Input.KeysDown, deltaTime);
 
         var (dx, dy) = Input.ConsumeMouseDelta();

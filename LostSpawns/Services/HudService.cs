@@ -41,6 +41,11 @@ public class HudService : IDisposable
     private UIProgressBar? _loadingBar;
     private UILabel? _loadingStatus;
 
+    // Last-seen stat values for threshold-cross detection. Start at 1.0 (fed/hydrated)
+    // so the first tick below 0.5 fires a "Peckish"/"Moist" toast.
+    private float _lastHungerSeen = 1f;
+    private float _lastThirstSeen = 1f;
+
     public bool IsInitialized { get; private set; }
 
     /// <summary>True while the pause menu is on top of the screen stack.</summary>
@@ -690,6 +695,31 @@ public class HudService : IDisposable
         {
             ScreenOverlay?.ClearPersistent("lowHealth");
         }
+
+        // Threshold-cross toasts for hunger + thirst. Fires exactly once on the
+        // frame the value drops past each threshold (0.5 / 0.3 / 0.1). Recovery
+        // above a threshold resets it, so eating/drinking and then starving
+        // again re-fires the message chain.
+        CheckHungerThreshold();
+        CheckThirstThreshold();
+    }
+
+    private void CheckHungerThreshold()
+    {
+        float cur = _stats.Hunger, prev = _lastHungerSeen;
+        if (prev > 0.5f && cur <= 0.5f) Notify("Peckish");
+        if (prev > 0.3f && cur <= 0.3f) NotifyWarning("Hungry");
+        if (prev > 0.1f && cur <= 0.1f) NotifyDamage("Starving!");
+        _lastHungerSeen = cur;
+    }
+
+    private void CheckThirstThreshold()
+    {
+        float cur = _stats.Thirst, prev = _lastThirstSeen;
+        if (prev > 0.5f && cur <= 0.5f) Notify("Moist");
+        if (prev > 0.3f && cur <= 0.3f) NotifyWarning("Thirsty");
+        if (prev > 0.1f && cur <= 0.1f) NotifyDamage("Dehydrated!");
+        _lastThirstSeen = cur;
     }
 
     /// <summary>
