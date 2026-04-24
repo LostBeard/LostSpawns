@@ -125,6 +125,16 @@ public class HudService : IDisposable
         _stats.OnDamageTaken += HandleDamageTaken;
         _stats.OnHealed += HandleHealed;
         _weather.OnLightningStrike += HandleLightningStrike;
+        _entities.OnEntityKilled += HandleEntityDespawned;
+    }
+
+    private void HandleEntityDespawned(WanderingEntity e)
+    {
+        // Prevent dead-entity markers from sticking on the minimap after
+        // the entity is gone. The entity loop in Update only re-adds
+        // markers for live entities, so without explicit removal killed
+        // entities leave stale dots.
+        Minimap?.RemoveMarker($"entity.{e.Id}");
     }
 
     private void HandleLightningStrike()
@@ -1467,6 +1477,7 @@ public class HudService : IDisposable
         _stats.OnDamageTaken -= HandleDamageTaken;
         _stats.OnHealed -= HandleHealed;
         _weather.OnLightningStrike -= HandleLightningStrike;
+        _entities.OnEntityKilled -= HandleEntityDespawned;
         if (_renderer != null)
             _renderer.OnPostRender = null;
     }
