@@ -819,9 +819,14 @@
         // system will eventually scale this, but for now rain always bites.
         // Campfire warmth bonus is additive on top - stand next to the fire
         // during a cold rain and the bonus can fully cancel the chill.
+        float warmthBonus = Fires.GetWarmthBonusAt(Renderer.Camera.Position);
         float ambient = Time.TargetTemperature
                       - Weather.RainIntensity * 0.1f
-                      + Fires.GetWarmthBonusAt(Renderer.Camera.Position);
+                      + warmthBonus;
+        // Camping = faster recovery. Multiplier scales with warmth so a
+        // barely-in-range fire helps less than one the player is practically
+        // sitting in, but still beats out-in-the-cold.
+        Stats.HealthRegenMultiplier = warmthBonus > 0 ? 1f + warmthBonus * 3f : 1f;
         Stats.Tick(deltaTime, ambient, sprinting);
         // Wildlife wanders each frame; gated by the same active-play branch so
         // critters hold still while the player is paused / in menus.

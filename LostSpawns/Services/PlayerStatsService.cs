@@ -123,6 +123,13 @@ public class PlayerStatsService
     public float HealthRegenRate { get; set; } = 0.008f;
 
     /// <summary>
+    /// Multiplier applied to HP regen this tick. Game.razor sets this to 2.5
+    /// when the player is inside a campfire's warmth aura so camping speeds
+    /// up recovery. Reset by the caller each frame (no decay in-service).
+    /// </summary>
+    public float HealthRegenMultiplier { get; set; } = 1f;
+
+    /// <summary>
     /// How fast body temperature drifts toward its ambient target. Lower = slower
     /// response; warm clothing / gear effectively reduces this on the consuming side.
     /// </summary>
@@ -175,7 +182,7 @@ public class PlayerStatsService
             _hunger > 0.5f && _thirst > 0.5f && _stamina > 0.5f &&
             _temperature > 0.30f && _temperature < 0.75f)
         {
-            Heal(dt * HealthRegenRate);
+            Heal(dt * HealthRegenRate * HealthRegenMultiplier);
         }
     }
 
