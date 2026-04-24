@@ -1112,9 +1112,45 @@ public class HudService : IDisposable
 
             float x = screenX - size / 2f;
             float y = screenY - size / 2f;
-            _ui.Renderer.DrawRect(x, y, size, size, color);
 
-            // Thin dark outline so the square pops against terrain.
+            // Per-kind silhouette: extra rects that stick out above / below
+            // the body to suggest ears, snout, wings, etc. All decorations
+            // use the same body color so hit flashes apply uniformly.
+            switch (e.Kind)
+            {
+                case EntityKind.Rabbit:
+                    // Body + two small ears on top.
+                    _ui.Renderer.DrawRect(x, y, size, size, color);
+                    float earW = size * 0.18f;
+                    float earH = size * 0.35f;
+                    _ui.Renderer.DrawRect(x + size * 0.20f, y - earH, earW, earH, color);
+                    _ui.Renderer.DrawRect(x + size * 0.62f, y - earH, earW, earH, color);
+                    break;
+                case EntityKind.Boar:
+                    // Wider body + snout sticking right.
+                    _ui.Renderer.DrawRect(x, y + size * 0.1f, size, size * 0.9f, color);
+                    _ui.Renderer.DrawRect(x + size * 0.85f, y + size * 0.35f, size * 0.25f, size * 0.35f, color);
+                    break;
+                case EntityKind.Crow:
+                    // Narrow body + two wing rects flared down-left/right.
+                    _ui.Renderer.DrawRect(x + size * 0.3f, y, size * 0.4f, size, color);
+                    _ui.Renderer.DrawRect(x, y + size * 0.4f, size * 0.4f, size * 0.3f, color);
+                    _ui.Renderer.DrawRect(x + size * 0.6f, y + size * 0.4f, size * 0.4f, size * 0.3f, color);
+                    break;
+                case EntityKind.Wolf:
+                    // Body + head (upper-left block) + tail (upper-right thin).
+                    _ui.Renderer.DrawRect(x, y + size * 0.2f, size, size * 0.8f, color);
+                    _ui.Renderer.DrawRect(x - size * 0.1f, y, size * 0.45f, size * 0.45f, color);
+                    _ui.Renderer.DrawRect(x + size * 0.95f, y + size * 0.15f, size * 0.18f, size * 0.35f, color);
+                    break;
+                default:
+                    _ui.Renderer.DrawRect(x, y, size, size, color);
+                    break;
+            }
+
+            // Thin dark outline around the bounding box of the main body so
+            // the silhouette pops against terrain. Extra-limb rects don't
+            // get their own outline - keeps the code simple + reads fine.
             var border = System.Drawing.Color.FromArgb(200, 10, 10, 15);
             _ui.Renderer.DrawRect(x, y, size, 2, border);
             _ui.Renderer.DrawRect(x, y + size - 2, size, 2, border);
