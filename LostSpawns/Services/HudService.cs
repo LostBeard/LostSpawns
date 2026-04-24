@@ -22,6 +22,7 @@ namespace LostSpawns.Services;
 public class HudService : IDisposable
 {
     private readonly GameUIService _ui;
+    private readonly PlayerStatsService _stats;
     private RenderService? _renderer;
 
     // HUD elements
@@ -46,9 +47,10 @@ public class HudService : IDisposable
     /// <summary>Fired when the player clicks Quit to Menu in the pause menu.</summary>
     public event Action? OnQuitToMenuClicked;
 
-    public HudService(GameUIService ui)
+    public HudService(GameUIService ui, PlayerStatsService stats)
     {
         _ui = ui;
+        _stats = stats;
     }
 
     /// <summary>
@@ -86,12 +88,10 @@ public class HudService : IDisposable
         _ui.Screens.Push("hud");
 
         // === Status bars (bottom-left) ===
+        // Driven by PlayerStatsService. Values push here in Update() so gameplay
+        // systems can write to the stats and the bars animate automatically.
         StatusHUD = new UIStatusHUD { Width = 180 };
-        StatusHUD.Health = 0.85f;
-        StatusHUD.Stamina = 0.6f;
-        StatusHUD.Hunger = 0.45f;
-        StatusHUD.Thirst = 0.7f;
-        StatusHUD.Temperature = 0.5f; // comfortable
+        SyncStatsToHud();
         root.AddAnchored(StatusHUD, Anchor.BottomLeft, offsetX: 16, offsetY: -16);
 
         // === Hotbar (bottom-center) ===
@@ -209,6 +209,15 @@ public class HudService : IDisposable
         _ui.Screens.Pop();
     }
 
+    private void SyncStatsToHud()
+    {
+        StatusHUD.Health = _stats.Health;
+        StatusHUD.Stamina = _stats.Stamina;
+        StatusHUD.Hunger = _stats.Hunger;
+        StatusHUD.Thirst = _stats.Thirst;
+        StatusHUD.Temperature = _stats.Temperature;
+    }
+
     /// <summary>
     /// Update HUD state from game data. Call per frame from the game loop.
     /// </summary>
@@ -219,6 +228,10 @@ public class HudService : IDisposable
         // Update viewport if canvas resized
         if (_renderer!.CanvasWidth != _ui.ViewportWidth || _renderer.CanvasHeight != _ui.ViewportHeight)
             _ui.SetViewport(_renderer.CanvasWidth, _renderer.CanvasHeight);
+
+        // Push current player stats into the StatusHUD bars. Cheap field copy;
+        // UIStatusHUD handles its own dirty/animation tracking internally.
+        SyncStatsToHud();
 
         // Update compass bearing from camera yaw
         Compass.Bearing = cameraYaw;
