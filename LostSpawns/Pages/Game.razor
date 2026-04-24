@@ -288,6 +288,11 @@
         if (dx != 0 || dy != 0)
             Renderer.Camera.ProcessMouseMovement((float)dx, (float)dy);
 
+        // Crosshair turns target-colored when a block is within E-press reach.
+        // Same 5m range as HandleInteract uses so the visual matches actual ability.
+        var targetHit = World.Raycast(Renderer.Camera.Position, Renderer.Camera.Front, 5f);
+        Hud.Crosshair.IsTargeting = targetHit.DidHit;
+
         // Update desired chunks (dispatches GPU tasks, unloads distant chunks + their GPU buffers)
         World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
 
