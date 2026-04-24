@@ -23,6 +23,7 @@ builder.Services.AddSingleton<InventoryService>();
 builder.Services.AddSingleton<CraftingService>();
 builder.Services.AddSingleton<WorldTimeService>();
 builder.Services.AddSingleton<WeatherService>();
+builder.Services.AddSingleton<EntityService>();
 builder.Services.AddSingleton<SaveService>();
 builder.Services.AddSingleton<HudService>();
 

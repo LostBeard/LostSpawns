@@ -28,6 +28,7 @@ public class HudService : IDisposable
     private readonly WorldTimeService _worldTime;
     private readonly CraftingService _crafting;
     private readonly WeatherService _weather;
+    private readonly EntityService _entities;
 
     // Rain particle state. Each particle stores its current Y, per-particle speed,
     // and X (randomized once at spawn). Updated in Update(dt); drawn in OnPostRender
@@ -105,7 +106,7 @@ public class HudService : IDisposable
     /// <summary>True while the death screen is on top of the screen stack.</summary>
     public bool IsDead => _ui.Screens.ActiveScreen == "death";
 
-    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather)
+    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather, EntityService entities)
     {
         _ui = ui;
         _stats = stats;
@@ -114,6 +115,7 @@ public class HudService : IDisposable
         _worldTime = worldTime;
         _crafting = crafting;
         _weather = weather;
+        _entities = entities;
         _inventory.OnInventoryChanged += SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
         _inventory.OnItemConsumed += HandleItemConsumed;
@@ -1205,6 +1207,30 @@ public class HudService : IDisposable
         Minimap.PlayerPosition = new Vector2(cameraPosition.X, cameraPosition.Z);
         Minimap.PlayerAltitude = cameraPosition.Y;
         Minimap.PlayerRotation = cameraYaw * MathF.PI / 180f;
+
+        // Upsert a minimap marker per entity. Removing + re-adding every frame
+        // is cheap for ~5 entities and keeps the marker list in sync with the
+        // mutable entity list (births, deaths, wanders). Marker ID convention:
+        // "entity.{id}" so we don't collide with POIs like "spawn".
+        foreach (var e in _entities.Entities)
+        {
+            string markerId = $"entity.{e.Id}";
+            // EntityKind -> marker type + label colour (live code path since the
+            // marker tint comes from the map widget's MarkerType -> color table).
+            var markerType = e.Kind switch
+            {
+                EntityKind.Boar => MapMarkerType.Enemy,       // red-ish, threat-coded
+                EntityKind.Crow => MapMarkerType.POI,         // neutral, passes through
+                _ => MapMarkerType.OtherPlayer,               // Rabbit: friendly-coded
+            };
+            Minimap.AddMarker(new MapMarker
+            {
+                Id = markerId,
+                Label = e.Kind.ToString(),
+                WorldPosition = new Vector2(e.Position.X, e.Position.Z),
+                Type = markerType,
+            });
+        }
 
         // Update screen overlay effects
         ScreenOverlay.Update(deltaTime);
