@@ -14,6 +14,7 @@
 @inject EntityService Wildlife
 @inject CampfireService Fires
 @inject GroundItemService Ground
+@inject AudioService Audio
 @inject InventoryService Inventory
 @inject SaveService Save
 @inject SpawnDev.BlazorJS.BlazorJSRuntime JS
@@ -121,6 +122,7 @@
         Wildlife.OnContactAttack += HandleEntityContactAttack;
         Fires.OnCooked += HandleCooked;
         Ground.OnPickedUp += HandleGroundPickup;
+        Stats.OnLevelUp += HandleLevelUpSound;
 
         Renderer.OnUpdate = OnGameUpdate;
 
@@ -459,6 +461,7 @@
             ConsumeBlockActionCost();
             ApplyCameraKick();
             DegradeActiveToolWithFeedback();
+            Audio.PlayHit();
             return;
         }
 
@@ -487,6 +490,7 @@
         ApplyCameraKick();
         DegradeActiveToolWithFeedback();
         Stats.AwardXp(1);
+        Audio.PlayHit();
 
         var drop = DropForBlockType(brokenType);
         if (drop is null)
@@ -603,6 +607,7 @@
     {
         Stats.TakeDamage(damage);
         Hud.NotifyDamage($"{e.Kind} hit you!");
+        Audio.PlayDamage();
     }
 
     private void HandleCooked(string cookedName)
@@ -613,7 +618,10 @@
     private void HandleGroundPickup(LostSpawns.Services.InventoryItem payload)
     {
         Hud.NotifySuccess($"+{payload.Count} {payload.Name}");
+        Audio.PlayPickup();
     }
+
+    private void HandleLevelUpSound(int newLevel) => Audio.PlayLevelUp();
 
     private void HandleFeedFire()
     {
@@ -1085,6 +1093,11 @@
 
     private void OnCanvasClick()
     {
+        // Canvas click is a user-gesture so it's the right moment to wake up
+        // the AudioContext (browsers refuse to start audio without one). Safe
+        // to call repeatedly; EnsureActive is idempotent.
+        Audio.EnsureActive();
+
         if (Input.IsPointerLocked) return;
         try
         {
@@ -1118,6 +1131,7 @@
         Wildlife.OnContactAttack -= HandleEntityContactAttack;
         Fires.OnCooked -= HandleCooked;
         Ground.OnPickedUp -= HandleGroundPickup;
+        Stats.OnLevelUp -= HandleLevelUpSound;
 
         Renderer.StopRenderLoop();
         Hud.Dispose();

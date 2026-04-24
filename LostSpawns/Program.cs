@@ -26,6 +26,7 @@ builder.Services.AddSingleton<WeatherService>();
 builder.Services.AddSingleton<EntityService>();
 builder.Services.AddSingleton<CampfireService>();
 builder.Services.AddSingleton<GroundItemService>();
+builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<SaveService>();
 builder.Services.AddSingleton<HudService>();
 
