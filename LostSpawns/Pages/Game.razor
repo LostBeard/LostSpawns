@@ -125,6 +125,7 @@
         Stats.OnLevelUp += HandleLevelUpSound;
         Wildlife.OnEntitySpawned += HandleEntitySpawned;
         Inventory.OnItemConsumed += HandleItemConsumedSound;
+        Inventory.OnItemPickedUp += HandleItemPickedUpSound;
         Weather.OnLightningStrike += HandleLightningSound;
 
         Renderer.OnUpdate = OnGameUpdate;
@@ -637,6 +638,13 @@
     private void HandleGroundPickup(LostSpawns.Services.InventoryItem payload)
     {
         Hud.NotifySuccess($"+{payload.Count} {payload.Name}");
+        // Audio fires from HandleItemPickedUpSound (subscribed to the
+        // InventoryService event) so ground loot + block-drop + crafted
+        // items all make the same sound without a double-play path.
+    }
+
+    private void HandleItemPickedUpSound(LostSpawns.Services.InventoryItem item)
+    {
         Audio.PlayPickup();
     }
 
@@ -1201,6 +1209,7 @@
         Stats.OnLevelUp -= HandleLevelUpSound;
         Wildlife.OnEntitySpawned -= HandleEntitySpawned;
         Inventory.OnItemConsumed -= HandleItemConsumedSound;
+        Inventory.OnItemPickedUp -= HandleItemPickedUpSound;
         Weather.OnLightningStrike -= HandleLightningSound;
 
         Renderer.StopRenderLoop();
