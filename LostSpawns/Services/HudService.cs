@@ -1021,6 +1021,27 @@ public class HudService : IDisposable
                 x + size * 0.32f, yBottom - size * 0.85f,
                 size * 0.36f, size * 0.25f, tip);
 
+            // Smoke wisps: 3 gray puffs rising above the flame, each phase-
+            // offset so they don't stack. Higher rects = older = lower alpha.
+            // Only render for fueled fires - extinguished piles don't smoke.
+            if (f.Fuel > 0.02f)
+            {
+                float smokeTime = t * 3f + f.Id * 0.7f;
+                for (int s = 0; s < 3; s++)
+                {
+                    float phase = (smokeTime + s * 0.33f) % 1f;
+                    float riseY = phase * size * 2.2f;
+                    float drift = MathF.Sin(phase * 6f + s) * size * 0.15f;
+                    int sAlpha = (int)(120 * (1f - phase) * f.Fuel);
+                    if (sAlpha <= 0) continue;
+                    var smoke = System.Drawing.Color.FromArgb(sAlpha, 170, 170, 175);
+                    _ui.Renderer.DrawRect(
+                        x + size * 0.35f + drift,
+                        yBottom - size * 0.95f - riseY,
+                        size * 0.30f, size * 0.18f, smoke);
+                }
+            }
+
             // Fuel bar under the ember. Always shown so the player can see
             // that a fire needs feeding before it's too late.
             float barW = size;
