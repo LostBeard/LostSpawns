@@ -32,6 +32,13 @@ public class WorldService
     // lookups per column hit already-computed blocks instead of regenerating them,
     // avoiding the ~5x CPU work amplification in the initial load path.
     private readonly Dictionary<(int cx, int cz), byte[]> _blocksCache = new();
+
+    // Sparse edit log per column. Key = byte-array index within the column,
+    // value = the new block byte. Only covers player modifications (break/place);
+    // procedural terrain is recreated from the heightmap every time the column
+    // gets generated. SaveService serializes this + load-side re-applies it and
+    // re-meshes affected columns so a chopped tree stays chopped across sessions.
+    private readonly Dictionary<(int cx, int cz), Dictionary<int, byte>> _edits = new();
     // Cap to keep memory bounded on long sessions. 64KB per entry; 512 = 32MB ceiling.
     // UpdateDesiredChunks trims to the draw-distance footprint + 1-ring on each eviction pass.
     private const int MaxCachedBlockColumns = 512;
@@ -342,8 +349,21 @@ public class WorldService
                 var hm = await _engine.GenerateHeightmapAsync(ncx, ncz);
                 neighbor = _generator!.GenerateChunkFromHeightmap(ncx, ncz, hm);
             }
-            _blocksCache[(ncx, ncz)] = neighbor.Blocks;
-            return neighbor.Blocks;
+
+            // If the player has edited this column before (from a prior save or an
+            // earlier in-session visit after unload), overlay those edits onto the
+            // freshly-generated pristine blocks. Keeps broken trees broken and
+            // placed walls present the moment the column re-enters the cache.
+            var blocks = neighbor.Blocks;
+            if (_edits.TryGetValue((ncx, ncz), out var chunkEdits))
+            {
+                foreach (var (idx, val) in chunkEdits)
+                    if ((uint)idx < (uint)blocks.Length)
+                        blocks[idx] = val;
+            }
+
+            _blocksCache[(ncx, ncz)] = blocks;
+            return blocks;
         }
         catch
         {
@@ -462,6 +482,7 @@ public class WorldService
         if (col[idx] != 0) return false;
 
         col[idx] = (byte)type;
+        RecordEdit(cx, cz, idx, (byte)type);
 
         _ = ReMeshColumnAsync(cx, cz);
         if (lx == 0) _ = ReMeshColumnAsync(cx - 1, cz);
@@ -496,6 +517,7 @@ public class WorldService
         if (original == 0) return BlockType.Air;
 
         col[idx] = 0;
+        RecordEdit(cx, cz, idx, 0);
 
         // Re-mesh this column + any edge-neighbor columns that share the boundary.
         _ = ReMeshColumnAsync(cx, cz);
@@ -505,6 +527,72 @@ public class WorldService
         if (lz == ChunkData.SizeXZ - 1) _ = ReMeshColumnAsync(cx, cz + 1);
 
         return (BlockType)original;
+    }
+
+    private void RecordEdit(int cx, int cz, int idx, byte newByte)
+    {
+        if (!_edits.TryGetValue((cx, cz), out var chunkEdits))
+        {
+            chunkEdits = new Dictionary<int, byte>();
+            _edits[(cx, cz)] = chunkEdits;
+        }
+        chunkEdits[idx] = newByte;
+    }
+
+    /// <summary>
+    /// Snapshot every column's edits as a flat list suitable for JSON. Keys are
+    /// a packed "cx,cz" so save files stay compact and schema-stable.
+    /// </summary>
+    public Dictionary<string, Dictionary<int, byte>> GetEditsSnapshot()
+    {
+        var copy = new Dictionary<string, Dictionary<int, byte>>(_edits.Count);
+        foreach (var ((cx, cz), map) in _edits)
+            copy[$"{cx},{cz}"] = new Dictionary<int, byte>(map);
+        return copy;
+    }
+
+    /// <summary>
+    /// Apply an edit snapshot on top of loaded chunks. Any column we have cached
+    /// gets its byte array patched in place. Columns not yet loaded queue their
+    /// edits for when generation later populates the cache (rare once the
+    /// initial radius is up, but keeps correctness around draw-distance edges).
+    /// Returns the list of columns whose mesh should be rebuilt.
+    /// </summary>
+    public IEnumerable<(int cx, int cz)> ApplyEdits(IReadOnlyDictionary<string, Dictionary<int, byte>> edits)
+    {
+        var touched = new HashSet<(int, int)>();
+        foreach (var (key, map) in edits)
+        {
+            if (!TryParseChunkKey(key, out int cx, out int cz)) continue;
+            if (!_edits.TryGetValue((cx, cz), out var chunkEdits))
+            {
+                chunkEdits = new Dictionary<int, byte>();
+                _edits[(cx, cz)] = chunkEdits;
+            }
+            foreach (var (idx, val) in map)
+                chunkEdits[idx] = val;
+
+            if (_blocksCache.TryGetValue((cx, cz), out var col))
+            {
+                foreach (var (idx, val) in map)
+                    if ((uint)idx < (uint)col.Length)
+                        col[idx] = val;
+                touched.Add((cx, cz));
+            }
+        }
+        return touched;
+    }
+
+    /// <summary>Public hook for Game.razor to re-mesh a column after applying saved edits.</summary>
+    public Task ReMeshColumn(int cx, int cz) => ReMeshColumnAsync(cx, cz);
+
+    private static bool TryParseChunkKey(string key, out int cx, out int cz)
+    {
+        cx = 0; cz = 0;
+        int comma = key.IndexOf(',');
+        if (comma <= 0) return false;
+        return int.TryParse(key.AsSpan(0, comma), out cx) &&
+               int.TryParse(key.AsSpan(comma + 1), out cz);
     }
 
     private async Task ReMeshColumnAsync(int cx, int cz)

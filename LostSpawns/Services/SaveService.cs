@@ -30,6 +30,7 @@ public class SaveService
     private readonly PlayerStatsService _stats;
     private readonly InventoryService _inventory;
     private readonly WorldTimeService _worldTime;
+    private readonly WorldService _world;
 
     private static readonly JsonSerializerOptions _json = new()
     {
@@ -38,12 +39,13 @@ public class SaveService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public SaveService(BlazorJSRuntime js, PlayerStatsService stats, InventoryService inventory, WorldTimeService worldTime)
+    public SaveService(BlazorJSRuntime js, PlayerStatsService stats, InventoryService inventory, WorldTimeService worldTime, WorldService world)
     {
         _js = js;
         _stats = stats;
         _inventory = inventory;
         _worldTime = worldTime;
+        _world = world;
     }
 
     /// <summary>
@@ -71,6 +73,7 @@ public class SaveService
                 Backpack = ToDtoArray(_inventory.Backpack),
                 ActiveHotbarIndex = _inventory.ActiveHotbarIndex,
                 DayFraction = _worldTime.DayFraction,
+                WorldEdits = _world.GetEditsSnapshot(),
             };
             string json = JsonSerializer.Serialize(state, _json);
             using var storage = _js.Get<Storage>("localStorage");
@@ -125,6 +128,17 @@ public class SaveService
             // Simpler: just overwrite via reflection? No - add a setter. See
             // note in WorldTimeService.
             _worldTime.SetDayFraction(state.DayFraction);
+
+            // Apply world edits ONTO already-loaded chunks; columns not yet cached
+            // will get the overlay when they later generate (see
+            // WorldService.GetOrGenerateBlocksAsync). Re-mesh the columns that
+            // are loaded now so the visual matches the data immediately.
+            if (state.WorldEdits != null && state.WorldEdits.Count > 0)
+            {
+                var touched = _world.ApplyEdits(state.WorldEdits);
+                foreach (var (cx, cz) in touched)
+                    _ = _world.ReMeshColumn(cx, cz);
+            }
 
             var pos = new System.Numerics.Vector3(state.PosX, state.PosY, state.PosZ);
             return (pos, state.Yaw, state.Pitch);
@@ -194,6 +208,8 @@ public class SaveService
         public InventoryItemDto?[]? Backpack { get; set; }
         public int ActiveHotbarIndex { get; set; }
         public float DayFraction { get; set; }
+        /// <summary>Sparse block edits per chunk. Key = "cx,cz"; inner dict = byte-index -> new block byte.</summary>
+        public Dictionary<string, Dictionary<int, byte>>? WorldEdits { get; set; }
     }
 
     public sealed class InventoryItemDto
