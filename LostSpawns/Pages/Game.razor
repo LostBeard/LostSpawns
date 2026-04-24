@@ -928,6 +928,7 @@
         // days warm; future clothing system can modulate this before passing in.
         Time.Tick(deltaTime);
         Weather.Tick(deltaTime);
+        Audio.UpdateRainAmbient(Weather.RainIntensity);
         // Rain shifts temperature target colder (wet + wind = chill). Clothing
         // system will eventually scale this, but for now rain always bites.
         // Campfire warmth bonus is additive on top - stand next to the fire

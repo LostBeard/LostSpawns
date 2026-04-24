@@ -142,8 +142,68 @@ public class AudioService : IDisposable
         }
     }
 
+    // Persistent rain ambient - one oscillator + gain node reused across the
+    // whole session. Frequency is a high broadband hiss approximation (real
+    // white noise would need a noise buffer - sawtooth at ~1200 Hz is close
+    // enough for ambient rain at low volume).
+    private OscillatorNode? _rainOsc;
+    private GainNode? _rainGain;
+
+    /// <summary>
+    /// Update the rain ambient loop. Intensity is [0, 1]; 0 stops the loop,
+    /// >0 starts it (idempotent) and sets the gain envelope. Call this every
+    /// tick with WeatherService.RainIntensity; AudioService handles the
+    /// start / gain-ramp / stop plumbing internally.
+    /// </summary>
+    public void UpdateRainAmbient(float intensity)
+    {
+        if (_ctx is null) return;
+        try
+        {
+            if (intensity > 0.05f && _rainOsc is null)
+            {
+                // First crossing into rain - spin up the persistent loop.
+                _rainOsc = _ctx.CreateOscillator();
+                _rainGain = _ctx.CreateGain();
+                _rainOsc.Type = "sawtooth";
+                _rainOsc.Frequency.SetValueAtTime(1200f, _ctx.CurrentTime);
+                _rainGain.Gain.SetValueAtTime(0f, _ctx.CurrentTime);
+                _rainOsc.Connect(_rainGain);
+                _rainGain.Connect(_ctx.Destination);
+                _rainOsc.Start();
+            }
+            if (_rainGain is not null)
+            {
+                // Target gain scales with intensity, capped low so it reads as
+                // ambient rain not a fog horn. Ramp to target with a short
+                // time constant so cuts + swells feel smooth.
+                float target = Math.Clamp(intensity * 0.05f, 0f, 0.06f);
+                _rainGain.Gain.LinearRampToValueAtTime(target, _ctx.CurrentTime + 0.5);
+            }
+            if (intensity <= 0.05f && _rainOsc is not null)
+            {
+                // Tear down the loop once rain's fully stopped. Can't Dispose
+                // a started oscillator after Stop(); let the GC clean up once
+                // Stop() schedule completes.
+                _rainGain?.Gain.LinearRampToValueAtTime(0f, _ctx.CurrentTime + 0.3);
+                _rainOsc.Stop((float)(_ctx.CurrentTime + 0.35));
+                _rainOsc.Dispose();
+                _rainGain?.Dispose();
+                _rainOsc = null;
+                _rainGain = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] UpdateRainAmbient failed: {ex.Message}");
+        }
+    }
+
     public void Dispose()
     {
+        try { _rainOsc?.Stop(); } catch { }
+        _rainOsc?.Dispose();
+        _rainGain?.Dispose();
         try { _ctx?.Close(); } catch { }
         _ctx?.Dispose();
         _ctx = null;
