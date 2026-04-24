@@ -22,7 +22,7 @@ namespace LostSpawns.Services;
 /// </summary>
 public class SaveService
 {
-    public const int SaveVersion = 1;
+    public const int SaveVersion = 2;
     public const string SaveKey = "lost.save";
     public const float AutoSaveIntervalSeconds = 10f;
 
@@ -31,6 +31,7 @@ public class SaveService
     private readonly InventoryService _inventory;
     private readonly WorldTimeService _worldTime;
     private readonly WorldService _world;
+    private readonly CampfireService _fires;
 
     private static readonly JsonSerializerOptions _json = new()
     {
@@ -39,13 +40,14 @@ public class SaveService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public SaveService(BlazorJSRuntime js, PlayerStatsService stats, InventoryService inventory, WorldTimeService worldTime, WorldService world)
+    public SaveService(BlazorJSRuntime js, PlayerStatsService stats, InventoryService inventory, WorldTimeService worldTime, WorldService world, CampfireService fires)
     {
         _js = js;
         _stats = stats;
         _inventory = inventory;
         _worldTime = worldTime;
         _world = world;
+        _fires = fires;
     }
 
     /// <summary>
@@ -74,6 +76,15 @@ public class SaveService
                 ActiveHotbarIndex = _inventory.ActiveHotbarIndex,
                 DayFraction = _worldTime.DayFraction,
                 WorldEdits = _world.GetEditsSnapshot(),
+                Campfires = _fires.Fires.Select(f => new CampfireDto
+                {
+                    X = f.Position.X,
+                    Y = f.Position.Y,
+                    Z = f.Position.Z,
+                    Radius = f.Radius,
+                    Intensity = f.Intensity,
+                    Fuel = f.Fuel,
+                }).ToArray(),
             };
             string json = JsonSerializer.Serialize(state, _json);
             using var storage = _js.Get<Storage>("localStorage");
@@ -138,6 +149,21 @@ public class SaveService
                 var touched = _world.ApplyEdits(state.WorldEdits);
                 foreach (var (cx, cz) in touched)
                     _ = _world.ReMeshColumn(cx, cz);
+            }
+
+            // Campfires: wipe the current list (starter fire the service spawned
+            // on load) and repopulate from the save so fuel / position are exact.
+            // Game.razor's starter-fire spawn only runs when Fires.Count == 0, so
+            // restoring here prevents a duplicate.
+            if (state.Campfires != null)
+            {
+                _fires.Fires.Clear();
+                foreach (var dto in state.Campfires)
+                {
+                    var f = _fires.Spawn(new System.Numerics.Vector3(dto.X, dto.Y, dto.Z), dto.Radius);
+                    f.Intensity = dto.Intensity;
+                    f.Fuel = dto.Fuel;
+                }
             }
 
             var pos = new System.Numerics.Vector3(state.PosX, state.PosY, state.PosZ);
@@ -210,6 +236,7 @@ public class SaveService
         public float DayFraction { get; set; }
         /// <summary>Sparse block edits per chunk. Key = "cx,cz"; inner dict = byte-index -> new block byte.</summary>
         public Dictionary<string, Dictionary<int, byte>>? WorldEdits { get; set; }
+        public CampfireDto[]? Campfires { get; set; }
     }
 
     public sealed class InventoryItemDto
@@ -218,5 +245,15 @@ public class SaveService
         public string? Name { get; set; }
         public int Count { get; set; }
         public int Category { get; set; }
+    }
+
+    public sealed class CampfireDto
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
+        public float Radius { get; set; }
+        public float Intensity { get; set; }
+        public float Fuel { get; set; }
     }
 }
