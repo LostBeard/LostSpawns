@@ -113,7 +113,6 @@
         Input.OnDebugDamagePressed += HandleDebugDamage;
         Input.OnDebugHealPressed += HandleDebugHeal;
         Hud.OnResumeClicked += HandleResumeClicked;
-        Hud.OnSettingsClicked += HandleSettingsClicked;
         Hud.OnQuitToMenuClicked += HandleQuitToMenuClicked;
 
         Renderer.OnUpdate = OnGameUpdate;
@@ -127,8 +126,10 @@
 
     private void HandleEscape()
     {
-        // Priority: close inventory first, then toggle pause menu. Prevents the
-        // usual "hit Escape once and two modals fight each other" trap.
+        // Priority unwinds the screen stack one at a time, top first: settings
+        // overlay (pushed from pause menu) -> inventory -> pause. Prevents the
+        // "hit Escape and two modals fight each other" trap.
+        if (Hud.IsSettingsOpen)  { Hud.HideSettings();  return; }
         if (Hud.IsInventoryOpen) { Hud.HideInventory(); return; }
         if (Hud.IsPaused) HandleResumeClicked();
         else Hud.ShowPauseMenu();
@@ -165,11 +166,6 @@
         {
             Console.WriteLine($"[Game] Pointer lock request on resume failed: {ex.Message}");
         }
-    }
-
-    private void HandleSettingsClicked()
-    {
-        Nav.NavigateTo("/settings");
     }
 
     private void HandleQuitToMenuClicked()
@@ -237,7 +233,6 @@
         Input.OnDebugDamagePressed -= HandleDebugDamage;
         Input.OnDebugHealPressed -= HandleDebugHeal;
         Hud.OnResumeClicked -= HandleResumeClicked;
-        Hud.OnSettingsClicked -= HandleSettingsClicked;
         Hud.OnQuitToMenuClicked -= HandleQuitToMenuClicked;
 
         Renderer.StopRenderLoop();

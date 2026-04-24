@@ -24,6 +24,7 @@ public class HudService : IDisposable
     private readonly GameUIService _ui;
     private readonly PlayerStatsService _stats;
     private readonly InventoryService _inventory;
+    private readonly SettingsService _settings;
     private RenderService? _renderer;
     private UIGrid? _backpackGrid;
     private UIGrid? _inventoryHotbarRow;
@@ -45,23 +46,24 @@ public class HudService : IDisposable
     /// <summary>True while the inventory screen is on top of the screen stack.</summary>
     public bool IsInventoryOpen => _ui.Screens.ActiveScreen == "inventory";
 
-    /// <summary>True while any modal overlay (pause, inventory) covers the HUD.</summary>
-    public bool IsAnyMenuOpen => IsPaused || IsInventoryOpen;
+    /// <summary>True while the in-game settings overlay is on top of the screen stack.</summary>
+    public bool IsSettingsOpen => _ui.Screens.ActiveScreen == "settings";
+
+    /// <summary>True while any modal overlay (pause, inventory, settings) covers the HUD.</summary>
+    public bool IsAnyMenuOpen => IsPaused || IsInventoryOpen || IsSettingsOpen;
 
     /// <summary>Fired when the player clicks Resume in the pause menu.</summary>
     public event Action? OnResumeClicked;
 
-    /// <summary>Fired when the player clicks Settings in the pause menu.</summary>
-    public event Action? OnSettingsClicked;
-
     /// <summary>Fired when the player clicks Quit to Menu in the pause menu.</summary>
     public event Action? OnQuitToMenuClicked;
 
-    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory)
+    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings)
     {
         _ui = ui;
         _stats = stats;
         _inventory = inventory;
+        _settings = settings;
         _inventory.OnInventoryChanged += SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
         _stats.OnDamageTaken += HandleDamageTaken;
@@ -171,6 +173,9 @@ public class HudService : IDisposable
         // === Inventory screen (registered but not pushed; Game.razor pushes on I) ===
         _ui.Screens.Register("inventory", BuildInventoryScreen());
 
+        // === Settings overlay (pushed from pause menu or wherever) ===
+        _ui.Screens.Register("settings", BuildSettingsScreen());
+
         // Push current inventory state into both the persistent hotbar and the
         // inventory screen's grid, so first paint matches the data model.
         SyncInventoryToHud();
@@ -223,7 +228,10 @@ public class HudService : IDisposable
             X = 30,
             Y = 136,
         };
-        settings.OnClick = () => OnSettingsClicked?.Invoke();
+        // Opens the in-game overlay ON TOP of the pause menu. Pause stays rendered
+        // behind (dimmed) so the player sees context. Close -> pops back to pause.
+        // Previous behavior (navigate to /settings) tore down the game; gone now.
+        settings.OnClick = () => ShowSettings();
         panel.AddChild(settings);
 
         var quit = new UIButton
@@ -267,6 +275,135 @@ public class HudService : IDisposable
     {
         if (_ui.Screens.ActiveScreen != "inventory") return;
         _ui.Screens.Pop();
+    }
+
+    /// <summary>Push the in-game settings overlay on top of whatever is below.</summary>
+    public void ShowSettings()
+    {
+        if (_ui.Screens.ActiveScreen == "settings") return;
+        _ui.Screens.Push("settings");
+    }
+
+    /// <summary>Pop the settings overlay (back to whatever was below, usually pause menu).</summary>
+    public void HideSettings()
+    {
+        if (_ui.Screens.ActiveScreen != "settings") return;
+        _ui.Screens.Pop();
+    }
+
+    private UIElement BuildSettingsScreen()
+    {
+        var anchor = new UIAnchorPanel
+        {
+            Width = _renderer!.CanvasWidth,
+            Height = _renderer.CanvasHeight,
+        };
+
+        var panel = new UIPanel
+        {
+            Width = 420,
+            Height = 360,
+            CornerRadius = 10,
+        };
+
+        var title = new UILabel
+        {
+            Text = "SETTINGS",
+            FontSize = FontSize.Heading,
+            Width = 420,
+            Height = 36,
+            X = 0,
+            Y = 16,
+            Align = TextAlign.Center,
+        };
+        panel.AddChild(title);
+
+        // Draw Distance slider
+        var drawLabel = new UILabel
+        {
+            Text = $"Draw Distance: {_settings.DrawDistance} chunks",
+            Width = 380,
+            Height = 20,
+            X = 20,
+            Y = 72,
+        };
+        panel.AddChild(drawLabel);
+
+        var drawSlider = new UISlider
+        {
+            MinValue = 4,
+            MaxValue = 32,
+            Value = _settings.DrawDistance,
+            Width = 380,
+            Height = 20,
+            X = 20,
+            Y = 96,
+        };
+        drawSlider.OnChanged = v =>
+        {
+            int chunks = (int)MathF.Round(v);
+            _settings.SaveVideo(chunks, _settings.FieldOfView, _settings.Vsync);
+            drawLabel.Text = $"Draw Distance: {chunks} chunks";
+        };
+        panel.AddChild(drawSlider);
+
+        // Field of View slider
+        var fovLabel = new UILabel
+        {
+            Text = $"Field of View: {(int)_settings.FieldOfView}°",
+            Width = 380,
+            Height = 20,
+            X = 20,
+            Y = 140,
+        };
+        panel.AddChild(fovLabel);
+
+        var fovSlider = new UISlider
+        {
+            MinValue = 50,
+            MaxValue = 120,
+            Value = _settings.FieldOfView,
+            Width = 380,
+            Height = 20,
+            X = 20,
+            Y = 164,
+        };
+        fovSlider.OnChanged = v =>
+        {
+            float fov = MathF.Round(v);
+            _settings.SaveVideo(_settings.DrawDistance, fov, _settings.Vsync);
+            fovLabel.Text = $"Field of View: {(int)fov}°";
+        };
+        panel.AddChild(fovSlider);
+
+        // V-Sync checkbox
+        var vsync = new UICheckbox
+        {
+            Text = "V-Sync",
+            IsChecked = _settings.Vsync,
+            Width = 380,
+            Height = 28,
+            X = 20,
+            Y = 210,
+        };
+        vsync.OnChanged = on =>
+            _settings.SaveVideo(_settings.DrawDistance, _settings.FieldOfView, on);
+        panel.AddChild(vsync);
+
+        // Close button
+        var close = new UIButton
+        {
+            Text = "Close",
+            Width = 220,
+            Height = 44,
+            X = 100,
+            Y = 280,
+        };
+        close.OnClick = () => HideSettings();
+        panel.AddChild(close);
+
+        anchor.AddAnchored(panel, Anchor.Center);
+        return anchor;
     }
 
     private UIElement BuildInventoryScreen()

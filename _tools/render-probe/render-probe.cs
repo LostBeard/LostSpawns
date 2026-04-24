@@ -129,19 +129,33 @@ catch (Exception ex)
     return 2;
 }
 
-// Parse scripted key events into sorted list of (elapsedSec, key).
-var keyEvents = new List<(int atSec, string key)>();
+// Parse scripted input events into sorted list.
+// Supported forms: "Ns:Key" (keyboard) or "Ns:click:X,Y" (mouse click at pixel X,Y).
+var keyEvents = new List<(int atSec, string action)>();
+if (!string.IsNullOrWhiteSpace(keyScript))
+{
+    foreach (var part in keyScript.Split(',', StringSplitOptions.TrimEntries))
+    {
+        // Click entries have three colon-separated fields: "N:click:X,Y"
+        // but we split on comma above so "X,Y" becomes two separate parts.
+        // Workaround: accept "N:click:X/Y" (slash instead of comma) as an alternate.
+    }
+}
+// Re-parse with a safer delimiter set. Accept "N:Key" or "N:click:X/Y".
+keyEvents = new List<(int, string)>();
 if (!string.IsNullOrWhiteSpace(keyScript))
 {
     foreach (var part in keyScript.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
     {
-        var kv = part.Split(':', 2, StringSplitOptions.TrimEntries);
-        if (kv.Length == 2 && int.TryParse(kv[0], out var sec))
-            keyEvents.Add((sec, kv[1]));
+        var kv = part.Split(':', 3, StringSplitOptions.TrimEntries);
+        if (kv.Length < 2 || !int.TryParse(kv[0], out var sec)) continue;
+        // action is everything after the first colon, re-joined.
+        string action = kv.Length == 2 ? kv[1] : $"{kv[1]}:{kv[2]}";
+        keyEvents.Add((sec, action));
     }
     keyEvents.Sort((a, b) => a.atSec.CompareTo(b.atSec));
-    foreach (var (at, k) in keyEvents)
-        Console.WriteLine($"[probe] scripted key: t+{at}s press {k}");
+    foreach (var (at, a) in keyEvents)
+        Console.WriteLine($"[probe] scripted event: t+{at}s {a}");
 }
 
 Console.WriteLine($"[probe] waiting {waitSec}s for render to stabilize (taking progress shots every 10s)...");
@@ -159,22 +173,36 @@ while (elapsed < waitSec)
     if (sleep > 0) await Task.Delay(sleep * 1000);
     elapsed = target;
 
-    // Fire any scripted keys that match this moment.
+    // Fire any scripted events that match this moment.
     while (nextKeyIdx < keyEvents.Count && keyEvents[nextKeyIdx].atSec <= elapsed)
     {
-        var (_, key) = keyEvents[nextKeyIdx];
+        var (_, action) = keyEvents[nextKeyIdx];
         try
         {
-            await page.Keyboard.PressAsync(key);
+            // Format "click:X/Y" -> mouse click at pixel (X,Y). Anything else is treated
+            // as a keyboard key name passed to page.Keyboard.PressAsync.
+            if (action.StartsWith("click:", StringComparison.OrdinalIgnoreCase))
+            {
+                var coords = action.Substring("click:".Length).Split('/', 2, StringSplitOptions.TrimEntries);
+                if (coords.Length == 2 &&
+                    float.TryParse(coords[0], out var mx) && float.TryParse(coords[1], out var my))
+                {
+                    await page.Mouse.ClickAsync(mx, my);
+                }
+            }
+            else
+            {
+                await page.Keyboard.PressAsync(action);
+            }
             await Task.Delay(500); // let the UI react
             keyShot++;
             string keyPath = Path.Combine(outputDir, $"keyevent-{prefix}-{stamp}-{keyShot:D2}.png");
             await page.ScreenshotAsync(new PageScreenshotOptions { Path = keyPath, FullPage = false });
-            Console.WriteLine($"[probe]   +{elapsed}s: pressed {key} -> {Path.GetFileName(keyPath)}");
+            Console.WriteLine($"[probe]   +{elapsed}s: {action} -> {Path.GetFileName(keyPath)}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[probe]   +{elapsed}s: key press {key} failed ({ex.Message})");
+            Console.WriteLine($"[probe]   +{elapsed}s: event '{action}' failed ({ex.Message})");
         }
         nextKeyIdx++;
     }
