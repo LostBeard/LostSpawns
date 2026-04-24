@@ -42,6 +42,7 @@ public sealed class WanderingEntity
     public AlertMode Alert;
     public float AlertTimer;       // seconds remaining in current alert state
     public Vector3 LastAlertSource; // player pos at time of last hit
+    public float HitFlashTimer;    // seconds remaining on the "just got hit" white flash
 }
 
 /// <summary>
@@ -124,6 +125,8 @@ public class EntityService
     {
         foreach (var e in Entities)
         {
+            if (e.HitFlashTimer > 0) e.HitFlashTimer = MathF.Max(0, e.HitFlashTimer - dt);
+
             if (e.Alert != AlertMode.Idle)
             {
                 // Alert states override the wander vector until their timer
@@ -332,6 +335,7 @@ public class EntityService
     {
         if (amount <= 0) return false;
         e.Health = Math.Max(0f, e.Health - amount);
+        e.HitFlashTimer = 0.15f;
         OnEntityHit?.Invoke(e);
 
         if (e.Health <= 0f)

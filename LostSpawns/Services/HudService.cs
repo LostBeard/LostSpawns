@@ -1041,8 +1041,12 @@ public class HudService : IDisposable
             float dist = MathF.Max(0.1f, clip.W);
             float size = Math.Clamp(90f / dist, 6f, 60f);
 
-            // Per-kind color.
-            var color = e.Kind switch
+            // Per-kind color. A recent hit (HitFlashTimer > 0) overrides with
+            // a bright white flash so the player gets a clear "swing landed"
+            // confirmation before the billboard settles back to the kind tint.
+            var color = e.HitFlashTimer > 0
+                ? System.Drawing.Color.FromArgb(250, 255, 255, 255)
+                : e.Kind switch
             {
                 EntityKind.Boar   => System.Drawing.Color.FromArgb(230, 140, 90, 60),   // warm brown
                 EntityKind.Crow   => System.Drawing.Color.FromArgb(230, 30, 30, 30),    // near-black
