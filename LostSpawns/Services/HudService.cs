@@ -448,6 +448,22 @@ public class HudService : IDisposable
         StatusHUD.Hunger = _stats.Hunger;
         StatusHUD.Thirst = _stats.Thirst;
         StatusHUD.Temperature = _stats.Temperature;
+
+        // Persistent low-health vignette. Ramps in from HP 0.3 down to 0 so the
+        // effect intensifies as the player bleeds out. SetPersistent replaces the
+        // same key each frame; ClearPersistent removes it when health recovers.
+        if (_stats.Health < 0.3f)
+        {
+            // 0.3 HP -> alpha 20 (barely visible), 0.0 HP -> alpha 120 (heavy red).
+            float t = 1f - (_stats.Health / 0.3f);
+            int alpha = Math.Clamp((int)(20 + t * 100f), 20, 120);
+            ScreenOverlay?.SetPersistent("lowHealth",
+                System.Drawing.Color.FromArgb(alpha, 180, 0, 0));
+        }
+        else
+        {
+            ScreenOverlay?.ClearPersistent("lowHealth");
+        }
     }
 
     /// <summary>
