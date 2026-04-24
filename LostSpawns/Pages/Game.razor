@@ -110,6 +110,7 @@
         Input.OnCraftingTogglePressed += HandleCraftingToggle;
         Input.OnFeedFirePressed += HandleFeedFire;
         Input.OnSleepPressed += HandleSleep;
+        Input.OnDebugTogglePressed += HandleDebugToggle;
         Input.OnInteractPressed += HandleInteract;
         Input.OnLeftClickPressed += HandleInteract;       // L-click = break, same as E
         Input.OnRightClickPressed += HandlePlaceBlock;    // R-click = place active hotbar material
@@ -710,6 +711,8 @@
         Hud.NotifyWarning("Nothing to interact with");
     }
 
+    private void HandleDebugToggle() => Hud.ToggleDebug();
+
     private void HandleSleep()
     {
         if (Hud.IsAnyMenuOpen) return;
@@ -1202,6 +1205,7 @@
         Input.OnCraftingTogglePressed -= HandleCraftingToggle;
         Input.OnFeedFirePressed -= HandleFeedFire;
         Input.OnSleepPressed -= HandleSleep;
+        Input.OnDebugTogglePressed -= HandleDebugToggle;
         Input.OnInteractPressed -= HandleInteract;
         Input.OnLeftClickPressed -= HandleInteract;
         Input.OnRightClickPressed -= HandlePlaceBlock;

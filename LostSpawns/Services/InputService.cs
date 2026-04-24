@@ -53,6 +53,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on Z key press. Sleep / rest action (context-sensitive).</summary>
     public event Action? OnSleepPressed;
 
+    /// <summary>Fired on F3 key press. Debug HUD toggle.</summary>
+    public event Action? OnDebugTogglePressed;
+
     /// <summary>Fired on left mouse-down while pointer is locked (in-game). Break-block action.</summary>
     public event Action? OnLeftClickPressed;
 
@@ -151,6 +154,10 @@ public class InputService : IAsyncDisposable
         // Sleep / skip-to-dawn on Z - context-sensitive, handler checks fire.
         if (!e.Repeat && (e.Key == "z" || e.Key == "Z"))
             OnSleepPressed?.Invoke();
+
+        // Debug HUD toggle on F3 - Minecraft convention.
+        if (!e.Repeat && e.Key == "F3")
+            OnDebugTogglePressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
         if (!e.Repeat && e.Key == "F9")

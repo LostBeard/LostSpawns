@@ -82,6 +82,13 @@ public class HudService : IDisposable
     private UIProgressBar? _loadingBar;
     private UILabel? _loadingStatus;
     private UILabel? _debugLabel;
+
+    /// <summary>Toggle the debug HUD line (FPS + coords + level). Hot key F3.</summary>
+    public void ToggleDebug()
+    {
+        if (_debugLabel is null) return;
+        _debugLabel.Visible = !_debugLabel.Visible;
+    }
     private float _fpsSmoothed;
     private float _fpsAccumTime;
 
