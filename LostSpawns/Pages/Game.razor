@@ -87,26 +87,12 @@
         Renderer.Camera.Yaw = 45f;
         Renderer.Camera.Pitch = -15f;
 
-        // Initial chunks - small radius for fast startup (streaming fills the rest)
-        var initialCount = await World.GenerateChunksAsync(
-            Renderer.Camera.Position, 4);
-
-        Console.WriteLine($"[Game] Loaded {initialCount} columns, {World.LoadedSections} sections");
-
-        // Queue remaining chunks — GPU kernel generates heightmaps async
-        World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
-
-        Input.Attach();
-
-        // Initialize GPU-rendered HUD overlay (same WebGPU device as voxel renderer)
-        _status = "Initializing HUD...";
-        StateHasChanged();
-
+        // Initialize GPU-rendered HUD overlay FIRST so the loading screen can render
+        // on top of the canvas while GenerateChunksAsync chews through the initial radius.
+        // Previously the player saw a black canvas for ~15s with no feedback.
         Hud.Init(Renderer, _canvasRef);
 
-        // Pause menu wiring. Escape -> show pause (browser releases pointer lock too).
-        // Pointer-lock changes that come from ANY source also toggle the pause menu so
-        // the player is never left in a half-paused / half-playing state if they alt-tab.
+        Input.Attach();
         Input.OnEscapePressed += HandleEscape;
         Input.OnPointerLockChanged += HandlePointerLockChanged;
         Input.OnInventoryTogglePressed += HandleInventoryToggle;
@@ -117,11 +103,42 @@
 
         Renderer.OnUpdate = OnGameUpdate;
 
+        // Swap the HTML "INITIALIZING" splash for the canvas + GameUI loading overlay.
         _ready = true;
         _status = "";
         StateHasChanged();
 
+        // Start RAF so the loading overlay animates while we await chunk generation.
+        // OnGameUpdate short-circuits to Hud.Update-only while Hud.IsLoading, so the
+        // camera + input feed doesn't run yet.
+        Hud.ShowLoadingScreen();
         Renderer.StartRenderLoop();
+
+        // Initial chunks - small radius for fast startup (streaming fills the rest).
+        // Awaited here; OnGameUpdate drives the progress bar from World.LoadedSections.
+        const int InitialRadius = 4;
+        _initialLoadExpectedColumns = CountColumnsInRadius(InitialRadius);
+        var initialCount = await World.GenerateChunksAsync(
+            Renderer.Camera.Position, InitialRadius);
+
+        Console.WriteLine($"[Game] Loaded {initialCount} columns, {World.LoadedSections} sections");
+
+        // Queue remaining chunks — GPU kernel generates heightmaps async
+        World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
+
+        Hud.HideLoadingScreen();
+    }
+
+    private int _initialLoadExpectedColumns = 49; // radius 4 circle fallback
+
+    private static int CountColumnsInRadius(int radius)
+    {
+        int r2 = radius * radius;
+        int count = 0;
+        for (int dx = -radius; dx <= radius; dx++)
+        for (int dz = -radius; dz <= radius; dz++)
+            if (dx * dx + dz * dz <= r2) count++;
+        return count;
     }
 
     private void HandleEscape()
@@ -175,6 +192,20 @@
 
     private void OnGameUpdate(float deltaTime)
     {
+        // During initial terrain load: drive the loading progress bar from
+        // WorldService.LoadedColumns, skip all gameplay input. Same short-circuit
+        // path as other modals so the camera doesn't drift while waiting.
+        if (Hud.IsLoading)
+        {
+            Input.ConsumeMouseDelta();
+            int loaded = World.LoadedColumns;
+            int expected = Math.Max(loaded, _initialLoadExpectedColumns);
+            float fraction = expected > 0 ? (float)loaded / expected : 0f;
+            Hud.SetLoadingProgress(fraction, $"{loaded} / {expected} chunks");
+            Hud.Update(deltaTime, Renderer.Camera.Position, Renderer.Camera.Yaw);
+            return;
+        }
+
         // While any menu is open: don't feed camera movement, mouse look, or FPS
         // counter updates. Chunk streaming + HUD input still run so the menu stays
         // interactive. Drain mouse deltas so resuming doesn't snap the view.

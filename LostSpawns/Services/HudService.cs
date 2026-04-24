@@ -38,6 +38,9 @@ public class HudService : IDisposable
     public UIScreenOverlay ScreenOverlay { get; private set; } = null!;
     public UINotificationStack Notifications { get; private set; } = null!;
 
+    private UIProgressBar? _loadingBar;
+    private UILabel? _loadingStatus;
+
     public bool IsInitialized { get; private set; }
 
     /// <summary>True while the pause menu is on top of the screen stack.</summary>
@@ -49,8 +52,11 @@ public class HudService : IDisposable
     /// <summary>True while the in-game settings overlay is on top of the screen stack.</summary>
     public bool IsSettingsOpen => _ui.Screens.ActiveScreen == "settings";
 
-    /// <summary>True while any modal overlay (pause, inventory, settings) covers the HUD.</summary>
-    public bool IsAnyMenuOpen => IsPaused || IsInventoryOpen || IsSettingsOpen;
+    /// <summary>True while the initial terrain-loading overlay is showing.</summary>
+    public bool IsLoading => _ui.Screens.ActiveScreen == "loading";
+
+    /// <summary>True while any modal overlay (pause, inventory, settings, loading) covers the HUD.</summary>
+    public bool IsAnyMenuOpen => IsPaused || IsInventoryOpen || IsSettingsOpen || IsLoading;
 
     /// <summary>Fired when the player clicks Resume in the pause menu.</summary>
     public event Action? OnResumeClicked;
@@ -176,6 +182,9 @@ public class HudService : IDisposable
         // === Settings overlay (pushed from pause menu or wherever) ===
         _ui.Screens.Register("settings", BuildSettingsScreen());
 
+        // === Loading overlay (pushed by Game.razor during initial chunk load) ===
+        _ui.Screens.Register("loading", BuildLoadingScreen());
+
         // Push current inventory state into both the persistent hotbar and the
         // inventory screen's grid, so first paint matches the data model.
         SyncInventoryToHud();
@@ -289,6 +298,86 @@ public class HudService : IDisposable
     {
         if (_ui.Screens.ActiveScreen != "settings") return;
         _ui.Screens.Pop();
+    }
+
+    /// <summary>Push the loading overlay. Call before starting long-running chunk generation.</summary>
+    public void ShowLoadingScreen()
+    {
+        if (_ui.Screens.ActiveScreen == "loading") return;
+        _ui.Screens.Push("loading");
+    }
+
+    /// <summary>Pop the loading overlay. Call when chunk generation finishes.</summary>
+    public void HideLoadingScreen()
+    {
+        if (_ui.Screens.ActiveScreen != "loading") return;
+        _ui.Screens.Pop();
+    }
+
+    /// <summary>
+    /// Update the progress bar + status label on the loading overlay.
+    /// No-op if the overlay isn't the active screen (safe to call unconditionally).
+    /// </summary>
+    public void SetLoadingProgress(float fraction, string status)
+    {
+        if (_loadingBar != null) _loadingBar.Value = Math.Clamp(fraction, 0f, 1f);
+        if (_loadingStatus != null) _loadingStatus.Text = status;
+    }
+
+    private UIElement BuildLoadingScreen()
+    {
+        var anchor = new UIAnchorPanel
+        {
+            Width = _renderer!.CanvasWidth,
+            Height = _renderer.CanvasHeight,
+        };
+
+        var panel = new UIPanel
+        {
+            Width = 520,
+            Height = 200,
+            CornerRadius = 10,
+        };
+
+        var title = new UILabel
+        {
+            Text = "LOADING TERRAIN",
+            FontSize = FontSize.Heading,
+            Width = 520,
+            Height = 36,
+            X = 0,
+            Y = 32,
+            Align = TextAlign.Center,
+        };
+        panel.AddChild(title);
+
+        _loadingBar = new UIProgressBar
+        {
+            MinValue = 0,
+            MaxValue = 1,
+            Value = 0,
+            ShowPercentage = true,
+            Width = 460,
+            Height = 28,
+            X = 30,
+            Y = 96,
+        };
+        panel.AddChild(_loadingBar);
+
+        _loadingStatus = new UILabel
+        {
+            Text = "Preparing world…",
+            FontSize = FontSize.Caption,
+            Width = 520,
+            Height = 20,
+            X = 0,
+            Y = 140,
+            Align = TextAlign.Center,
+        };
+        panel.AddChild(_loadingStatus);
+
+        anchor.AddAnchored(panel, Anchor.Center);
+        return anchor;
     }
 
     private UIElement BuildSettingsScreen()
