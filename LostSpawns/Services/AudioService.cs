@@ -111,6 +111,14 @@ public class AudioService : IDisposable
         PlayBeep(altPhase ? 130f : 110f, 0.04f, 0.06f, "sine");
     }
 
+    /// <summary>Brief crackle/pop for a campfire ember. Random pitch per call.</summary>
+    public void PlayFireCrackle()
+    {
+        var rng = new Random();
+        float f = 180f + (float)rng.NextDouble() * 120f;
+        PlayBeep(f, 0.05f, 0.04f, "square");
+    }
+
     /// <summary>
     /// Long descending sawtooth for a wolf howl - plays when a wolf spawns
     /// at night so the player hears them arrive before they see them.

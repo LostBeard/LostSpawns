@@ -206,6 +206,12 @@
     // between consecutive steps so left/right foot sound slightly different.
     private float _stepTimer;
     private bool _stepAlt;
+
+    // Fire crackle cadence - seconds between ambient fire pops when the
+    // player is in a fire's warmth aura. Randomized jitter at the fire each
+    // time so crackles don't land on a clock.
+    private float _crackleTimer;
+    private readonly Random _crackleRng = new();
     private float _peakFallSpeed; // max |negative velocity| seen this airborne segment
     private const float Gravity = 20f;         // units/sec^2
     private const float JumpImpulse = 7f;      // units/sec; peak ~1.2 blocks
@@ -929,6 +935,23 @@
         Time.Tick(deltaTime);
         Weather.Tick(deltaTime);
         Audio.UpdateRainAmbient(Weather.RainIntensity);
+
+        // Fire crackle: fires when the player is in a campfire's warmth
+        // radius. Interval is jittered so the pops don't lock onto a clock
+        // and feel alive - real fires don't tick on a metronome.
+        if (Fires.GetWarmthBonusAt(Renderer.Camera.Position) > 0)
+        {
+            _crackleTimer -= deltaTime;
+            if (_crackleTimer <= 0f)
+            {
+                Audio.PlayFireCrackle();
+                _crackleTimer = 0.6f + (float)_crackleRng.NextDouble() * 1.4f;
+            }
+        }
+        else
+        {
+            _crackleTimer = 0f;
+        }
         // Rain shifts temperature target colder (wet + wind = chill). Clothing
         // system will eventually scale this, but for now rain always bites.
         // Campfire warmth bonus is additive on top - stand next to the fire
