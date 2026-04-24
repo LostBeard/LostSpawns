@@ -1119,7 +1119,7 @@ public class HudService : IDisposable
     private void CheckThirstThreshold()
     {
         float cur = _stats.Thirst, prev = _lastThirstSeen;
-        if (prev > 0.5f && cur <= 0.5f) Notify("Moist");
+        if (prev > 0.5f && cur <= 0.5f) Notify("Damp");
         if (prev > 0.3f && cur <= 0.3f) NotifyWarning("Thirsty");
         if (prev > 0.1f && cur <= 0.1f) NotifyDamage("Dehydrated!");
         _lastThirstSeen = cur;
