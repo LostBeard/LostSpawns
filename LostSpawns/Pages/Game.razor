@@ -218,6 +218,10 @@
     // time so crackles don't land on a clock.
     private float _crackleTimer;
     private readonly Random _crackleRng = new();
+
+    // Heartbeat cadence - pulses accelerate as HP drops, silences when the
+    // player recovers past the low-HP threshold.
+    private float _heartbeatTimer;
     private float _peakFallSpeed; // max |negative velocity| seen this airborne segment
     private const float Gravity = 20f;         // units/sec^2
     private const float JumpImpulse = 7f;      // units/sec; peak ~1.2 blocks
@@ -988,6 +992,25 @@
         Time.Tick(deltaTime);
         Weather.Tick(deltaTime);
         Audio.UpdateRainAmbient(Weather.RainIntensity);
+
+        // Low-HP heartbeat. Interval shortens as HP drops so the pulse
+        // accelerates the closer the player gets to dying. Gate at 0.35 so
+        // the sound doesn't fire at "normal" damage levels.
+        if (Stats.Health < 0.35f && !Stats.IsDead)
+        {
+            _heartbeatTimer -= deltaTime;
+            if (_heartbeatTimer <= 0f)
+            {
+                Audio.PlayHeartbeat();
+                // 0.0 HP -> 0.45s interval; 0.35 HP -> 1.1s interval.
+                float norm = Stats.Health / 0.35f; // 1 at threshold, 0 at death
+                _heartbeatTimer = 0.45f + norm * 0.65f;
+            }
+        }
+        else
+        {
+            _heartbeatTimer = 0f;
+        }
 
         // Fire crackle: fires when the player is in a campfire's warmth
         // radius. Interval is jittered so the pops don't lock onto a clock
