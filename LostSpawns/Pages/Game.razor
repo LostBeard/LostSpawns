@@ -9,6 +9,7 @@
 @inject SettingsService Settings
 @inject HudService Hud
 @inject PlayerStatsService Stats
+@inject WorldTimeService Time
 @inject SpawnDev.BlazorJS.BlazorJSRuntime JS
 @inject NavigationManager Nav
 @implements IAsyncDisposable
@@ -222,8 +223,10 @@
             return;
         }
 
-        // Survival simulation runs only while the player is actually playing -
-        // paused / inventory / settings / loading all short-circuit above this point.
+        // Gameplay simulation: time advances, survival stats decay, etc. Paused /
+        // inventory / settings / loading all short-circuit above this point so the
+        // world clock (and hunger/thirst) literally stop while menus are up.
+        Time.Tick(deltaTime);
         Stats.Tick(deltaTime);
 
         Renderer.Camera.ProcessKeyboard(Input.KeysDown, deltaTime);

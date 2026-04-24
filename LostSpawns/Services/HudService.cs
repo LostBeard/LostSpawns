@@ -25,9 +25,11 @@ public class HudService : IDisposable
     private readonly PlayerStatsService _stats;
     private readonly InventoryService _inventory;
     private readonly SettingsService _settings;
+    private readonly WorldTimeService _worldTime;
     private RenderService? _renderer;
     private UIGrid? _backpackGrid;
     private UIGrid? _inventoryHotbarRow;
+    private UILabel? _clockLabel;
 
     // HUD elements
     public UIStatusHUD StatusHUD { get; private set; } = null!;
@@ -69,12 +71,13 @@ public class HudService : IDisposable
     /// <summary>Fired when the player clicks Quit to Menu in the pause menu.</summary>
     public event Action? OnQuitToMenuClicked;
 
-    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings)
+    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime)
     {
         _ui = ui;
         _stats = stats;
         _inventory = inventory;
         _settings = settings;
+        _worldTime = worldTime;
         _inventory.OnInventoryChanged += SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
         _inventory.OnItemConsumed += HandleItemConsumed;
@@ -169,6 +172,17 @@ public class HudService : IDisposable
         // === Compass (top-center) ===
         Compass = new UICompass { Width = 200 };
         root.AddAnchored(Compass, Anchor.TopCenter, offsetY: 12);
+
+        // === Clock (top-left) - "HH:MM  Phase" tick-updated from WorldTimeService ===
+        _clockLabel = new UILabel
+        {
+            Text = "06:00  Dawn",
+            FontSize = FontSize.Body,
+            Width = 180,
+            Height = 24,
+            Align = TextAlign.Left,
+        };
+        root.AddAnchored(_clockLabel, Anchor.TopLeft, offsetX: 16, offsetY: 16);
 
         // === Minimap (top-right) ===
         Minimap = new UIMapPanel { Width = 160, Height = 160 };
@@ -754,6 +768,10 @@ public class HudService : IDisposable
         // Push current player stats into the StatusHUD bars. Cheap field copy;
         // UIStatusHUD handles its own dirty/animation tracking internally.
         SyncStatsToHud();
+
+        // Refresh the clock label from WorldTimeService (cheap string format).
+        if (_clockLabel != null)
+            _clockLabel.Text = $"{_worldTime.ClockString}  {_worldTime.PhaseName}";
 
         // Update compass bearing from camera yaw
         Compass.Bearing = cameraYaw;

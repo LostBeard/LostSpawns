@@ -20,6 +20,7 @@ namespace LostSpawns.Services;
 public class RenderService : IDisposable
 {
     private readonly BlazorJSRuntime _js;
+    private readonly WorldTimeService _worldTime;
 
     private GPUDevice? _device;
     private GPUQueue? _queue;
@@ -69,9 +70,10 @@ public class RenderService : IDisposable
     public int TotalSectionCount => _world?.LoadedSections ?? 0;
     public int TotalColumnCount => _world?.LoadedColumns ?? 0;
 
-    public RenderService(BlazorJSRuntime js)
+    public RenderService(BlazorJSRuntime js, WorldTimeService worldTime)
     {
         _js = js;
+        _worldTime = worldTime;
     }
 
     public void Init(HTMLCanvasElement canvas, Accelerator accelerator, WorldService world)
@@ -190,10 +192,11 @@ public class RenderService : IDisposable
         var frustum = FrustumCuller.ExtractPlanes(vp);
         var cameraPos = Camera.Position;
 
-        // DayZ-style muted atmosphere
-        var fogColor = new Vector3(0.45f, 0.48f, 0.52f);
-        float fogDensity = 0.006f;
-        var ambientColor = new Vector3(0.25f, 0.26f, 0.30f);
+        // Atmosphere driven by the day-night cycle. Keyframe interpolation in
+        // WorldTimeService handles smooth transitions between dawn/day/dusk/night.
+        var fogColor = _worldTime.FogColor;
+        float fogDensity = _worldTime.FogDensity;
+        var ambientColor = _worldTime.AmbientColor;
 
         using var colorTexture = _context.GetCurrentTexture();
         using var colorView = colorTexture.CreateView();
