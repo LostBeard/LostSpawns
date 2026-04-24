@@ -66,6 +66,10 @@ public class WorldTimeService
         }
     }
 
+    /// <summary>True during the dark portion of the cycle. Used by night-only
+    /// spawners (e.g. wolves) and any gameplay code that cares about visibility.</summary>
+    public bool IsNight => DayFraction >= 0.58f || DayFraction < 0.08f;
+
     /// <summary>
     /// Target core-temperature comfort [0,1] that the player drifts toward based on
     /// time of day. 0.5 = comfortable; lower = colder ambient; higher = hotter.

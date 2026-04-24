@@ -537,6 +537,7 @@
         LostSpawns.Services.EntityKind.Rabbit => new("food.rabbit_meat", "Rabbit Meat", 1, LostSpawns.Services.ItemCategory.Food),
         LostSpawns.Services.EntityKind.Boar   => new("food.boar_meat",   "Boar Meat",   2, LostSpawns.Services.ItemCategory.Food),
         LostSpawns.Services.EntityKind.Crow   => new("material.feather", "Feather",     1, LostSpawns.Services.ItemCategory.Material),
+        LostSpawns.Services.EntityKind.Wolf   => new("material.pelt",    "Wolf Pelt",   1, LostSpawns.Services.ItemCategory.Material),
         _ => null,
     };
 
@@ -735,7 +736,7 @@
         Stats.Tick(deltaTime, ambient, sprinting);
         // Wildlife wanders each frame; gated by the same active-play branch so
         // critters hold still while the player is paused / in menus.
-        Wildlife.Tick(deltaTime, World, Renderer.Camera.Position);
+        Wildlife.Tick(deltaTime, World, Renderer.Camera.Position, Time.IsNight);
         // Campfire cook tick - converts raw meat to cooked while the player
         // loiters inside the warmth radius. Reset logic lives in the service
         // so we don't have to track proximity state here too.

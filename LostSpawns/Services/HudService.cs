@@ -1050,6 +1050,7 @@ public class HudService : IDisposable
             {
                 EntityKind.Boar   => System.Drawing.Color.FromArgb(230, 140, 90, 60),   // warm brown
                 EntityKind.Crow   => System.Drawing.Color.FromArgb(230, 30, 30, 30),    // near-black
+                EntityKind.Wolf   => System.Drawing.Color.FromArgb(230, 130, 130, 150), // blue-gray predator
                 _                 => System.Drawing.Color.FromArgb(230, 200, 190, 180), // rabbit gray
             };
 
@@ -1064,8 +1065,11 @@ public class HudService : IDisposable
             _ui.Renderer.DrawRect(x, y, 2, size, border);
             _ui.Renderer.DrawRect(x + size - 2, y, 2, size, border);
 
-            // HP bar above the body when HP < 1.
-            if (e.Health < 1f)
+            // HP bar above the body when damaged. Bar fill normalizes to the
+            // entity's MaxHealth so wolves (1.8 HP) and boars (1.5 HP) read as
+            // "full" when undamaged instead of already showing a partial bar.
+            float maxHp = MathF.Max(e.MaxHealth, 0.001f);
+            if (e.Health < maxHp)
             {
                 float barW = size;
                 float barH = 4f;
@@ -1073,7 +1077,7 @@ public class HudService : IDisposable
                 float barY = y - 8f;
                 _ui.Renderer.DrawRect(barX, barY, barW, barH,
                     System.Drawing.Color.FromArgb(200, 40, 10, 10));
-                _ui.Renderer.DrawRect(barX, barY, barW * Math.Clamp(e.Health, 0f, 1f), barH,
+                _ui.Renderer.DrawRect(barX, barY, barW * Math.Clamp(e.Health / maxHp, 0f, 1f), barH,
                     System.Drawing.Color.FromArgb(255, 220, 60, 60));
             }
 
@@ -1085,7 +1089,7 @@ public class HudService : IDisposable
             float textPx = Math.Clamp(22f * (size / 40f), 10f, 22f);
             float textW = _ui.Renderer.MeasureText(label, textPx);
             float textX = screenX - textW / 2f;
-            float textY = (e.Health < 1f ? y - 24f : y - 16f);
+            float textY = (e.Health < maxHp ? y - 24f : y - 16f);
             _ui.Renderer.DrawText(label, textX, textY, textPx,
                 System.Drawing.Color.FromArgb(230, 235, 235, 240));
         }
@@ -1373,6 +1377,7 @@ public class HudService : IDisposable
             var markerType = e.Kind switch
             {
                 EntityKind.Boar => MapMarkerType.Enemy,       // red-ish, threat-coded
+                EntityKind.Wolf => MapMarkerType.Enemy,       // also threat - night predator
                 EntityKind.Crow => MapMarkerType.POI,         // neutral, passes through
                 _ => MapMarkerType.OtherPlayer,               // Rabbit: friendly-coded
             };
