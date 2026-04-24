@@ -200,6 +200,11 @@
     // the fly-forever behavior of the old code.
     private float _verticalVelocity;
     private bool _grounded;
+
+    // Footstep audio cadence - ticks between footfalls. Alternates pitch
+    // between consecutive steps so left/right foot sound slightly different.
+    private float _stepTimer;
+    private bool _stepAlt;
     private float _peakFallSpeed; // max |negative velocity| seen this airborne segment
     private const float Gravity = 20f;         // units/sec^2
     private const float JumpImpulse = 7f;      // units/sec; peak ~1.2 blocks
@@ -1020,11 +1025,24 @@
             float targetX = MathF.Sin(_bobPhase * 0.5f) * BobAmplitudeX;
             _bobCurrentY = ExpApproach(_bobCurrentY, targetY, BobSmoothing, deltaTime);
             _bobCurrentX = ExpApproach(_bobCurrentX, targetX, BobSmoothing, deltaTime);
+
+            // Step audio: one tick per footfall (half the bob cycle). Tracks
+            // floor(sin-phase) zero-crossings so sprint produces more steps
+            // than walking without a second timer.
+            _stepTimer += deltaTime;
+            float stepInterval = sprinting ? 0.33f : 0.48f;
+            if (_stepTimer >= stepInterval)
+            {
+                _stepTimer = 0;
+                _stepAlt = !_stepAlt;
+                Audio.PlayStep(_stepAlt);
+            }
         }
         else
         {
             _bobCurrentY = ExpApproach(_bobCurrentY, 0f, BobSmoothing, deltaTime);
             _bobCurrentX = ExpApproach(_bobCurrentX, 0f, BobSmoothing, deltaTime);
+            _stepTimer = 0;
         }
 
         var camNow = Renderer.Camera.Position;

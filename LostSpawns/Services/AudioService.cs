@@ -102,6 +102,15 @@ public class AudioService : IDisposable
         PlayBeep(220f, 0.18f, 0.25f, "sawtooth");
     }
 
+    /// <summary>
+    /// Quiet low-pitched thump for each footstep. Alternating high/low
+    /// phase keeps two consecutive steps from sounding identical.
+    /// </summary>
+    public void PlayStep(bool altPhase)
+    {
+        PlayBeep(altPhase ? 130f : 110f, 0.04f, 0.06f, "sine");
+    }
+
     public void Dispose()
     {
         try { _ctx?.Close(); } catch { }
