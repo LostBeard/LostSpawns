@@ -119,6 +119,14 @@ public class HudService : IDisposable
         _inventory.OnItemConsumed += HandleItemConsumed;
         _stats.OnDamageTaken += HandleDamageTaken;
         _stats.OnHealed += HandleHealed;
+        _weather.OnLightningStrike += HandleLightningStrike;
+    }
+
+    private void HandleLightningStrike()
+    {
+        // Bright white + pale-blue flash, 0.25s fade. Alpha deliberately high so
+        // the strike reads as a real lightning bolt through closed eyes.
+        ScreenOverlay?.Flash(System.Drawing.Color.FromArgb(230, 240, 245, 255), 0.25f);
     }
 
     private void HandleItemConsumed(string name, string verb, ItemEffect effect)
@@ -1241,6 +1249,7 @@ public class HudService : IDisposable
         _inventory.OnItemConsumed -= HandleItemConsumed;
         _stats.OnDamageTaken -= HandleDamageTaken;
         _stats.OnHealed -= HandleHealed;
+        _weather.OnLightningStrike -= HandleLightningStrike;
         if (_renderer != null)
             _renderer.OnPostRender = null;
     }

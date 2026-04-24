@@ -30,6 +30,13 @@ public class WeatherService
     private readonly Random _rng;
     private float _phaseTimeLeft;
     private bool _rainPhase;
+    private float _lightningCountdown;
+
+    /// <summary>Fired when a lightning strike should flash the screen (heavy rain only).</summary>
+    public event Action? OnLightningStrike;
+
+    /// <summary>Rain intensity above which lightning can trigger.</summary>
+    public float LightningThreshold { get; set; } = 0.55f;
 
     public WeatherService()
     {
@@ -53,7 +60,26 @@ public class WeatherService
         _phaseTimeLeft -= dt;
         if (_phaseTimeLeft <= 0)
             ScheduleNextPhase(clearStart: false);
+
+        // Lightning: while intensity is above threshold, tick a per-strike countdown.
+        // When it hits zero, fire a strike and reseed. Timer resets whenever rain
+        // falls below threshold so the first strike of a storm has a random delay.
+        if (RainIntensity < LightningThreshold)
+        {
+            _lightningCountdown = NextLightningDelay();
+        }
+        else
+        {
+            _lightningCountdown -= dt;
+            if (_lightningCountdown <= 0)
+            {
+                OnLightningStrike?.Invoke();
+                _lightningCountdown = NextLightningDelay();
+            }
+        }
     }
+
+    private float NextLightningDelay() => 12f + (float)_rng.NextDouble() * 16f;
 
     private void ScheduleNextPhase(bool clearStart)
     {
