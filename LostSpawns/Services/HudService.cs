@@ -35,6 +35,7 @@ public class HudService : IDisposable
     public UICompass Compass { get; private set; } = null!;
     public UIMapPanel Minimap { get; private set; } = null!;
     public UIScreenOverlay ScreenOverlay { get; private set; } = null!;
+    public UINotificationStack Notifications { get; private set; } = null!;
 
     public bool IsInitialized { get; private set; }
 
@@ -134,6 +135,13 @@ public class HudService : IDisposable
             AlwaysShowLabel = true,
         });
         root.AddAnchored(Minimap, Anchor.TopRight, offsetX: -12, offsetY: 12);
+
+        // === Notification stack (below the minimap, top-right) ===
+        // Slides in from the right; fades + drops after DefaultDuration seconds.
+        // Any gameplay system can call Hud.Notify* to surface feedback without
+        // reaching into GameUI internals.
+        Notifications = new UINotificationStack { Width = 260 };
+        root.AddAnchored(Notifications, Anchor.TopRight, offsetX: -12, offsetY: 180);
 
         // === Screen overlay (damage flash, fade effects) ===
         ScreenOverlay = new UIScreenOverlay();
@@ -361,7 +369,28 @@ public class HudService : IDisposable
     {
         if (Hotbar != null) Hotbar.SelectedSlot = idx;
         if (_inventoryHotbarRow != null) _inventoryHotbarRow.SelectedIndex = idx;
+
+        // Small toast so changing slots feels responsive. Empty slot -> no message.
+        var item = _inventory.Hotbar[idx];
+        if (item != null)
+            Notify($"Equipped: {item.Name}");
     }
+
+    /// <summary>Push a toast notification onto the HUD. Fades and drops automatically.</summary>
+    public void Notify(string text, NotificationType type = NotificationType.Info)
+        => Notifications?.Push(text, type);
+
+    /// <summary>Green-accent success toast (pickup, craft success, XP gain).</summary>
+    public void NotifySuccess(string text) => Notify(text, NotificationType.Success);
+
+    /// <summary>Yellow-accent warning toast (low stamina, nearby danger).</summary>
+    public void NotifyWarning(string text) => Notify(text, NotificationType.Warning);
+
+    /// <summary>Red-accent damage toast (hit, break, loss).</summary>
+    public void NotifyDamage(string text) => Notify(text, NotificationType.Damage);
+
+    /// <summary>Purple-accent achievement toast (milestone, unlock).</summary>
+    public void NotifyAchievement(string text) => Notify(text, NotificationType.Achievement);
 
     private void SyncInventoryToHud()
     {
