@@ -30,6 +30,7 @@ public class HudService : IDisposable
     private readonly WeatherService _weather;
     private readonly EntityService _entities;
     private readonly CampfireService _fires;
+    private readonly GroundItemService _ground;
 
     // Rain particle state. Each particle stores its current Y, per-particle speed,
     // and X (randomized once at spawn). Updated in Update(dt); drawn in OnPostRender
@@ -107,7 +108,7 @@ public class HudService : IDisposable
     /// <summary>True while the death screen is on top of the screen stack.</summary>
     public bool IsDead => _ui.Screens.ActiveScreen == "death";
 
-    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather, EntityService entities, CampfireService fires)
+    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather, EntityService entities, CampfireService fires, GroundItemService ground)
     {
         _ui = ui;
         _stats = stats;
@@ -118,6 +119,7 @@ public class HudService : IDisposable
         _weather = weather;
         _entities = entities;
         _fires = fires;
+        _ground = ground;
         _inventory.OnInventoryChanged += SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
         _inventory.OnItemConsumed += HandleItemConsumed;
@@ -1065,6 +1067,48 @@ public class HudService : IDisposable
         _ui.Renderer.DrawRect(barX, barY, barW * ratio, barH, full);
     }
 
+    /// <summary>
+    /// Project each GroundItem into screen space and draw a small colored
+    /// marker so the player can see dropped loot before they step on it.
+    /// Color comes from the item's ItemCategory via the existing GlyphColor
+    /// table so Food bags look orange, Material bags tan, etc.
+    /// </summary>
+    private void DrawGroundItems(int viewportWidth, int viewportHeight)
+    {
+        if (_renderer == null || _ground.Items.Count == 0) return;
+
+        float aspect = (float)viewportWidth / viewportHeight;
+        var vp = _renderer.Camera.GetVpMatrix(aspect);
+
+        foreach (var g in _ground.Items)
+        {
+            var worldPos = new System.Numerics.Vector4(
+                g.Position.X, g.Position.Y + 0.2f, g.Position.Z, 1f);
+            var clip = System.Numerics.Vector4.Transform(worldPos, vp);
+            if (clip.W <= 0.001f) continue;
+
+            float ndcX = clip.X / clip.W;
+            float ndcY = clip.Y / clip.W;
+            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
+            if (screenX < -50 || screenX > viewportWidth + 50) continue;
+            if (screenY < -50 || screenY > viewportHeight + 50) continue;
+
+            float dist = MathF.Max(0.1f, clip.W);
+            float size = Math.Clamp(32f / dist, 4f, 22f);
+
+            var tint = CategoryColor(g.Payload)
+                       ?? System.Drawing.Color.FromArgb(230, 220, 220, 220);
+
+            float x = screenX - size / 2f;
+            float y = screenY - size / 2f;
+            _ui.Renderer.DrawRect(x, y, size, size, tint);
+            // Dark bottom shadow so the bag reads as sitting on ground not floating.
+            _ui.Renderer.DrawRect(x, y + size, size, 2f,
+                System.Drawing.Color.FromArgb(180, 10, 10, 15));
+        }
+    }
+
     private void DrawEntityBillboards(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null || _entities.Entities.Count == 0) return;
@@ -1528,6 +1572,10 @@ public class HudService : IDisposable
             // Campfires render first so entity billboards paint on top - a
             // critter standing in front of the fire occludes it naturally.
             DrawCampfires(viewportWidth, viewportHeight);
+
+            // Ground items render between fires and entities - they're on the
+            // ground so wildlife and fire particles both correctly sit above.
+            DrawGroundItems(viewportWidth, viewportHeight);
 
             // Entity billboards: 2D colored squares at each entity's projected
             // screen position. Renders on top of terrain, below rain + flashes.

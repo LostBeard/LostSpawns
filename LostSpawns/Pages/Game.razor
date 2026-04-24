@@ -13,6 +13,7 @@
 @inject WeatherService Weather
 @inject EntityService Wildlife
 @inject CampfireService Fires
+@inject GroundItemService Ground
 @inject InventoryService Inventory
 @inject SaveService Save
 @inject SpawnDev.BlazorJS.BlazorJSRuntime JS
@@ -119,6 +120,7 @@
         Wildlife.OnEntityKilled += HandleEntityKilled;
         Wildlife.OnContactAttack += HandleEntityContactAttack;
         Fires.OnCooked += HandleCooked;
+        Ground.OnPickedUp += HandleGroundPickup;
 
         Renderer.OnUpdate = OnGameUpdate;
 
@@ -575,9 +577,12 @@
         var drop = LootForEntityKind(e.Kind);
         if (drop is null) { Hud.Notify($"Killed {e.Kind}"); return; }
 
-        bool added = Inventory.TryAdd(drop);
-        if (added) Hud.NotifySuccess($"+{drop.Count} {drop.Name}");
-        else Hud.NotifyWarning($"Inventory full - {drop.Name} lost");
+        // Loot now lands on the ground at the entity's death position -
+        // walking over it auto-picks it up (see GroundItemService.Tick).
+        // Makes kills visually meaningful + keeps loot out of inventory
+        // when it's already full, so nothing's silently lost.
+        Ground.Drop(e.Position, drop);
+        Hud.Notify($"Killed {e.Kind} - drop on the ground");
     }
 
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
@@ -589,6 +594,11 @@
     private void HandleCooked(string cookedName)
     {
         Hud.NotifySuccess($"Cooked {cookedName}");
+    }
+
+    private void HandleGroundPickup(LostSpawns.Services.InventoryItem payload)
+    {
+        Hud.NotifySuccess($"+{payload.Count} {payload.Name}");
     }
 
     private void HandleFeedFire()
@@ -898,6 +908,7 @@
         // loiters inside the warmth radius. Reset logic lives in the service
         // so we don't have to track proximity state here too.
         Fires.Tick(deltaTime, Renderer.Camera.Position, Inventory);
+        Ground.Tick(Renderer.Camera.Position, Inventory);
 
         // Auto-save every SaveService.AutoSaveIntervalSeconds seconds of active
         // play. Never fires while in a menu (we're gated above by IsAnyMenuOpen).
@@ -1070,6 +1081,7 @@
         Wildlife.OnEntityKilled -= HandleEntityKilled;
         Wildlife.OnContactAttack -= HandleEntityContactAttack;
         Fires.OnCooked -= HandleCooked;
+        Ground.OnPickedUp -= HandleGroundPickup;
 
         Renderer.StopRenderLoop();
         Hud.Dispose();
