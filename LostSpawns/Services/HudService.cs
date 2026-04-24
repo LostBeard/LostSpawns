@@ -219,7 +219,7 @@ public class HudService : IDisposable
         // === Status bars (bottom-left) ===
         // Driven by PlayerStatsService. Values push here in Update() so gameplay
         // systems can write to the stats and the bars animate automatically.
-        StatusHUD = new UIStatusHUD { Width = 180 };
+        StatusHUD = new UIStatusHUD { Width = 180, ShowAllPercentages = true };
         SyncStatsToHud();
         root.AddAnchored(StatusHUD, Anchor.BottomLeft, offsetX: 16, offsetY: -16);
 
