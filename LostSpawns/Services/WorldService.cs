@@ -415,6 +415,38 @@ public class WorldService
     }
 
     /// <summary>
+    /// Place the given block type at the world-space integer voxel position.
+    /// Returns true on success, false if the target is out of bounds, in an unloaded
+    /// chunk, or already occupied by a non-air block (no overwriting existing geometry).
+    /// Re-meshes the affected column + XZ neighbors if the block sits on a boundary.
+    /// </summary>
+    public bool TryPlaceBlock(int worldX, int worldY, int worldZ, BlockType type)
+    {
+        if (type == BlockType.Air) return false;
+        if (worldY < 0 || worldY >= ChunkData.Height) return false;
+
+        int cx = (int)MathF.Floor(worldX / (float)ChunkData.SizeXZ);
+        int cz = (int)MathF.Floor(worldZ / (float)ChunkData.SizeXZ);
+        if (!_blocksCache.TryGetValue((cx, cz), out var col)) return false;
+
+        int lx = worldX - cx * ChunkData.SizeXZ;
+        int lz = worldZ - cz * ChunkData.SizeXZ;
+        int idx = lx + lz * ChunkData.SizeXZ + worldY * ChunkData.SizeXZ * ChunkData.SizeXZ;
+
+        if (col[idx] != 0) return false;
+
+        col[idx] = (byte)type;
+
+        _ = ReMeshColumnAsync(cx, cz);
+        if (lx == 0) _ = ReMeshColumnAsync(cx - 1, cz);
+        if (lx == ChunkData.SizeXZ - 1) _ = ReMeshColumnAsync(cx + 1, cz);
+        if (lz == 0) _ = ReMeshColumnAsync(cx, cz - 1);
+        if (lz == ChunkData.SizeXZ - 1) _ = ReMeshColumnAsync(cx, cz + 1);
+
+        return true;
+    }
+
+    /// <summary>
     /// Break the block at the given world-space integer voxel position. Zeroes the
     /// byte in the column cache, fires off a re-mesh of the affected column (and any
     /// XZ-neighbor column if the block sat on the boundary), and returns the

@@ -99,6 +99,8 @@
         Input.OnPointerLockChanged += HandlePointerLockChanged;
         Input.OnInventoryTogglePressed += HandleInventoryToggle;
         Input.OnInteractPressed += HandleInteract;
+        Input.OnLeftClickPressed += HandleInteract;       // L-click = break, same as E
+        Input.OnRightClickPressed += HandlePlaceBlock;    // R-click = place active hotbar material
         Input.OnDebugDamagePressed += HandleDebugDamage;
         Input.OnDebugHealPressed += HandleDebugHeal;
         Hud.OnResumeClicked += HandleResumeClicked;
@@ -210,6 +212,43 @@
         LostSpawns.Models.BlockType.Sand   => new("material.sand",   "Sand",   1, LostSpawns.Services.ItemCategory.Material),
         _ => null,
     };
+
+    private static LostSpawns.Models.BlockType? BlockTypeForItemId(string id) => id switch
+    {
+        "material.wood"   => LostSpawns.Models.BlockType.Wood,
+        "material.stone"  => LostSpawns.Models.BlockType.Stone,
+        "material.dirt"   => LostSpawns.Models.BlockType.Dirt,
+        "material.sand"   => LostSpawns.Models.BlockType.Sand,
+        "material.leaves" => LostSpawns.Models.BlockType.Leaves,
+        _ => null,
+    };
+
+    private void HandlePlaceBlock()
+    {
+        if (Hud.IsAnyMenuOpen) return;
+
+        var item = Inventory.ActiveItem;
+        if (item is null) return;
+
+        var blockType = BlockTypeForItemId(item.Id);
+        if (blockType is null) return; // active slot isn't a placeable material
+
+        var hit = World.Raycast(Renderer.Camera.Position, Renderer.Camera.Front, 5f);
+        if (!hit.DidHit) return;
+
+        bool placed = World.TryPlaceBlock(hit.AdjacentX, hit.AdjacentY, hit.AdjacentZ, blockType.Value);
+        if (!placed) return;
+
+        // Decrement active hotbar slot. Clearing at 0 leaves the slot empty so the
+        // player can't keep placing out of thin air.
+        int slot = Inventory.ActiveHotbarIndex;
+        if (item.Count > 1)
+            Inventory.SetHotbar(slot, item with { Count = item.Count - 1 });
+        else
+            Inventory.SetHotbar(slot, null);
+
+        Hud.NotifySuccess($"Placed {item.Name}");
+    }
 
     private void HandlePointerLockChanged(bool locked)
     {
@@ -333,6 +372,8 @@
         Input.OnPointerLockChanged -= HandlePointerLockChanged;
         Input.OnInventoryTogglePressed -= HandleInventoryToggle;
         Input.OnInteractPressed -= HandleInteract;
+        Input.OnLeftClickPressed -= HandleInteract;
+        Input.OnRightClickPressed -= HandlePlaceBlock;
         Input.OnDebugDamagePressed -= HandleDebugDamage;
         Input.OnDebugHealPressed -= HandleDebugHeal;
         Hud.OnResumeClicked -= HandleResumeClicked;

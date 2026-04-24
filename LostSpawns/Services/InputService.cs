@@ -44,6 +44,12 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on E key press. Used for "interact / break block in crosshair" gameplay.</summary>
     public event Action? OnInteractPressed;
 
+    /// <summary>Fired on left mouse-down while pointer is locked (in-game). Break-block action.</summary>
+    public event Action? OnLeftClickPressed;
+
+    /// <summary>Fired on right mouse-down while pointer is locked (in-game). Place-block action.</summary>
+    public event Action? OnRightClickPressed;
+
     /// <summary>Dev-only: fired on F9 to simulate taking damage. Lets the probe exercise the damage flow without gameplay content.</summary>
     public event Action? OnDebugDamagePressed;
 
@@ -70,6 +76,7 @@ public class InputService : IAsyncDisposable
         _window!.OnKeyDown += OnKeyDown;
         _window!.OnKeyUp += OnKeyUp;
         _window!.OnMouseMove += OnMouseMove;
+        _window!.OnMouseDown += OnMouseDown;
         _document!.OnPointerLockChange += OnPointerLockChange;
     }
 
@@ -80,15 +87,24 @@ public class InputService : IAsyncDisposable
         {
             _window.OnKeyDown -= OnKeyDown;
             _window.OnKeyUp -= OnKeyUp;
-        }
-        if (_window != null)
-        {
             _window.OnMouseMove -= OnMouseMove;
+            _window.OnMouseDown -= OnMouseDown;
         }
         if (_document != null)
         {
             _document.OnPointerLockChange -= OnPointerLockChange;
         }
+    }
+
+    private void OnMouseDown(MouseEvent e)
+    {
+        // Only fire the gameplay click events while pointer is locked - prevents
+        // stray clicks on UI (pause menu, inventory) from breaking blocks in the
+        // world behind the modal. UI widgets get their mouse events through
+        // GameUIService's own canvas listener, not this path.
+        if (!IsPointerLocked) return;
+        if (e.Button == MouseButton.PrimaryButton) OnLeftClickPressed?.Invoke();
+        else if (e.Button == MouseButton.SecondaryButton) OnRightClickPressed?.Invoke();
     }
 
     /// <summary>Call once per frame to consume accumulated mouse deltas.</summary>
