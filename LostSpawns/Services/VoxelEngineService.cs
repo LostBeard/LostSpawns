@@ -123,109 +123,19 @@ public class VoxelEngineService : IAsyncDisposable
         if (_meshPipeline == null)
             throw new InvalidOperationException("Not initialized");
 
-        var results = new List<(int, VoxelMeshPipeline.MeshResult)>();
-        const int SectionHeight = 16;
-        const int SizeXZ = Models.ChunkData.SizeXZ;
-        const int PaddedXZ = SizeXZ + 2;
-        int sectionsPerColumn = Models.ChunkData.Height / SectionHeight; // 256/16 = 16
-
+        // Delegate to the library: VoxelMeshPipeline.MeshChunkColumnAsync owns the padding
+        // assembly, intra-chunk Y-slab derivation, and (critically) the all-air fast path
+        // that skips kernel dispatches for sections whose interior is entirely zero. For a
+        // Lost Spawns terrain column (geometry concentrated in a narrow Y band) that is
+        // 13-of-16 sections with no GPU work.
         await _meshLock.WaitAsync();
         try
         {
-            // Padded layout: (SizeXZ+2) x (SizeXZ+2) x SectionHeight. Interior is at x,z in [1..SizeXZ].
-            var padded = new int[PaddedXZ * PaddedXZ * SectionHeight];
-            // Per-XZ solid slabs for the section above and below this one (kernel reads bit 0).
-            var yPadMinusSlab = new int[PaddedXZ * PaddedXZ];
-            var yPadPlusSlab = new int[PaddedXZ * PaddedXZ];
-
-            for (int sy = 0; sy < sectionsPerColumn; sy++)
-            {
-                int yOffset = sy * SectionHeight;
-                Array.Clear(padded);
-
-                for (int y = 0; y < SectionHeight; y++)
-                {
-                    int paddedYBase = y * PaddedXZ * PaddedXZ;
-                    int srcYBase = (yOffset + y) * SizeXZ * SizeXZ;
-
-                    // Interior: chunk blocks at (1..SizeXZ, 1..SizeXZ) in padded coords
-                    for (int z = 0; z < SizeXZ; z++)
-                        for (int x = 0; x < SizeXZ; x++)
-                        {
-                            byte b = blocks[x + z * SizeXZ + srcYBase];
-                            padded[(x + 1) + (z + 1) * PaddedXZ + paddedYBase] = b > 0 ? PackedBlock.Pack(b) : 0;
-                        }
-
-                    // -X edge (padded x=0) from neighbor (cx-1, cz)'s +X-most column (source x=SizeXZ-1)
-                    if (neighborXMinus != null)
-                        for (int z = 0; z < SizeXZ; z++)
-                        {
-                            byte b = neighborXMinus[(SizeXZ - 1) + z * SizeXZ + srcYBase];
-                            padded[0 + (z + 1) * PaddedXZ + paddedYBase] = b > 0 ? PackedBlock.Pack(b) : 0;
-                        }
-
-                    // +X edge (padded x=SizeXZ+1) from neighbor (cx+1, cz)'s -X-most column (source x=0)
-                    if (neighborXPlus != null)
-                        for (int z = 0; z < SizeXZ; z++)
-                        {
-                            byte b = neighborXPlus[0 + z * SizeXZ + srcYBase];
-                            padded[(SizeXZ + 1) + (z + 1) * PaddedXZ + paddedYBase] = b > 0 ? PackedBlock.Pack(b) : 0;
-                        }
-
-                    // -Z edge (padded z=0) from neighbor (cx, cz-1)'s +Z-most row (source z=SizeXZ-1)
-                    if (neighborZMinus != null)
-                        for (int x = 0; x < SizeXZ; x++)
-                        {
-                            byte b = neighborZMinus[x + (SizeXZ - 1) * SizeXZ + srcYBase];
-                            padded[(x + 1) + 0 * PaddedXZ + paddedYBase] = b > 0 ? PackedBlock.Pack(b) : 0;
-                        }
-
-                    // +Z edge (padded z=SizeXZ+1) from neighbor (cx, cz+1)'s -Z-most row (source z=0)
-                    if (neighborZPlus != null)
-                        for (int x = 0; x < SizeXZ; x++)
-                        {
-                            byte b = neighborZPlus[x + 0 * SizeXZ + srcYBase];
-                            padded[(x + 1) + (SizeXZ + 1) * PaddedXZ + paddedYBase] = b > 0 ? PackedBlock.Pack(b) : 0;
-                        }
-                }
-
-                // Build Y-pad slabs from adjacent sections within the same chunk column.
-                // Only interior (x,z) is read by the kernel; the padding border stays zero.
-                int[]? yMinusArg = null;
-                int[]? yPlusArg = null;
-
-                if (sy > 0)
-                {
-                    Array.Clear(yPadMinusSlab);
-                    int srcYBase = (yOffset - 1) * SizeXZ * SizeXZ;
-                    for (int z = 0; z < SizeXZ; z++)
-                        for (int x = 0; x < SizeXZ; x++)
-                        {
-                            byte b = blocks[x + z * SizeXZ + srcYBase];
-                            yPadMinusSlab[(x + 1) + (z + 1) * PaddedXZ] = b > 0 ? PackedBlock.Pack(b) : 0;
-                        }
-                    yMinusArg = yPadMinusSlab;
-                }
-
-                if (sy < sectionsPerColumn - 1)
-                {
-                    Array.Clear(yPadPlusSlab);
-                    int srcYBase = (yOffset + SectionHeight) * SizeXZ * SizeXZ;
-                    for (int z = 0; z < SizeXZ; z++)
-                        for (int x = 0; x < SizeXZ; x++)
-                        {
-                            byte b = blocks[x + z * SizeXZ + srcYBase];
-                            yPadPlusSlab[(x + 1) + (z + 1) * PaddedXZ] = b > 0 ? PackedBlock.Pack(b) : 0;
-                        }
-                    yPlusArg = yPadPlusSlab;
-                }
-
-                var result = await _meshPipeline.MeshSectionAsync(padded, SizeXZ, SectionHeight, yMinusArg, yPlusArg);
-                if (result.HasMesh)
-                    results.Add((sy, result));
-            }
-
-            return results;
+            return await _meshPipeline.MeshChunkColumnAsync(
+                blocks,
+                neighborXMinus, neighborXPlus, neighborZMinus, neighborZPlus,
+                Models.ChunkData.SizeXZ,
+                Models.ChunkData.Height);
         }
         finally
         {
