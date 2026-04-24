@@ -47,6 +47,14 @@ public class HudService : IDisposable
     private readonly float[] _breathY = new float[BreathMax];
     private readonly float[] _breathAge = new float[BreathMax];
     private float _breathEmitTimer = 0f;
+
+    // Night stars. Fixed positions seeded once (so the sky doesn't churn every
+    // frame). Visible only at night; alpha scales with how dark the sky is.
+    private const int StarCount = 60;
+    private readonly float[] _starX = new float[StarCount];
+    private readonly float[] _starY = new float[StarCount];
+    private readonly float[] _starSize = new float[StarCount];
+    private bool _starsSeeded;
     private bool _rainSeeded;
     private readonly Random _rainRng = new();
     private RenderService? _renderer;
@@ -1310,6 +1318,46 @@ public class HudService : IDisposable
     }
 
     /// <summary>
+    /// Seed + paint a field of tiny white star dots across the upper half of
+    /// the viewport. Alpha scales with how dark the sky is, so twilight
+    /// shows only the brightest and full night shows the whole field. The
+    /// positions are fixed once so the sky doesn't churn per frame.
+    /// </summary>
+    private void DrawStars(int viewportWidth, int viewportHeight)
+    {
+        if (!_starsSeeded)
+        {
+            var rng = new Random(17); // deterministic seed - same sky every session
+            for (int i = 0; i < StarCount; i++)
+            {
+                _starX[i] = (float)rng.NextDouble() * viewportWidth;
+                // Stars cluster in the upper 55% of screen so they look like sky.
+                _starY[i] = (float)rng.NextDouble() * viewportHeight * 0.55f;
+                _starSize[i] = rng.NextDouble() < 0.15 ? 3f : 2f;
+            }
+            _starsSeeded = true;
+        }
+
+        // Fade in during dusk, peak at midnight-ish, fade out at dawn.
+        float t = _worldTime.DayFraction;
+        float darkness;
+        if (t < 0.10f) darkness = 1f - (t / 0.10f);          // dawn pre-sunrise
+        else if (t < 0.55f) darkness = 0f;                    // day
+        else if (t < 0.75f) darkness = (t - 0.55f) / 0.20f;   // dusk
+        else darkness = 1f;                                   // night
+
+        if (darkness <= 0.01f) return;
+        int baseAlpha = (int)(230 * darkness);
+
+        for (int i = 0; i < StarCount; i++)
+        {
+            int alpha = Math.Clamp(baseAlpha - (_starSize[i] < 3 ? 50 : 0), 0, 255);
+            _ui.Renderer.DrawRect(_starX[i], _starY[i], _starSize[i], _starSize[i],
+                System.Drawing.Color.FromArgb(alpha, 240, 240, 230));
+        }
+    }
+
+    /// <summary>
     /// When the player is cold enough their breath should fog - emit small
     /// rising puffs near screen-center (the camera direction). Age each
     /// puff toward 1 (dead). No cap check needed: we re-use the oldest
@@ -1689,6 +1737,11 @@ public class HudService : IDisposable
 
             // Draw the HUD screen stack
             _ui.Screens.Draw(_ui.Renderer);
+
+            // Stars paint first so everything else (terrain canvas is already
+            // drawn, UI screens, fires, entities) sits on top. Only visible
+            // at night + twilight; during day the draw is a cheap no-op.
+            DrawStars(viewportWidth, viewportHeight);
 
             // Campfires render first so entity billboards paint on top - a
             // critter standing in front of the fire occludes it naturally.
