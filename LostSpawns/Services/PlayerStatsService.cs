@@ -23,6 +23,12 @@ public class PlayerStatsService
     /// <summary>Fired whenever any stat changes to a new value.</summary>
     public event Action? OnStatsChanged;
 
+    /// <summary>Fired when TakeDamage runs with a positive amount. Arg = damage actually applied [0,1].</summary>
+    public event Action<float>? OnDamageTaken;
+
+    /// <summary>Fired when Heal runs with a positive amount. Arg = health actually restored [0,1].</summary>
+    public event Action<float>? OnHealed;
+
     /// <summary>Current health [0,1]. 0 = dead, 1 = pristine.</summary>
     public float Health
     {
@@ -59,21 +65,29 @@ public class PlayerStatsService
     }
 
     /// <summary>
-    /// Apply damage, clamped at zero. Fires OnStatsChanged if Health actually dropped.
+    /// Apply damage, clamped at zero. Fires OnStatsChanged if Health actually dropped,
+    /// then fires OnDamageTaken with the amount actually applied (0 if already dead).
     /// </summary>
     public void TakeDamage(float amount)
     {
         if (amount <= 0) return;
+        float before = _health;
         Health = MathF.Max(0f, _health - amount);
+        float applied = before - _health;
+        if (applied > 0) OnDamageTaken?.Invoke(applied);
     }
 
     /// <summary>
-    /// Restore health (bandage, food-over-time, rest), clamped at 1.
+    /// Restore health (bandage, food-over-time, rest), clamped at 1. Fires OnHealed with
+    /// the amount actually restored (0 if already at full health).
     /// </summary>
     public void Heal(float amount)
     {
         if (amount <= 0) return;
+        float before = _health;
         Health = MathF.Min(1f, _health + amount);
+        float applied = _health - before;
+        if (applied > 0) OnHealed?.Invoke(applied);
     }
 
     /// <summary>Reset all stats to full (for respawn, new character, test harness).</summary>

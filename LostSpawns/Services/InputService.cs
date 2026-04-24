@@ -41,6 +41,12 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired whenever the inventory-toggle key is pressed (default I/Tab).</summary>
     public event Action? OnInventoryTogglePressed;
 
+    /// <summary>Dev-only: fired on F9 to simulate taking damage. Lets the probe exercise the damage flow without gameplay content.</summary>
+    public event Action? OnDebugDamagePressed;
+
+    /// <summary>Dev-only: fired on F10 to simulate healing.</summary>
+    public event Action? OnDebugHealPressed;
+
     /// <summary>Normalized XZ move vector: X=strafe, Y=forward.</summary>
     public Vector2 MoveVector => new(
         (Right ? 1f : 0f) - (Left ? 1f : 0f),
@@ -101,6 +107,12 @@ public class InputService : IAsyncDisposable
         // handles the actual open/close logic - this only fires the intent.
         if (!e.Repeat && (e.Key == "i" || e.Key == "I" || e.Key == "Tab"))
             OnInventoryTogglePressed?.Invoke();
+
+        // Dev hooks until real damage / healing sources exist.
+        if (!e.Repeat && e.Key == "F9")
+            OnDebugDamagePressed?.Invoke();
+        if (!e.Repeat && e.Key == "F10")
+            OnDebugHealPressed?.Invoke();
     }
 
     private void OnKeyUp(KeyboardEvent e)

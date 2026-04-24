@@ -8,6 +8,7 @@
 @inject WorldService World
 @inject SettingsService Settings
 @inject HudService Hud
+@inject PlayerStatsService Stats
 @inject SpawnDev.BlazorJS.BlazorJSRuntime JS
 @inject NavigationManager Nav
 @implements IAsyncDisposable
@@ -109,6 +110,8 @@
         Input.OnEscapePressed += HandleEscape;
         Input.OnPointerLockChanged += HandlePointerLockChanged;
         Input.OnInventoryTogglePressed += HandleInventoryToggle;
+        Input.OnDebugDamagePressed += HandleDebugDamage;
+        Input.OnDebugHealPressed += HandleDebugHeal;
         Hud.OnResumeClicked += HandleResumeClicked;
         Hud.OnSettingsClicked += HandleSettingsClicked;
         Hud.OnQuitToMenuClicked += HandleQuitToMenuClicked;
@@ -137,6 +140,11 @@
         if (Hud.IsPaused) return;
         Hud.ToggleInventory();
     }
+
+    // Dev keybinds for testing the damage/heal UX. Remove once real combat /
+    // consumption sources replace them.
+    private void HandleDebugDamage() => Stats.TakeDamage(0.1f);
+    private void HandleDebugHeal()   => Stats.Heal(0.1f);
 
     private void HandlePointerLockChanged(bool locked)
     {
@@ -226,6 +234,8 @@
         Input.OnEscapePressed -= HandleEscape;
         Input.OnPointerLockChanged -= HandlePointerLockChanged;
         Input.OnInventoryTogglePressed -= HandleInventoryToggle;
+        Input.OnDebugDamagePressed -= HandleDebugDamage;
+        Input.OnDebugHealPressed -= HandleDebugHeal;
         Hud.OnResumeClicked -= HandleResumeClicked;
         Hud.OnSettingsClicked -= HandleSettingsClicked;
         Hud.OnQuitToMenuClicked -= HandleQuitToMenuClicked;

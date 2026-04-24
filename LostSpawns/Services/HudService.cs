@@ -64,6 +64,25 @@ public class HudService : IDisposable
         _inventory = inventory;
         _inventory.OnInventoryChanged += SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
+        _stats.OnDamageTaken += HandleDamageTaken;
+        _stats.OnHealed += HandleHealed;
+    }
+
+    private void HandleDamageTaken(float amount)
+    {
+        // Red flash intensity scales with damage size (capped at ~0.6 alpha).
+        // 0.05 HP (small hit) -> alpha ~55, 0.3 HP (heavy) -> alpha ~150.
+        int alpha = Math.Clamp((int)(amount * 500f), 40, 180);
+        ScreenOverlay?.Flash(System.Drawing.Color.FromArgb(alpha, 220, 20, 20), 0.5f);
+        NotifyDamage($"-{(int)(amount * 100f)} HP");
+    }
+
+    private void HandleHealed(float amount)
+    {
+        // Soft green flash for heals worth noticing (small ticks don't flash).
+        if (amount < 0.03f) return;
+        int alpha = Math.Clamp((int)(amount * 300f), 30, 120);
+        ScreenOverlay?.Flash(System.Drawing.Color.FromArgb(alpha, 60, 200, 80), 0.4f);
     }
 
     /// <summary>
@@ -495,6 +514,8 @@ public class HudService : IDisposable
     {
         _inventory.OnInventoryChanged -= SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged -= SyncActiveHotbar;
+        _stats.OnDamageTaken -= HandleDamageTaken;
+        _stats.OnHealed -= HandleHealed;
         if (_renderer != null)
             _renderer.OnPostRender = null;
     }
