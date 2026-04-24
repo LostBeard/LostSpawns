@@ -9,6 +9,7 @@
 @inject SettingsService Settings
 @inject HudService Hud
 @inject SpawnDev.BlazorJS.BlazorJSRuntime JS
+@inject NavigationManager Nav
 @implements IAsyncDisposable
 
 <PageTitle>Lost Spawns — Game</PageTitle>
@@ -102,6 +103,15 @@
 
         Hud.Init(Renderer, _canvasRef);
 
+        // Pause menu wiring. Escape -> show pause (browser releases pointer lock too).
+        // Pointer-lock changes that come from ANY source also toggle the pause menu so
+        // the player is never left in a half-paused / half-playing state if they alt-tab.
+        Input.OnEscapePressed += HandleEscape;
+        Input.OnPointerLockChanged += HandlePointerLockChanged;
+        Hud.OnResumeClicked += HandleResumeClicked;
+        Hud.OnSettingsClicked += HandleSettingsClicked;
+        Hud.OnQuitToMenuClicked += HandleQuitToMenuClicked;
+
         Renderer.OnUpdate = OnGameUpdate;
 
         _ready = true;
@@ -111,8 +121,54 @@
         Renderer.StartRenderLoop();
     }
 
+    private void HandleEscape()
+    {
+        if (Hud.IsPaused) HandleResumeClicked();
+        else Hud.ShowPauseMenu();
+    }
+
+    private void HandlePointerLockChanged(bool locked)
+    {
+        // Lock lost while playing => show pause menu (covers alt-tab, browser Escape, etc.)
+        if (!locked && !Hud.IsPaused)
+            Hud.ShowPauseMenu();
+    }
+
+    private void HandleResumeClicked()
+    {
+        Hud.HidePauseMenu();
+        try
+        {
+            using var canvas = new HTMLCanvasElement(_canvasRef);
+            canvas.RequestPointerLock();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Game] Pointer lock request on resume failed: {ex.Message}");
+        }
+    }
+
+    private void HandleSettingsClicked()
+    {
+        Nav.NavigateTo("/settings");
+    }
+
+    private void HandleQuitToMenuClicked()
+    {
+        Nav.NavigateTo("/");
+    }
+
     private void OnGameUpdate(float deltaTime)
     {
+        // While paused: don't feed camera movement, mouse look, or FPS counter updates.
+        // Chunk streaming + HUD input still run so the menu stays interactive.
+        if (Hud.IsPaused)
+        {
+            Input.ConsumeMouseDelta(); // drain stale deltas so Resume doesn't snap the view
+            Hud.Update(deltaTime, Renderer.Camera.Position, Renderer.Camera.Yaw);
+            return;
+        }
+
         Renderer.Camera.ProcessKeyboard(Input.KeysDown, deltaTime);
 
         var (dx, dy) = Input.ConsumeMouseDelta();
@@ -155,6 +211,12 @@
 
     public ValueTask DisposeAsync()
     {
+        Input.OnEscapePressed -= HandleEscape;
+        Input.OnPointerLockChanged -= HandlePointerLockChanged;
+        Hud.OnResumeClicked -= HandleResumeClicked;
+        Hud.OnSettingsClicked -= HandleSettingsClicked;
+        Hud.OnQuitToMenuClicked -= HandleQuitToMenuClicked;
+
         Renderer.StopRenderLoop();
         Hud.Dispose();
         Renderer.Dispose();

@@ -34,6 +34,18 @@ public class HudService : IDisposable
 
     public bool IsInitialized { get; private set; }
 
+    /// <summary>True while the pause menu is on top of the screen stack.</summary>
+    public bool IsPaused => _ui.Screens.ActiveScreen == "pause";
+
+    /// <summary>Fired when the player clicks Resume in the pause menu.</summary>
+    public event Action? OnResumeClicked;
+
+    /// <summary>Fired when the player clicks Settings in the pause menu.</summary>
+    public event Action? OnSettingsClicked;
+
+    /// <summary>Fired when the player clicks Quit to Menu in the pause menu.</summary>
+    public event Action? OnQuitToMenuClicked;
+
     public HudService(GameUIService ui)
     {
         _ui = ui;
@@ -113,6 +125,88 @@ public class HudService : IDisposable
 
         // === Screen overlay (damage flash, fade effects) ===
         ScreenOverlay = new UIScreenOverlay();
+
+        // === Pause menu (registered but not pushed; Game.razor pushes on Escape) ===
+        _ui.Screens.Register("pause", BuildPauseMenu());
+    }
+
+    private UIElement BuildPauseMenu()
+    {
+        var anchor = new UIAnchorPanel
+        {
+            Width = _renderer!.CanvasWidth,
+            Height = _renderer.CanvasHeight,
+        };
+
+        // Centered vertical panel with title + buttons.
+        var panel = new UIPanel
+        {
+            Width = 280,
+            Height = 280,
+            CornerRadius = 8,
+        };
+
+        var title = new UILabel
+        {
+            Text = "PAUSED",
+            FontSize = FontSize.Heading,
+            Width = 280,
+            Height = 40,
+            X = 0,
+            Y = 18,
+            Align = TextAlign.Center,
+        };
+        panel.AddChild(title);
+
+        var resume = new UIButton
+        {
+            Text = "Resume",
+            Width = 220,
+            Height = 44,
+            X = 30,
+            Y = 80,
+        };
+        resume.OnClick = () => OnResumeClicked?.Invoke();
+        panel.AddChild(resume);
+
+        var settings = new UIButton
+        {
+            Text = "Settings",
+            Width = 220,
+            Height = 44,
+            X = 30,
+            Y = 136,
+        };
+        settings.OnClick = () => OnSettingsClicked?.Invoke();
+        panel.AddChild(settings);
+
+        var quit = new UIButton
+        {
+            Text = "Quit to Menu",
+            Width = 220,
+            Height = 44,
+            X = 30,
+            Y = 192,
+        };
+        quit.OnClick = () => OnQuitToMenuClicked?.Invoke();
+        panel.AddChild(quit);
+
+        anchor.AddAnchored(panel, Anchor.Center);
+        return anchor;
+    }
+
+    /// <summary>Push the pause menu onto the screen stack (dims HUD behind it).</summary>
+    public void ShowPauseMenu()
+    {
+        if (_ui.Screens.ActiveScreen == "pause") return;
+        _ui.Screens.Push("pause");
+    }
+
+    /// <summary>Pop the pause menu (back to HUD).</summary>
+    public void HidePauseMenu()
+    {
+        if (_ui.Screens.ActiveScreen != "pause") return;
+        _ui.Screens.Pop();
     }
 
     /// <summary>

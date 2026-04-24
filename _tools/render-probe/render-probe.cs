@@ -34,6 +34,11 @@ string url      = args.ElementAtOrDefault(0) ?? "http://localhost:5019/game";
 string prefix   = args.ElementAtOrDefault(1) ?? "game";
 int waitSec     = int.TryParse(args.ElementAtOrDefault(2), out var w) ? w : 8;
 
+// Optional scripted key presses during the wait window.
+// Format: "Ns:Key,Ns:Key,..." e.g. "25:Escape,40:Escape" - at t+25s press Escape, then again at t+40s.
+// Each press captures an extra screenshot "keyevent-{prefix}-{stamp}-{i}.png" right after.
+string keyScript = args.ElementAtOrDefault(3) ?? "";
+
 // AppContext.BaseDirectory works in both single-file apps and normal builds;
 // Assembly.Location returns "" in the single-file / file-based scenario.
 string scriptDir = AppContext.BaseDirectory;
@@ -124,24 +129,70 @@ catch (Exception ex)
     return 2;
 }
 
+// Parse scripted key events into sorted list of (elapsedSec, key).
+var keyEvents = new List<(int atSec, string key)>();
+if (!string.IsNullOrWhiteSpace(keyScript))
+{
+    foreach (var part in keyScript.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        var kv = part.Split(':', 2, StringSplitOptions.TrimEntries);
+        if (kv.Length == 2 && int.TryParse(kv[0], out var sec))
+            keyEvents.Add((sec, kv[1]));
+    }
+    keyEvents.Sort((a, b) => a.atSec.CompareTo(b.atSec));
+    foreach (var (at, k) in keyEvents)
+        Console.WriteLine($"[probe] scripted key: t+{at}s press {k}");
+}
+
 Console.WriteLine($"[probe] waiting {waitSec}s for render to stabilize (taking progress shots every 10s)...");
 int progressShot = 0;
-int remaining = waitSec;
-while (remaining > 0)
+int keyShot = 0;
+int elapsed = 0;
+int nextKeyIdx = 0;
+while (elapsed < waitSec)
 {
-    int step = Math.Min(10, remaining);
-    await Task.Delay(step * 1000);
-    remaining -= step;
-    progressShot++;
-    string progPath = Path.Combine(outputDir, $"progress-{prefix}-{stamp}-{progressShot:D2}.png");
-    try
+    // Smallest of: next progress shot boundary, next scripted key time, or end.
+    int nextTick = Math.Min(waitSec, ((elapsed / 10) + 1) * 10);
+    int nextEvent = nextKeyIdx < keyEvents.Count ? keyEvents[nextKeyIdx].atSec : int.MaxValue;
+    int target = Math.Min(nextTick, Math.Min(nextEvent, waitSec));
+    int sleep = Math.Max(0, target - elapsed);
+    if (sleep > 0) await Task.Delay(sleep * 1000);
+    elapsed = target;
+
+    // Fire any scripted keys that match this moment.
+    while (nextKeyIdx < keyEvents.Count && keyEvents[nextKeyIdx].atSec <= elapsed)
     {
-        await page.ScreenshotAsync(new PageScreenshotOptions { Path = progPath, FullPage = false });
-        Console.WriteLine($"[probe]   +{(waitSec - remaining)}s: {Path.GetFileName(progPath)}");
+        var (_, key) = keyEvents[nextKeyIdx];
+        try
+        {
+            await page.Keyboard.PressAsync(key);
+            await Task.Delay(500); // let the UI react
+            keyShot++;
+            string keyPath = Path.Combine(outputDir, $"keyevent-{prefix}-{stamp}-{keyShot:D2}.png");
+            await page.ScreenshotAsync(new PageScreenshotOptions { Path = keyPath, FullPage = false });
+            Console.WriteLine($"[probe]   +{elapsed}s: pressed {key} -> {Path.GetFileName(keyPath)}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[probe]   +{elapsed}s: key press {key} failed ({ex.Message})");
+        }
+        nextKeyIdx++;
     }
-    catch (Exception ex)
+
+    // Progress shot on every 10s boundary (and at waitSec end).
+    if (elapsed % 10 == 0 || elapsed == waitSec)
     {
-        Console.WriteLine($"[probe]   +{(waitSec - remaining)}s: progress shot failed ({ex.Message})");
+        progressShot++;
+        string progPath = Path.Combine(outputDir, $"progress-{prefix}-{stamp}-{progressShot:D2}.png");
+        try
+        {
+            await page.ScreenshotAsync(new PageScreenshotOptions { Path = progPath, FullPage = false });
+            Console.WriteLine($"[probe]   +{elapsed}s: {Path.GetFileName(progPath)}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[probe]   +{elapsed}s: progress shot failed ({ex.Message})");
+        }
     }
 }
 

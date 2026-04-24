@@ -32,6 +32,12 @@ public class InputService : IAsyncDisposable
     /// <summary>True when pointer lock is active (mouse captured by canvas).</summary>
     public bool IsPointerLocked { get; private set; }
 
+    /// <summary>Fired whenever the Escape key is pressed (once per press, not on repeat).</summary>
+    public event Action? OnEscapePressed;
+
+    /// <summary>Fired whenever pointer-lock state changes. Argument: new locked state.</summary>
+    public event Action<bool>? OnPointerLockChanged;
+
     /// <summary>Normalized XZ move vector: X=strafe, Y=forward.</summary>
     public Vector2 MoveVector => new(
         (Right ? 1f : 0f) - (Left ? 1f : 0f),
@@ -86,6 +92,8 @@ public class InputService : IAsyncDisposable
     {
         if (!e.Repeat) SetKey(e.Key, true);
         KeysDown.Add(e.Code);
+        if (!e.Repeat && e.Key == "Escape")
+            OnEscapePressed?.Invoke();
     }
 
     private void OnKeyUp(KeyboardEvent e)
@@ -117,6 +125,8 @@ public class InputService : IAsyncDisposable
             MouseDeltaX = 0;
             MouseDeltaY = 0;
         }
+        if (wasLocked != IsPointerLocked)
+            OnPointerLockChanged?.Invoke(IsPointerLocked);
     }
 
     private void OnMouseMove(MouseEvent e)
