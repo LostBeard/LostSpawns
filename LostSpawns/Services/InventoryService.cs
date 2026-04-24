@@ -326,6 +326,9 @@ public class InventoryService
         return (false, item.Name);
     }
 
+    /// <summary>True if any slot holds at least one item with the given Id.</summary>
+    public bool HasItem(string id) => FindSlotById(id) >= 0;
+
     private int FindSlotById(string id)
     {
         for (int i = 0; i < HotbarSize; i++)

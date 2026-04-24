@@ -59,6 +59,10 @@ public class CraftingService
                 "Pick",
                 new[] { ("material.wood", 1), ("material.stone", 2) },
                 new InventoryItem("tool.pick", "Pick", 1, ItemCategory.Tool, UsesRemaining: 100)),
+            new CraftingRecipe(
+                "Fur Coat",
+                new[] { ("material.pelt", 2), ("material.rope", 1) },
+                new InventoryItem("gear.fur_coat", "Fur Coat", 1, ItemCategory.Tool)),
         };
 
         // Register effects for any new outputs the crafting system introduces.
