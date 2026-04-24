@@ -1199,6 +1199,21 @@ public class HudService : IDisposable
                     _ui.Renderer.DrawRect(x, y + size * 0.2f, size, size * 0.8f, color);
                     _ui.Renderer.DrawRect(x - size * 0.1f, y, size * 0.45f, size * 0.45f, color);
                     _ui.Renderer.DrawRect(x + size * 0.95f, y + size * 0.15f, size * 0.18f, size * 0.35f, color);
+                    // Glowing red eyes at night - tiny pulsing dots centered
+                    // on the head block. Pulse phase derived from entity Id
+                    // so packs of wolves don't flicker in unison.
+                    if (_worldTime.IsNight && e.HitFlashTimer <= 0)
+                    {
+                        float eyePulse = 0.7f + 0.3f * MathF.Sin(
+                            (float)Environment.TickCount * 0.008f + e.Id);
+                        int eyeAlpha = (int)(230 * eyePulse);
+                        var eyeColor = System.Drawing.Color.FromArgb(eyeAlpha, 255, 50, 30);
+                        float eyeSize = MathF.Max(2f, size * 0.08f);
+                        _ui.Renderer.DrawRect(
+                            x + size * 0.02f, y + size * 0.15f, eyeSize, eyeSize, eyeColor);
+                        _ui.Renderer.DrawRect(
+                            x + size * 0.22f, y + size * 0.15f, eyeSize, eyeSize, eyeColor);
+                    }
                     break;
                 default:
                     _ui.Renderer.DrawRect(x, y, size, size, color);
