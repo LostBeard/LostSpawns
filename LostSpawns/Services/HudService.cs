@@ -52,6 +52,13 @@ public class HudService : IDisposable
     public UIScreenOverlay ScreenOverlay { get; private set; } = null!;
     public UINotificationStack Notifications { get; private set; } = null!;
 
+    /// <summary>
+    /// Small prompt centered just below the crosshair ("[E] Chop", "Need a Pick", ...).
+    /// Game.razor sets Text each frame based on what the player is aimed at; empty
+    /// string hides it visually (UILabel of empty text draws nothing).
+    /// </summary>
+    public UILabel InteractionPrompt { get; private set; } = null!;
+
     private UIProgressBar? _loadingBar;
     private UILabel? _loadingStatus;
     private UILabel? _debugLabel;
@@ -197,6 +204,20 @@ public class HudService : IDisposable
         // === Crosshair (center) ===
         Crosshair = new UICrosshair();
         root.AddAnchored(Crosshair, Anchor.Center);
+
+        // === Interaction prompt (just below crosshair) ===
+        // Label shows "[E] Chop" / "Need a Pick" / etc; empty string hides it.
+        // Game.razor writes Text every frame based on the current raycast target.
+        InteractionPrompt = new UILabel
+        {
+            Text = "",
+            FontSize = FontSize.Caption,
+            Width = 200,
+            Height = 20,
+            Align = TextAlign.Center,
+            Color = System.Drawing.Color.FromArgb(220, 230, 230, 240),
+        };
+        root.AddAnchored(InteractionPrompt, Anchor.Center, offsetY: 28);
 
         // === Compass (top-center) ===
         Compass = new UICompass { Width = 200 };
