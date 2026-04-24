@@ -938,6 +938,72 @@ public class HudService : IDisposable
         return anchor;
     }
 
+    private void DrawEntityBillboards(int viewportWidth, int viewportHeight)
+    {
+        if (_renderer == null || _entities.Entities.Count == 0) return;
+
+        // Rebuild VP matrix exactly like RenderService does so billboards line
+        // up with what the voxel pipeline drew this frame.
+        float aspect = (float)viewportWidth / viewportHeight;
+        var vp = _renderer.Camera.GetVpMatrix(aspect);
+
+        foreach (var e in _entities.Entities)
+        {
+            // Offset the sample point up a bit so the billboard tracks the
+            // entity's "chest" rather than its feet - reads more natural in view.
+            var worldPos = new System.Numerics.Vector4(
+                e.Position.X, e.Position.Y + 0.8f, e.Position.Z, 1f);
+
+            var clip = System.Numerics.Vector4.Transform(worldPos, vp);
+            if (clip.W <= 0.001f) continue; // behind camera
+
+            // Clip -> NDC -> pixel. Y flipped (voxel pipeline uses reversed Z /
+            // row-major matmul convention).
+            float ndcX = clip.X / clip.W;
+            float ndcY = clip.Y / clip.W;
+            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
+            if (screenX < -50 || screenX > viewportWidth + 50) continue;
+            if (screenY < -50 || screenY > viewportHeight + 50) continue;
+
+            // Size shrinks with distance but clamps so close-ups aren't obscene.
+            float dist = MathF.Max(0.1f, clip.W);
+            float size = Math.Clamp(90f / dist, 6f, 60f);
+
+            // Per-kind color.
+            var color = e.Kind switch
+            {
+                EntityKind.Boar   => System.Drawing.Color.FromArgb(230, 140, 90, 60),   // warm brown
+                EntityKind.Crow   => System.Drawing.Color.FromArgb(230, 30, 30, 30),    // near-black
+                _                 => System.Drawing.Color.FromArgb(230, 200, 190, 180), // rabbit gray
+            };
+
+            float x = screenX - size / 2f;
+            float y = screenY - size / 2f;
+            _ui.Renderer.DrawRect(x, y, size, size, color);
+
+            // Thin dark outline so the square pops against terrain.
+            var border = System.Drawing.Color.FromArgb(200, 10, 10, 15);
+            _ui.Renderer.DrawRect(x, y, size, 2, border);
+            _ui.Renderer.DrawRect(x, y + size - 2, size, 2, border);
+            _ui.Renderer.DrawRect(x, y, 2, size, border);
+            _ui.Renderer.DrawRect(x + size - 2, y, 2, size, border);
+
+            // HP bar above the body when HP < 1.
+            if (e.Health < 1f)
+            {
+                float barW = size;
+                float barH = 4f;
+                float barX = x;
+                float barY = y - 8f;
+                _ui.Renderer.DrawRect(barX, barY, barW, barH,
+                    System.Drawing.Color.FromArgb(200, 40, 10, 10));
+                _ui.Renderer.DrawRect(barX, barY, barW * Math.Clamp(e.Health, 0f, 1f), barH,
+                    System.Drawing.Color.FromArgb(255, 220, 60, 60));
+            }
+        }
+    }
+
     private void UpdateRain(float dt)
     {
         if (_weather.RainIntensity <= 0.01f) return;
@@ -1259,6 +1325,10 @@ public class HudService : IDisposable
 
             // Draw the HUD screen stack
             _ui.Screens.Draw(_ui.Renderer);
+
+            // Entity billboards: 2D colored squares at each entity's projected
+            // screen position. Renders on top of terrain, below rain + flashes.
+            DrawEntityBillboards(viewportWidth, viewportHeight);
 
             // Rain particles render on top of the voxel scene but below menus.
             DrawRain(viewportWidth, viewportHeight);
