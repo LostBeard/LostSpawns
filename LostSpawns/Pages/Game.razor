@@ -107,6 +107,8 @@
         Input.OnDebugHealPressed += HandleDebugHeal;
         Hud.OnResumeClicked += HandleResumeClicked;
         Hud.OnQuitToMenuClicked += HandleQuitToMenuClicked;
+        Hud.OnRespawnClicked += HandleRespawnClicked;
+        Stats.OnDied += HandleDied;
 
         Renderer.OnUpdate = OnGameUpdate;
 
@@ -274,10 +276,10 @@
     private void HandleEscape()
     {
         // Priority unwinds the screen stack one at a time, top first: settings
-        // overlay (pushed from pause menu) -> inventory -> pause. Loading ignores
-        // Escape entirely because stacking another modal over it would orphan the
-        // loading screen (HideLoadingScreen only pops when loading is on top).
-        if (Hud.IsLoading) return;
+        // overlay (pushed from pause menu) -> inventory -> pause. Loading + death
+        // ignore Escape entirely (death requires clicking Respawn; loading only
+        // dismisses itself when chunk gen completes).
+        if (Hud.IsLoading || Hud.IsDead) return;
         if (Hud.IsSettingsOpen)  { Hud.HideSettings();  return; }
         if (Hud.IsInventoryOpen) { Hud.HideInventory(); return; }
         if (Hud.IsPaused) HandleResumeClicked();
@@ -436,6 +438,42 @@
         Nav.NavigateTo("/");
     }
 
+    private void HandleDied()
+    {
+        // Dramatic red splash + push the death screen. Pointer lock exit is the
+        // browser's default when the player's mouse moves on the new screen, so
+        // we nudge it by dispatching a JS exit via the canvas API. Simpler: rely
+        // on the player's first mouse move during death screen to release lock.
+        Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(180, 180, 20, 20), 0.8f);
+        Hud.NotifyDamage("You died");
+        Hud.ShowDeathScreen();
+    }
+
+    private void HandleRespawnClicked()
+    {
+        Stats.ResetToDefaults();
+        Hud.HideDeathScreen();
+
+        // Teleport camera back to the heightmap spawn point and re-arm gravity so
+        // it settles cleanly on the terrain.
+        int spawnHeight = World.GetHeightAt(0, 0);
+        Renderer.Camera.Position = new System.Numerics.Vector3(0, spawnHeight + EyeHeight + 2f, 0);
+        _verticalVelocity = 0;
+        _peakFallSpeed = 0;
+        _grounded = false;
+
+        // Re-request pointer lock so the player can look around immediately.
+        try
+        {
+            using var canvas = new HTMLCanvasElement(_canvasRef);
+            canvas.RequestPointerLock();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Game] Pointer lock on respawn failed: {ex.Message}");
+        }
+    }
+
     private void OnGameUpdate(float deltaTime)
     {
         // During initial terrain load: drive the loading progress bar from
@@ -572,6 +610,8 @@
         Input.OnDebugHealPressed -= HandleDebugHeal;
         Hud.OnResumeClicked -= HandleResumeClicked;
         Hud.OnQuitToMenuClicked -= HandleQuitToMenuClicked;
+        Hud.OnRespawnClicked -= HandleRespawnClicked;
+        Stats.OnDied -= HandleDied;
 
         Renderer.StopRenderLoop();
         Hud.Dispose();

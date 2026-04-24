@@ -65,14 +65,20 @@ public class HudService : IDisposable
     /// <summary>True while the initial terrain-loading overlay is showing.</summary>
     public bool IsLoading => _ui.Screens.ActiveScreen == "loading";
 
-    /// <summary>True while any modal overlay (pause, inventory, settings, loading) covers the HUD.</summary>
-    public bool IsAnyMenuOpen => IsPaused || IsInventoryOpen || IsSettingsOpen || IsLoading;
+    /// <summary>True while any modal overlay (pause, inventory, settings, loading, death) covers the HUD.</summary>
+    public bool IsAnyMenuOpen => IsPaused || IsInventoryOpen || IsSettingsOpen || IsLoading || IsDead;
 
     /// <summary>Fired when the player clicks Resume in the pause menu.</summary>
     public event Action? OnResumeClicked;
 
     /// <summary>Fired when the player clicks Quit to Menu in the pause menu.</summary>
     public event Action? OnQuitToMenuClicked;
+
+    /// <summary>Fired when the player clicks Respawn on the death screen.</summary>
+    public event Action? OnRespawnClicked;
+
+    /// <summary>True while the death screen is on top of the screen stack.</summary>
+    public bool IsDead => _ui.Screens.ActiveScreen == "death";
 
     public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime)
     {
@@ -221,6 +227,9 @@ public class HudService : IDisposable
         // === Loading overlay (pushed by Game.razor during initial chunk load) ===
         _ui.Screens.Register("loading", BuildLoadingScreen());
 
+        // === Death screen (pushed from Game.razor on PlayerStats.OnDied) ===
+        _ui.Screens.Register("death", BuildDeathScreen());
+
         // Push current inventory state into both the persistent hotbar and the
         // inventory screen's grid, so first paint matches the data model.
         SyncInventoryToHud();
@@ -334,6 +343,79 @@ public class HudService : IDisposable
     {
         if (_ui.Screens.ActiveScreen != "settings") return;
         _ui.Screens.Pop();
+    }
+
+    /// <summary>Push the death screen. Call from PlayerStats.OnDied.</summary>
+    public void ShowDeathScreen()
+    {
+        if (_ui.Screens.ActiveScreen == "death") return;
+        _ui.Screens.Push("death");
+        // Monochrome tint so the world behind is visibly frozen.
+        ScreenOverlay?.SetPersistent("death",
+            System.Drawing.Color.FromArgb(100, 30, 10, 10));
+    }
+
+    /// <summary>Pop the death screen and clear the death tint.</summary>
+    public void HideDeathScreen()
+    {
+        if (_ui.Screens.ActiveScreen != "death") return;
+        _ui.Screens.Pop();
+        ScreenOverlay?.ClearPersistent("death");
+    }
+
+    private UIElement BuildDeathScreen()
+    {
+        var anchor = new UIAnchorPanel
+        {
+            Width = _renderer!.CanvasWidth,
+            Height = _renderer.CanvasHeight,
+        };
+
+        var panel = new UIPanel
+        {
+            Width = 320,
+            Height = 220,
+            CornerRadius = 10,
+        };
+
+        var title = new UILabel
+        {
+            Text = "YOU DIED",
+            FontSize = FontSize.Title,
+            Width = 320,
+            Height = 48,
+            X = 0,
+            Y = 28,
+            Align = TextAlign.Center,
+            Color = System.Drawing.Color.FromArgb(255, 240, 60, 60),
+        };
+        panel.AddChild(title);
+
+        var sub = new UILabel
+        {
+            Text = "The wasteland claimed you.",
+            FontSize = FontSize.Caption,
+            Width = 320,
+            Height = 20,
+            X = 0,
+            Y = 86,
+            Align = TextAlign.Center,
+        };
+        panel.AddChild(sub);
+
+        var respawn = new UIButton
+        {
+            Text = "Respawn",
+            Width = 220,
+            Height = 48,
+            X = 50,
+            Y = 140,
+        };
+        respawn.OnClick = () => OnRespawnClicked?.Invoke();
+        panel.AddChild(respawn);
+
+        anchor.AddAnchored(panel, Anchor.Center);
+        return anchor;
     }
 
     /// <summary>Push the loading overlay. Call before starting long-running chunk generation.</summary>

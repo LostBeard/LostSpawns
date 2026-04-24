@@ -29,6 +29,14 @@ public class PlayerStatsService
     /// <summary>Fired when Heal runs with a positive amount. Arg = health actually restored [0,1].</summary>
     public event Action<float>? OnHealed;
 
+    /// <summary>Fired on the frame Health first crosses to 0. Not fired again until the player respawns above 0.</summary>
+    public event Action? OnDied;
+
+    /// <summary>True while Health is 0. Consumers (Game.razor) use this to freeze gameplay.</summary>
+    public bool IsDead => _health <= 0f;
+
+    private bool _deathFired;
+
     /// <summary>Current health [0,1]. 0 = dead, 1 = pristine.</summary>
     public float Health
     {
@@ -67,6 +75,7 @@ public class PlayerStatsService
     /// <summary>
     /// Apply damage, clamped at zero. Fires OnStatsChanged if Health actually dropped,
     /// then fires OnDamageTaken with the amount actually applied (0 if already dead).
+    /// Fires OnDied once on the frame Health first hits 0.
     /// </summary>
     public void TakeDamage(float amount)
     {
@@ -75,6 +84,11 @@ public class PlayerStatsService
         Health = MathF.Max(0f, _health - amount);
         float applied = before - _health;
         if (applied > 0) OnDamageTaken?.Invoke(applied);
+        if (_health <= 0f && !_deathFired)
+        {
+            _deathFired = true;
+            OnDied?.Invoke();
+        }
     }
 
     /// <summary>
@@ -159,6 +173,7 @@ public class PlayerStatsService
         _hunger = 1f;
         _thirst = 1f;
         _temperature = 0.5f;
+        _deathFired = false;
         OnStatsChanged?.Invoke();
     }
 
