@@ -106,6 +106,9 @@ public class InventoryService
         // yields a bigger piece than rabbit so its bonus is bigger too.
         ["food.rabbit_meat"] = new(Hunger: 0.20f, Health: -0.05f, DisplayVerb: "Ate raw"),
         ["food.boar_meat"]   = new(Hunger: 0.35f, Health: -0.05f, DisplayVerb: "Ate raw"),
+        // Cooked meat (campfire output): bigger hunger bonus, small HP heal.
+        ["food.rabbit_meat_cooked"] = new(Hunger: 0.35f, Health: 0.05f, DisplayVerb: "Ate"),
+        ["food.boar_meat_cooked"]   = new(Hunger: 0.55f, Health: 0.10f, DisplayVerb: "Ate"),
     };
 
     /// <summary>Fired whenever any slot changes (set, clear, move).</summary>
@@ -258,5 +261,53 @@ public class InventoryService
         OnInventoryChanged?.Invoke();
         OnItemPickedUp?.Invoke(item);
         return true;
+    }
+
+    /// <summary>
+    /// Convert one stack-of-1 from the source item id into the target item.
+    /// Used by the campfire cook tick: decrement the raw meat count in the
+    /// first matching slot, then stack one of the cooked variant onto an
+    /// existing stack or drop it into a free slot. Returns true only when
+    /// the conversion actually happened (source found AND target fit). On
+    /// failure the source count is preserved so the player doesn't lose
+    /// food to a full inventory.
+    /// </summary>
+    public bool TryConvertOne(string fromId, InventoryItem cookedOne)
+    {
+        int sourceSlot = FindSlotById(fromId);
+        if (sourceSlot < 0) return false;
+
+        // Check up front that we can place the cooked item SOMEWHERE, else
+        // roll back the conversion (don't burn raw food if we can't receive).
+        int targetSlot = FindSlotById(cookedOne.Id);
+        if (targetSlot < 0) targetSlot = FindFirstEmptySlot();
+        if (targetSlot < 0) return false;
+
+        // Decrement source.
+        var srcArr = sourceSlot < HotbarSize ? _hotbar : _backpack;
+        int srcIdx = sourceSlot < HotbarSize ? sourceSlot : sourceSlot - HotbarSize;
+        var srcItem = srcArr[srcIdx]!;
+        srcArr[srcIdx] = srcItem.Count > 1 ? srcItem with { Count = srcItem.Count - 1 } : null;
+
+        // Increment / place target.
+        var dstArr = targetSlot < HotbarSize ? _hotbar : _backpack;
+        int dstIdx = targetSlot < HotbarSize ? targetSlot : targetSlot - HotbarSize;
+        var dstItem = dstArr[dstIdx];
+        if (dstItem is not null && dstItem.Id == cookedOne.Id)
+            dstArr[dstIdx] = dstItem with { Count = dstItem.Count + 1 };
+        else
+            dstArr[dstIdx] = cookedOne;
+
+        OnInventoryChanged?.Invoke();
+        return true;
+    }
+
+    private int FindSlotById(string id)
+    {
+        for (int i = 0; i < HotbarSize; i++)
+            if (_hotbar[i]?.Id == id) return i;
+        for (int i = 0; i < BackpackSize; i++)
+            if (_backpack[i]?.Id == id) return HotbarSize + i;
+        return -1;
     }
 }

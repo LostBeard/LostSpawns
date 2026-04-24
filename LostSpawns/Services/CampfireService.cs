@@ -32,6 +32,15 @@ public class CampfireService
     private int _nextId = 1;
     public List<Campfire> Fires { get; } = new();
 
+    /// <summary>Seconds of continuous proximity required to cook one raw meat.</summary>
+    public float CookSeconds { get; set; } = 5f;
+
+    /// <summary>Current cook-timer progress, only advanced while the player is in range of any fire.</summary>
+    private float _cookProgress;
+
+    /// <summary>Fired each time one raw item is converted to its cooked variant.</summary>
+    public event Action<string>? OnCooked; // payload = cooked item display name
+
     public Campfire Spawn(Vector3 position, float radius = 6f)
     {
         var f = new Campfire
@@ -69,5 +78,43 @@ public class CampfireService
             bonus = MathF.Max(bonus, 0.5f * t * f.Intensity);
         }
         return bonus;
+    }
+
+    /// <summary>
+    /// Per-frame cook tick. While the player is within any fire's radius,
+    /// advance the cook progress and - on reaching CookSeconds - convert one
+    /// raw meat to its cooked variant. Cooking prefers rabbit (lower tier)
+    /// first so the player always moves up the food chain. Fires OnCooked
+    /// with the display name so the HUD can toast it.
+    ///
+    /// Timer resets on a successful cook AND on losing proximity, so
+    /// walking away mid-cook doesn't bank progress.
+    /// </summary>
+    public void Tick(float dt, Vector3 playerPos, InventoryService inventory)
+    {
+        if (GetWarmthBonusAt(playerPos) <= 0f)
+        {
+            _cookProgress = 0;
+            return;
+        }
+
+        _cookProgress += dt;
+        if (_cookProgress < CookSeconds) return;
+        _cookProgress = 0;
+
+        // Try rabbit first, fall through to boar. Cooked item is stack-of-1;
+        // InventoryService.TryConvertOne stacks onto an existing cooked slot
+        // if one exists.
+        if (inventory.TryConvertOne("food.rabbit_meat",
+            new InventoryItem("food.rabbit_meat_cooked", "Rabbit Meat (Cooked)", 1, ItemCategory.Food)))
+        {
+            OnCooked?.Invoke("Rabbit Meat (Cooked)");
+            return;
+        }
+        if (inventory.TryConvertOne("food.boar_meat",
+            new InventoryItem("food.boar_meat_cooked", "Boar Meat (Cooked)", 1, ItemCategory.Food)))
+        {
+            OnCooked?.Invoke("Boar Meat (Cooked)");
+        }
     }
 }

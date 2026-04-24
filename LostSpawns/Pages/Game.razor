@@ -116,6 +116,7 @@
         Stats.OnDied += HandleDied;
         Wildlife.OnEntityKilled += HandleEntityKilled;
         Wildlife.OnContactAttack += HandleEntityContactAttack;
+        Fires.OnCooked += HandleCooked;
 
         Renderer.OnUpdate = OnGameUpdate;
 
@@ -554,6 +555,11 @@
         Hud.NotifyDamage($"{e.Kind} hit you!");
     }
 
+    private void HandleCooked(string cookedName)
+    {
+        Hud.NotifySuccess($"Cooked {cookedName}");
+    }
+
     private static LostSpawns.Services.InventoryItem? DropForBlockType(LostSpawns.Models.BlockType t) => t switch
     {
         LostSpawns.Models.BlockType.Wood   => new("material.wood",   "Wood",   1, LostSpawns.Services.ItemCategory.Material),
@@ -720,6 +726,10 @@
         // Wildlife wanders each frame; gated by the same active-play branch so
         // critters hold still while the player is paused / in menus.
         Wildlife.Tick(deltaTime, World, Renderer.Camera.Position);
+        // Campfire cook tick - converts raw meat to cooked while the player
+        // loiters inside the warmth radius. Reset logic lives in the service
+        // so we don't have to track proximity state here too.
+        Fires.Tick(deltaTime, Renderer.Camera.Position, Inventory);
 
         // Auto-save every SaveService.AutoSaveIntervalSeconds seconds of active
         // play. Never fires while in a menu (we're gated above by IsAnyMenuOpen).
@@ -876,6 +886,7 @@
         Stats.OnDied -= HandleDied;
         Wildlife.OnEntityKilled -= HandleEntityKilled;
         Wildlife.OnContactAttack -= HandleEntityContactAttack;
+        Fires.OnCooked -= HandleCooked;
 
         Renderer.StopRenderLoop();
         Hud.Dispose();
