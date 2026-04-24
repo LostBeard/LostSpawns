@@ -26,6 +26,14 @@ public class WorldService
     private readonly Queue<(int cx, int sy, int cz, ChunkMesh mesh)> _readyQueue = new();
     // Track which columns are loaded (for chunk streaming logic)
     private readonly HashSet<(int cx, int cz)> _loadedColumns = new();
+    // CPU-side block cache keyed by (cx, cz). Populated whenever a chunk's blocks are
+    // generated - self load, neighbor-padding lookup, or otherwise. Lets the 4 neighbor
+    // lookups per column hit already-computed blocks instead of regenerating them,
+    // avoiding the ~5x CPU work amplification in the initial load path.
+    private readonly Dictionary<(int cx, int cz), byte[]> _blocksCache = new();
+    // Cap to keep memory bounded on long sessions. 64KB per entry; 512 = 32MB ceiling.
+    // UpdateDesiredChunks trims to the draw-distance footprint + 1-ring on each eviction pass.
+    private const int MaxCachedBlockColumns = 512;
     private TerrainGenerator? _generator;
     private HeightmapLoader? _heightmapLoader;
     private int _lastCX = int.MinValue;
@@ -131,8 +139,39 @@ public class WorldService
         foreach (var key in toAdd)
             _pendingQueue.Enqueue(key);
 
+        // Trim the blocks cache to cells that could still be referenced as a neighbor by
+        // any desired column (i.e. desired + 1-ring). Prevents the cache from growing
+        // forever as the player walks across the map. The desired footprint is bounded by
+        // drawDistance, so trimmed cache size is O((drawDistance+1)^2) chunks.
+        TrimBlocksCache(desired);
+
         DispatchGpuPending();
         return removed;
+    }
+
+    private void TrimBlocksCache(HashSet<(int, int)> desired)
+    {
+        if (_blocksCache.Count <= MaxCachedBlockColumns && _blocksCache.Count < desired.Count * 2)
+            return;
+
+        // Keep cells that are either in desired, or one step away from any desired cell
+        // (since those are read as neighbor-padding during meshing of the nearest desired cell).
+        var keep = new HashSet<(int, int)>(desired);
+        foreach (var (dx, dz) in desired)
+        {
+            keep.Add((dx - 1, dz));
+            keep.Add((dx + 1, dz));
+            keep.Add((dx, dz - 1));
+            keep.Add((dx, dz + 1));
+        }
+
+        var toEvict = new List<(int, int)>();
+        foreach (var key in _blocksCache.Keys)
+            if (!keep.Contains(key))
+                toEvict.Add(key);
+
+        foreach (var key in toEvict)
+            _blocksCache.Remove(key);
     }
 
     private void DispatchGpuPending()
@@ -156,30 +195,21 @@ public class WorldService
     {
         try
         {
-            ChunkData chunk;
-            if (_heightmapLoader != null)
-            {
-                chunk = _heightmapLoader.GenerateChunk(cx, cz);
-            }
-            else
-            {
-                var heightmap = await _engine.GenerateHeightmapAsync(cx, cz);
-                if (_loadedColumns.Contains((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
-                chunk = _generator!.GenerateChunkFromHeightmap(cx, cz, heightmap);
-            }
+            var blocks = await GetOrGenerateBlocksAsync(cx, cz);
+            if (blocks == null) { _inFlight.Remove((cx, cz)); return; }
 
             if (_loadedColumns.Contains((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
 
-            // Regenerate XZ neighbor chunks for boundary padding. Deterministic seed means
-            // regenerated neighbors match whatever the chunks produce when they load themselves.
-            var nxMinus = await GenerateNeighborBlocksAsync(cx - 1, cz);
-            var nxPlus = await GenerateNeighborBlocksAsync(cx + 1, cz);
-            var nzMinus = await GenerateNeighborBlocksAsync(cx, cz - 1);
-            var nzPlus = await GenerateNeighborBlocksAsync(cx, cz + 1);
+            // XZ neighbors for boundary padding. Cached across calls so a neighbor
+            // generated once gets reused when adjacent columns mesh.
+            var nxMinus = await GetOrGenerateBlocksAsync(cx - 1, cz);
+            var nxPlus = await GetOrGenerateBlocksAsync(cx + 1, cz);
+            var nzMinus = await GetOrGenerateBlocksAsync(cx, cz - 1);
+            var nzPlus = await GetOrGenerateBlocksAsync(cx, cz + 1);
 
             // VoxelEngine greedy mesh: split chunk into 16x16x16 sections, mesh each with neighbor padding
             var sectionMeshes = await _engine.GenerateChunkMeshesAsync(
-                chunk.Blocks, nxMinus, nxPlus, nzMinus, nzPlus);
+                blocks, nxMinus, nxPlus, nzMinus, nzPlus);
 
             _inFlight.Remove((cx, cz));
             if (_loadedColumns.Contains((cx, cz)))
@@ -256,22 +286,16 @@ public class WorldService
         {
             try
             {
-                ChunkData chunk;
-                if (_heightmapLoader != null)
-                    chunk = _heightmapLoader.GenerateChunk(cx, cz);
-                else
-                {
-                    var heightmap = await _engine.GenerateHeightmapAsync(cx, cz);
-                    chunk = _generator!.GenerateChunkFromHeightmap(cx, cz, heightmap);
-                }
+                var blocks = await GetOrGenerateBlocksAsync(cx, cz);
+                if (blocks == null) continue;
 
-                var nxMinus = await GenerateNeighborBlocksAsync(cx - 1, cz);
-                var nxPlus = await GenerateNeighborBlocksAsync(cx + 1, cz);
-                var nzMinus = await GenerateNeighborBlocksAsync(cx, cz - 1);
-                var nzPlus = await GenerateNeighborBlocksAsync(cx, cz + 1);
+                var nxMinus = await GetOrGenerateBlocksAsync(cx - 1, cz);
+                var nxPlus = await GetOrGenerateBlocksAsync(cx + 1, cz);
+                var nzMinus = await GetOrGenerateBlocksAsync(cx, cz - 1);
+                var nzPlus = await GetOrGenerateBlocksAsync(cx, cz + 1);
 
                 var sectionMeshes = await _engine.GenerateChunkMeshesAsync(
-                    chunk.Blocks, nxMinus, nxPlus, nzMinus, nzPlus);
+                    blocks, nxMinus, nxPlus, nzMinus, nzPlus);
 
                 _loadedColumns.Add((cx, cz));
                 foreach (var (sy, meshResult) in sectionMeshes)
@@ -295,12 +319,16 @@ public class WorldService
     }
 
     /// <summary>
-    /// Regenerate a neighbor chunk's blocks for boundary padding only.
-    /// Result is discarded after meshing; the actual neighbor chunk regenerates itself when loaded.
-    /// Returns null if the heightmap loader rejects the coordinate (outside map bounds).
+    /// Return the full block byte[] for a chunk column, generating it on demand if not cached.
+    /// Hit path is a single Dictionary lookup, miss path runs the same generation as before
+    /// (HeightmapLoader for real maps, TerrainGenerator.GenerateChunkFromHeightmap for procedural)
+    /// and populates the cache. Returns null if the coordinate is outside the loaded heightmap.
     /// </summary>
-    private async Task<byte[]?> GenerateNeighborBlocksAsync(int ncx, int ncz)
+    private async Task<byte[]?> GetOrGenerateBlocksAsync(int ncx, int ncz)
     {
+        if (_blocksCache.TryGetValue((ncx, ncz), out var cached))
+            return cached;
+
         try
         {
             ChunkData neighbor;
@@ -313,6 +341,7 @@ public class WorldService
                 var hm = await _engine.GenerateHeightmapAsync(ncx, ncz);
                 neighbor = _generator!.GenerateChunkFromHeightmap(ncx, ncz, hm);
             }
+            _blocksCache[(ncx, ncz)] = neighbor.Blocks;
             return neighbor.Blocks;
         }
         catch
@@ -340,6 +369,7 @@ public class WorldService
         _loadedColumns.Clear();
         _pendingQueue.Clear();
         _inFlight.Clear();
+        _blocksCache.Clear();
         _lastCX = int.MinValue;
         _lastCZ = int.MinValue;
         _generator = null;
