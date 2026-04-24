@@ -42,6 +42,9 @@ public class HudService : IDisposable
 
     private UIProgressBar? _loadingBar;
     private UILabel? _loadingStatus;
+    private UILabel? _debugLabel;
+    private float _fpsSmoothed;
+    private float _fpsAccumTime;
 
     // Last-seen stat values for threshold-cross detection. Start at 1.0 (fed/hydrated)
     // so the first tick below 0.5 fires a "Peckish"/"Moist" toast. Temperature starts
@@ -192,6 +195,19 @@ public class HudService : IDisposable
             Align = TextAlign.Left,
         };
         root.AddAnchored(_clockLabel, Anchor.TopLeft, offsetX: 16, offsetY: 16);
+
+        // === Debug line (below the clock) - FPS + precise coords. Dev-ish but
+        // useful for any player who wants to know "where exactly am I?" ===
+        _debugLabel = new UILabel
+        {
+            Text = "",
+            FontSize = FontSize.Caption,
+            Width = 260,
+            Height = 18,
+            Align = TextAlign.Left,
+            Color = System.Drawing.Color.FromArgb(200, 180, 200, 210),
+        };
+        root.AddAnchored(_debugLabel, Anchor.TopLeft, offsetX: 16, offsetY: 44);
 
         // === Minimap (top-right) ===
         Minimap = new UIMapPanel { Width = 160, Height = 160 };
@@ -932,6 +948,22 @@ public class HudService : IDisposable
         // Refresh the clock label from WorldTimeService (cheap string format).
         if (_clockLabel != null)
             _clockLabel.Text = $"{_worldTime.ClockString}  {_worldTime.PhaseName}";
+
+        // FPS smoothing: low-pass over ~0.5s. Updates the debug line only a few
+        // times a second so the text doesn't flicker on every frame.
+        if (deltaTime > 0)
+        {
+            float instantFps = 1f / deltaTime;
+            _fpsSmoothed = _fpsSmoothed == 0 ? instantFps : (_fpsSmoothed * 0.9f + instantFps * 0.1f);
+        }
+        _fpsAccumTime += deltaTime;
+        if (_debugLabel != null && _fpsAccumTime > 0.25f)
+        {
+            _fpsAccumTime = 0;
+            _debugLabel.Text =
+                $"{(int)_fpsSmoothed} fps    " +
+                $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}";
+        }
 
         // Update compass bearing from camera yaw
         Compass.Bearing = cameraYaw;
