@@ -116,4 +116,78 @@ public class EntityService
         float vz = (float)Math.Sin(angle) * WanderSpeed;
         e.Velocity = new Vector3(vx, 0, vz);
     }
+
+    /// <summary>
+    /// Fires once when an attack lands (before the kill check). HudService can
+    /// hook this for a red flash / hit indicator, and AI hooks will use it
+    /// later for flee/aggro reactions.
+    /// </summary>
+    public event Action<WanderingEntity>? OnEntityHit;
+
+    /// <summary>
+    /// Fires once when an entity's health drops to zero and it has been
+    /// removed from the active list. Game.razor listens so it can award loot
+    /// drops to the player's inventory.
+    /// </summary>
+    public event Action<WanderingEntity>? OnEntityKilled;
+
+    /// <summary>
+    /// Scan all wandering entities and return the closest one that falls
+    /// inside the aim cone (minDot) and within maxDist of origin. Returns null
+    /// if nothing's in range - Game.razor falls through to block-break in that
+    /// case.
+    ///
+    /// We compare a horizontal-biased aim vector so the test doesn't require
+    /// the player to aim pixel-perfect at the billboard's vertical center.
+    /// </summary>
+    public WanderingEntity? FindTargetInCone(Vector3 origin, Vector3 forward, float maxDist, float minDot)
+    {
+        WanderingEntity? best = null;
+        float bestDist = float.PositiveInfinity;
+
+        float fwdLen = forward.Length();
+        if (fwdLen < 1e-4f) return null;
+        var fwdN = forward / fwdLen;
+
+        foreach (var e in Entities)
+        {
+            // Aim at the billboard's chest, not its feet (matches the +0.8 offset
+            // HudService uses when it projects the billboard).
+            var target = new Vector3(e.Position.X, e.Position.Y + 0.8f, e.Position.Z);
+            var delta = target - origin;
+            float d = delta.Length();
+            if (d > maxDist || d < 1e-3f) continue;
+
+            var dirN = delta / d;
+            float dot = Vector3.Dot(fwdN, dirN);
+            if (dot < minDot) continue;
+
+            if (d < bestDist)
+            {
+                bestDist = d;
+                best = e;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Apply damage to an entity. Fires OnEntityHit, then OnEntityKilled +
+    /// removes from the active list if health hits zero. Returns true when
+    /// the hit was fatal (caller uses the flag to drop loot once).
+    /// </summary>
+    public bool ApplyDamage(WanderingEntity e, float amount)
+    {
+        if (amount <= 0) return false;
+        e.Health = Math.Max(0f, e.Health - amount);
+        OnEntityHit?.Invoke(e);
+
+        if (e.Health <= 0f)
+        {
+            Entities.Remove(e);
+            OnEntityKilled?.Invoke(e);
+            return true;
+        }
+        return false;
+    }
 }

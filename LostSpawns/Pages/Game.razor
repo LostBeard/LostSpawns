@@ -113,6 +113,7 @@
         Hud.OnQuitToMenuClicked += HandleQuitToMenuClicked;
         Hud.OnRespawnClicked += HandleRespawnClicked;
         Stats.OnDied += HandleDied;
+        Wildlife.OnEntityKilled += HandleEntityKilled;
 
         Renderer.OnUpdate = OnGameUpdate;
 
@@ -399,6 +400,20 @@
 
         var origin = Renderer.Camera.Position;
         var dir = Renderer.Camera.Front;
+
+        // Entity hit-test runs BEFORE the block raycast so you can punch a
+        // wandering rabbit even if there's a tree behind it. Cone dot 0.95
+        // (~18 deg half-angle) gives a bit of melee aim assist without being
+        // a free-win autolock; range 5 blocks matches the block-break reach.
+        var target = Wildlife.FindTargetInCone(origin, dir, maxDist: 5f, minDot: 0.95f);
+        if (target is not null)
+        {
+            float dmg = DamageForEquippedTool();
+            Wildlife.ApplyDamage(target, dmg);
+            ConsumeBlockActionCost();
+            return;
+        }
+
         var hit = World.Raycast(origin, dir, maxDistance: 5f);
         if (!hit.DidHit) return;
 
@@ -472,6 +487,48 @@
             return $"Need a {toolName}";
         }
         return $"[E] {verb}";
+    }
+
+    /// <summary>
+    /// How much damage a single melee swing deals, based on what's in the
+    /// active hotbar slot. Bare hands are deliberately weak so the Axe / Pick
+    /// feel meaningful; Pick is marginally better at combat than an Axe since
+    /// it's got a point on it. Numbers are tuned for ~3-4 hits on a starter
+    /// entity (rabbit has 1.0 health, boar can soak more later).
+    /// </summary>
+    private float DamageForEquippedTool()
+    {
+        var id = Inventory.ActiveItem?.Id;
+        return id switch
+        {
+            "tool.axe"  => 0.55f,
+            "tool.pick" => 0.40f,
+            _           => 0.20f, // bare hands / any other item
+        };
+    }
+
+    /// <summary>
+    /// Loot table for a killed entity. Returns the single inventory stack we
+    /// award on death. null means "nothing drops" which we don't currently
+    /// use, but the switch is written tolerant so future EntityKinds can
+    /// return null.
+    /// </summary>
+    private static LostSpawns.Services.InventoryItem? LootForEntityKind(LostSpawns.Services.EntityKind k) => k switch
+    {
+        LostSpawns.Services.EntityKind.Rabbit => new("food.rabbit_meat", "Rabbit Meat", 1, LostSpawns.Services.ItemCategory.Food),
+        LostSpawns.Services.EntityKind.Boar   => new("food.boar_meat",   "Boar Meat",   2, LostSpawns.Services.ItemCategory.Food),
+        LostSpawns.Services.EntityKind.Crow   => new("material.feather", "Feather",     1, LostSpawns.Services.ItemCategory.Material),
+        _ => null,
+    };
+
+    private void HandleEntityKilled(LostSpawns.Services.WanderingEntity e)
+    {
+        var drop = LootForEntityKind(e.Kind);
+        if (drop is null) { Hud.Notify($"Killed {e.Kind}"); return; }
+
+        bool added = Inventory.TryAdd(drop);
+        if (added) Hud.NotifySuccess($"+{drop.Count} {drop.Name}");
+        else Hud.NotifyWarning($"Inventory full - {drop.Name} lost");
     }
 
     private static LostSpawns.Services.InventoryItem? DropForBlockType(LostSpawns.Models.BlockType t) => t switch
@@ -790,6 +847,7 @@
         Hud.OnQuitToMenuClicked -= HandleQuitToMenuClicked;
         Hud.OnRespawnClicked -= HandleRespawnClicked;
         Stats.OnDied -= HandleDied;
+        Wildlife.OnEntityKilled -= HandleEntityKilled;
 
         Renderer.StopRenderLoop();
         Hud.Dispose();
