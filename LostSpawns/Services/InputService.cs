@@ -47,6 +47,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on C key press. Toggles the crafting screen.</summary>
     public event Action? OnCraftingTogglePressed;
 
+    /// <summary>Fired on F key press. Feed-fire / secondary interact (reserved for future contextual actions).</summary>
+    public event Action? OnFeedFirePressed;
+
     /// <summary>Fired on left mouse-down while pointer is locked (in-game). Break-block action.</summary>
     public event Action? OnLeftClickPressed;
 
@@ -137,6 +140,10 @@ public class InputService : IAsyncDisposable
         // Crafting screen toggle on C.
         if (!e.Repeat && (e.Key == "c" || e.Key == "C"))
             OnCraftingTogglePressed?.Invoke();
+
+        // Feed fire on F - context-sensitive, handler checks proximity.
+        if (!e.Repeat && (e.Key == "f" || e.Key == "F"))
+            OnFeedFirePressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
         if (!e.Repeat && e.Key == "F9")

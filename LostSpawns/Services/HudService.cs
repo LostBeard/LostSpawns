@@ -975,10 +975,14 @@ public class HudService : IDisposable
             float dist = MathF.Max(0.1f, clip.W);
             float size = Math.Clamp(120f / dist, 10f, 90f) * pulse;
 
-            // Base ember layer - dark red at the bottom.
+            // Ember glow survives to 0 so extinguished fires are still visible
+            // on the ground as a dead pile; flame + tip fade with fuel so a
+            // low-fuel fire reads as almost out at a glance.
+            int flameAlpha = (int)Math.Clamp(220 * f.Fuel, 0, 220);
+            int tipAlpha   = (int)Math.Clamp(200 * f.Fuel, 0, 200);
             var ember  = System.Drawing.Color.FromArgb(220, 120, 30, 10);
-            var flame  = System.Drawing.Color.FromArgb(220, 240, 140, 40);
-            var tip    = System.Drawing.Color.FromArgb(200, 255, 220, 120);
+            var flame  = System.Drawing.Color.FromArgb(flameAlpha, 240, 140, 40);
+            var tip    = System.Drawing.Color.FromArgb(tipAlpha, 255, 220, 120);
 
             float x = screenX - size / 2f;
             float yBottom = screenY + size * 0.3f;
@@ -991,6 +995,17 @@ public class HudService : IDisposable
             _ui.Renderer.DrawRect(
                 x + size * 0.32f, yBottom - size * 0.85f,
                 size * 0.36f, size * 0.25f, tip);
+
+            // Fuel bar under the ember. Always shown so the player can see
+            // that a fire needs feeding before it's too late.
+            float barW = size;
+            float barH = 4f;
+            float barX = x;
+            float barY = yBottom + 2f;
+            _ui.Renderer.DrawRect(barX, barY, barW, barH,
+                System.Drawing.Color.FromArgb(180, 20, 20, 20));
+            _ui.Renderer.DrawRect(barX, barY, barW * Math.Clamp(f.Fuel, 0, 1), barH,
+                System.Drawing.Color.FromArgb(230, 250, 170, 40));
         }
     }
 

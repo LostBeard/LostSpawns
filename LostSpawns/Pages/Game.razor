@@ -105,6 +105,7 @@
         Input.OnPointerLockChanged += HandlePointerLockChanged;
         Input.OnInventoryTogglePressed += HandleInventoryToggle;
         Input.OnCraftingTogglePressed += HandleCraftingToggle;
+        Input.OnFeedFirePressed += HandleFeedFire;
         Input.OnInteractPressed += HandleInteract;
         Input.OnLeftClickPressed += HandleInteract;       // L-click = break, same as E
         Input.OnRightClickPressed += HandlePlaceBlock;    // R-click = place active hotbar material
@@ -560,6 +561,15 @@
         Hud.NotifySuccess($"Cooked {cookedName}");
     }
 
+    private void HandleFeedFire()
+    {
+        if (Hud.IsAnyMenuOpen) return;
+        if (Fires.TryFeedNearest(Renderer.Camera.Position, Inventory, out var reason))
+            Hud.NotifySuccess("Fed the fire");
+        else if (!string.IsNullOrEmpty(reason))
+            Hud.NotifyWarning(reason);
+    }
+
     private static LostSpawns.Services.InventoryItem? DropForBlockType(LostSpawns.Models.BlockType t) => t switch
     {
         LostSpawns.Models.BlockType.Wood   => new("material.wood",   "Wood",   1, LostSpawns.Services.ItemCategory.Material),
@@ -875,6 +885,7 @@
         Input.OnPointerLockChanged -= HandlePointerLockChanged;
         Input.OnInventoryTogglePressed -= HandleInventoryToggle;
         Input.OnCraftingTogglePressed -= HandleCraftingToggle;
+        Input.OnFeedFirePressed -= HandleFeedFire;
         Input.OnInteractPressed -= HandleInteract;
         Input.OnLeftClickPressed -= HandleInteract;
         Input.OnRightClickPressed -= HandlePlaceBlock;
