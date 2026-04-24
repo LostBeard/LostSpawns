@@ -464,24 +464,35 @@
 
         // Camera sees the sprint gate too so we can't sprint-speed when stamina is
         // empty even if Shift is still held.
-        // Save horizontal position, let camera move, then revert if we slid into a
-        // wall. Simple axis-aligned collision: check the voxel at the camera's
-        // feet and at head height; either being solid means the player is inside
-        // a block and we roll back the horizontal move this frame.
+        // Save horizontal position, let camera move, then:
+        //   1. If post-move is clear, keep it.
+        //   2. Else try stepping UP one voxel - handles 1-block ledges, terraces,
+        //      single-block obstacles without the player having to jump.
+        //   3. Else revert XZ and try each axis independently so the player
+        //      slides along walls instead of stopping dead at corners.
         var preMove = Renderer.Camera.Position;
         Renderer.Camera.ProcessKeyboard(Input.KeysDown, deltaTime, allowSprint: sprinting);
         var postMove = Renderer.Camera.Position;
         if (IsInsideSolidBlock(postMove))
         {
-            Renderer.Camera.Position = new System.Numerics.Vector3(preMove.X, postMove.Y, preMove.Z);
-            // Re-check each axis independently so the player slides along walls
-            // instead of stopping dead when hitting a corner.
-            var tryX = new System.Numerics.Vector3(postMove.X, postMove.Y, preMove.Z);
-            if (!IsInsideSolidBlock(tryX)) Renderer.Camera.Position = tryX;
+            var stepUp = new System.Numerics.Vector3(postMove.X, postMove.Y + 1f, postMove.Z);
+            if (!IsInsideSolidBlock(stepUp))
+            {
+                // Commit the step-up; gravity will settle the camera on the new
+                // terrain height next frame.
+                Renderer.Camera.Position = stepUp;
+            }
             else
             {
-                var tryZ = new System.Numerics.Vector3(preMove.X, postMove.Y, postMove.Z);
-                if (!IsInsideSolidBlock(tryZ)) Renderer.Camera.Position = tryZ;
+                // Wall too tall to step up. Axis-separated slide.
+                Renderer.Camera.Position = new System.Numerics.Vector3(preMove.X, postMove.Y, preMove.Z);
+                var tryX = new System.Numerics.Vector3(postMove.X, postMove.Y, preMove.Z);
+                if (!IsInsideSolidBlock(tryX)) Renderer.Camera.Position = tryX;
+                else
+                {
+                    var tryZ = new System.Numerics.Vector3(preMove.X, postMove.Y, postMove.Z);
+                    if (!IsInsideSolidBlock(tryZ)) Renderer.Camera.Position = tryZ;
+                }
             }
         }
 
