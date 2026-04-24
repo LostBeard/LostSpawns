@@ -1001,6 +1001,18 @@ public class HudService : IDisposable
                 _ui.Renderer.DrawRect(barX, barY, barW * Math.Clamp(e.Health, 0f, 1f), barH,
                     System.Drawing.Color.FromArgb(255, 220, 60, 60));
             }
+
+            // Name label above the billboard. Text scales with billboard size
+            // (so distance matters) but clamps so far-off labels stay legible
+            // and close-up ones don't balloon. Sits above the HP bar so they
+            // don't overlap.
+            string label = e.Kind.ToString();
+            float textPx = Math.Clamp(22f * (size / 40f), 10f, 22f);
+            float textW = _ui.Renderer.MeasureText(label, textPx);
+            float textX = screenX - textW / 2f;
+            float textY = (e.Health < 1f ? y - 24f : y - 16f);
+            _ui.Renderer.DrawText(label, textX, textY, textPx,
+                System.Drawing.Color.FromArgb(230, 235, 235, 240));
         }
     }
 
