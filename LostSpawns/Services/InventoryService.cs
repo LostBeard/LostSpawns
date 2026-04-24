@@ -8,6 +8,12 @@ namespace LostSpawns.Services;
 public record InventoryItem(string Id, string Name, int Count = 1);
 
 /// <summary>
+/// Payload carried by GameUIService.DragDropManager during an inventory drag.
+/// FromHotbar=true means the drag started in a hotbar slot; false means backpack.
+/// </summary>
+public readonly record struct InventoryDragData(bool FromHotbar, int Index);
+
+/// <summary>
 /// Player inventory: 9-slot hotbar plus a backpack grid. Display-only for v1 -
 /// drag/drop and move between containers come later. Hotbar items power the
 /// on-screen quick-access bar; backpack items are only visible when the
@@ -45,6 +51,40 @@ public class InventoryService
         _hotbar[1] = new InventoryItem("tool.pick", "Pick");
         _hotbar[4] = new InventoryItem("med.bandage", "Bandage");
         _hotbar[8] = new InventoryItem("tool.map", "Map");
+
+        // Starter backpack so the inventory screen has something visible on first open.
+        // Gives the player a reason to open inventory + immediate drag-drop targets.
+        _backpack[0] = new InventoryItem("consume.water", "Water", 2);
+        _backpack[1] = new InventoryItem("consume.beans", "Beans", 3);
+        _backpack[2] = new InventoryItem("material.cloth", "Cloth", 5);
+        _backpack[3] = new InventoryItem("material.rope", "Rope");
+        _backpack[8] = new InventoryItem("tool.flare", "Flare", 2);
+        _backpack[9] = new InventoryItem("med.painkiller", "Painkiller");
+    }
+
+    /// <summary>
+    /// Move the item between two slots. Source and target are encoded as
+    /// (fromHotbar, index): fromHotbar==true means hotbar[index], false means backpack[index].
+    /// If target already holds an item, the two are swapped. No-op if source is empty or
+    /// indices are the same.
+    /// </summary>
+    public void MoveSlot(bool fromHotbar, int fromIndex, bool toHotbar, int toIndex)
+    {
+        if (fromHotbar == toHotbar && fromIndex == toIndex) return;
+
+        var source = fromHotbar ? _hotbar : _backpack;
+        var target = toHotbar ? _hotbar : _backpack;
+        int sMax = fromHotbar ? HotbarSize : BackpackSize;
+        int tMax = toHotbar ? HotbarSize : BackpackSize;
+        if ((uint)fromIndex >= (uint)sMax || (uint)toIndex >= (uint)tMax) return;
+
+        var moving = source[fromIndex];
+        if (moving is null) return;
+
+        var displaced = target[toIndex];
+        target[toIndex] = moving;
+        source[fromIndex] = displaced;
+        OnInventoryChanged?.Invoke();
     }
 
     /// <summary>Get the hotbar item at an index, or null.</summary>

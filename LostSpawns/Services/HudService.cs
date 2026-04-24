@@ -26,7 +26,7 @@ public class HudService : IDisposable
     private readonly InventoryService _inventory;
     private RenderService? _renderer;
     private UIGrid? _backpackGrid;
-    private UIHotbar? _inventoryHotbarRow;
+    private UIGrid? _inventoryHotbarRow;
 
     // HUD elements
     public UIStatusHUD StatusHUD { get; private set; } = null!;
@@ -267,8 +267,8 @@ public class HudService : IDisposable
         };
         panel.AddChild(title);
 
-        // Backpack grid: 8 cols x 4 rows, 48px cells with 4px gap = 412x204 usable.
-        // Placed slightly left of center to fit the panel horizontal padding.
+        // Backpack grid: 8 cols x 4 rows, 48px cells with 4px gap. Drag-drop enabled so the
+        // player can rearrange items between backpack slots and onto the hotbar below.
         _backpackGrid = new UIGrid
         {
             Columns = InventoryService.BackpackColumns,
@@ -279,24 +279,62 @@ public class HudService : IDisposable
             Height = InventoryService.BackpackRows * 52,
             X = 22,
             Y = 64,
+            EnableDragDrop = true,
         };
         _backpackGrid.OnCellClicked = idx =>
         {
-            // v1 behavior: click to select. Drag/drop will layer on top in a follow-up.
             _backpackGrid!.SelectedIndex = idx;
+        };
+        _backpackGrid.OnDragStart = idx =>
+        {
+            var item = _inventory.GetBackpack(idx);
+            if (item is null) return;
+            _ui.DragDrop.BeginDrag(new InventoryDragData(false, idx), item.Name);
         };
         panel.AddChild(_backpackGrid);
 
-        // Hotbar row below the backpack so the player sees both at once.
-        _inventoryHotbarRow = new UIHotbar
+        // Hotbar row below the backpack as a UIGrid (1 row x HotbarSize cols) so it
+        // participates in drag-drop. The separate persistent HUD hotbar (UIHotbar at
+        // BottomCenter) stays read-only - you rearrange in the inventory screen, the
+        // in-game bar reflects the result.
+        _inventoryHotbarRow = new UIGrid
         {
-            SlotCount = InventoryService.HotbarSize,
-            SlotSize = 44,
-            SlotGap = 4,
+            Columns = InventoryService.HotbarSize,
+            Rows = 1,
+            CellSize = 44,
+            CellGap = 4,
+            Width = InventoryService.HotbarSize * 48,
+            Height = 44,
             X = (460 - (InventoryService.HotbarSize * 48)) / 2,
             Y = 290,
+            EnableDragDrop = true,
+        };
+        _inventoryHotbarRow.OnCellClicked = idx =>
+        {
+            _inventoryHotbarRow!.SelectedIndex = idx;
+        };
+        _inventoryHotbarRow.OnDragStart = idx =>
+        {
+            var item = _inventory.GetHotbar(idx);
+            if (item is null) return;
+            _ui.DragDrop.BeginDrag(new InventoryDragData(true, idx), item.Name);
         };
         panel.AddChild(_inventoryHotbarRow);
+
+        // Register both grids as drop targets. On drop, read the grid's HoveredIndex
+        // (updated each frame during drag) to find the destination cell; if the drop
+        // fell inside the grid bounds but outside any cell, HoveredIndex is -1 and
+        // we treat it as a cancel.
+        _ui.DragDrop.RegisterTarget(_backpackGrid, (data, _) =>
+        {
+            if (data is InventoryDragData src && _backpackGrid!.HoveredIndex >= 0)
+                _inventory.MoveSlot(src.FromHotbar, src.Index, false, _backpackGrid.HoveredIndex);
+        });
+        _ui.DragDrop.RegisterTarget(_inventoryHotbarRow, (data, _) =>
+        {
+            if (data is InventoryDragData src && _inventoryHotbarRow!.HoveredIndex >= 0)
+                _inventory.MoveSlot(src.FromHotbar, src.Index, true, _inventoryHotbarRow.HoveredIndex);
+        });
 
         var closeLabel = new UILabel
         {
@@ -330,7 +368,7 @@ public class HudService : IDisposable
             for (int i = 0; i < InventoryService.HotbarSize; i++)
             {
                 var item = _inventory.Hotbar[i];
-                _inventoryHotbarRow.SetSlot(i, item?.Name);
+                _inventoryHotbarRow.SetCell(i, item?.Name);
             }
         }
 
