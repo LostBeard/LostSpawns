@@ -20,6 +20,7 @@ builder.Services.AddSingleton<RenderService>();
 // PlayerStats first because InventoryService now constructor-injects it for consumables.
 builder.Services.AddSingleton<PlayerStatsService>();
 builder.Services.AddSingleton<InventoryService>();
+builder.Services.AddSingleton<CraftingService>();
 builder.Services.AddSingleton<WorldTimeService>();
 builder.Services.AddSingleton<HudService>();
 

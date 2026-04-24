@@ -26,10 +26,12 @@ public class HudService : IDisposable
     private readonly InventoryService _inventory;
     private readonly SettingsService _settings;
     private readonly WorldTimeService _worldTime;
+    private readonly CraftingService _crafting;
     private RenderService? _renderer;
     private UIGrid? _backpackGrid;
     private UIGrid? _inventoryHotbarRow;
     private UILabel? _clockLabel;
+    private readonly List<(UIButton Button, UILabel Status)> _craftingRows = new();
 
     // HUD elements
     public UIStatusHUD StatusHUD { get; private set; } = null!;
@@ -65,11 +67,14 @@ public class HudService : IDisposable
     /// <summary>True while the in-game settings overlay is on top of the screen stack.</summary>
     public bool IsSettingsOpen => _ui.Screens.ActiveScreen == "settings";
 
+    /// <summary>True while the crafting screen is on top of the screen stack.</summary>
+    public bool IsCraftingOpen => _ui.Screens.ActiveScreen == "crafting";
+
     /// <summary>True while the initial terrain-loading overlay is showing.</summary>
     public bool IsLoading => _ui.Screens.ActiveScreen == "loading";
 
-    /// <summary>True while any modal overlay (pause, inventory, settings, loading, death) covers the HUD.</summary>
-    public bool IsAnyMenuOpen => IsPaused || IsInventoryOpen || IsSettingsOpen || IsLoading || IsDead;
+    /// <summary>True while any modal overlay (pause, inventory, settings, loading, crafting, death) covers the HUD.</summary>
+    public bool IsAnyMenuOpen => IsPaused || IsInventoryOpen || IsSettingsOpen || IsLoading || IsCraftingOpen || IsDead;
 
     /// <summary>Fired when the player clicks Resume in the pause menu.</summary>
     public event Action? OnResumeClicked;
@@ -83,13 +88,14 @@ public class HudService : IDisposable
     /// <summary>True while the death screen is on top of the screen stack.</summary>
     public bool IsDead => _ui.Screens.ActiveScreen == "death";
 
-    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime)
+    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting)
     {
         _ui = ui;
         _stats = stats;
         _inventory = inventory;
         _settings = settings;
         _worldTime = worldTime;
+        _crafting = crafting;
         _inventory.OnInventoryChanged += SyncInventoryToHud;
         _inventory.OnActiveHotbarChanged += SyncActiveHotbar;
         _inventory.OnItemConsumed += HandleItemConsumed;
@@ -246,6 +252,14 @@ public class HudService : IDisposable
         // === Death screen (pushed from Game.razor on PlayerStats.OnDied) ===
         _ui.Screens.Register("death", BuildDeathScreen());
 
+        // === Crafting screen (pushed by Game.razor on C key) ===
+        _ui.Screens.Register("crafting", BuildCraftingScreen());
+
+        // Subscribe to inventory changes so the craft buttons' enabled state
+        // tracks available materials in real time.
+        _inventory.OnInventoryChanged += RefreshCraftingButtons;
+        RefreshCraftingButtons();
+
         // Push current inventory state into both the persistent hotbar and the
         // inventory screen's grid, so first paint matches the data model.
         SyncInventoryToHud();
@@ -359,6 +373,131 @@ public class HudService : IDisposable
     {
         if (_ui.Screens.ActiveScreen != "settings") return;
         _ui.Screens.Pop();
+    }
+
+    /// <summary>Toggle the crafting screen (C key).</summary>
+    public void ToggleCrafting()
+    {
+        if (IsCraftingOpen) _ui.Screens.Pop();
+        else _ui.Screens.Push("crafting");
+    }
+
+    /// <summary>Pop the crafting screen.</summary>
+    public void HideCrafting()
+    {
+        if (!IsCraftingOpen) return;
+        _ui.Screens.Pop();
+    }
+
+    private UIElement BuildCraftingScreen()
+    {
+        var anchor = new UIAnchorPanel
+        {
+            Width = _renderer!.CanvasWidth,
+            Height = _renderer.CanvasHeight,
+        };
+
+        int rowCount = _crafting.Recipes.Count;
+        float rowHeight = 56;
+        float rowGap = 8;
+        int panelWidth = 440;
+        int panelHeight = (int)(72 + rowCount * (rowHeight + rowGap) + 36);
+
+        var panel = new UIPanel
+        {
+            Width = panelWidth,
+            Height = panelHeight,
+            CornerRadius = 10,
+        };
+
+        var title = new UILabel
+        {
+            Text = "CRAFTING",
+            FontSize = FontSize.Heading,
+            Width = panelWidth,
+            Height = 36,
+            X = 0,
+            Y = 16,
+            Align = TextAlign.Center,
+        };
+        panel.AddChild(title);
+
+        // Build one row per recipe: label (ingredients + output) + craft button.
+        // _craftingRows is pre-populated in parallel so RefreshCraftingButtons can
+        // flip Enabled per row based on live inventory.
+        _craftingRows.Clear();
+        for (int i = 0; i < rowCount; i++)
+        {
+            var recipe = _crafting.Recipes[i];
+            float rowY = 64 + i * (rowHeight + rowGap);
+
+            string ingredients = string.Join(" + ",
+                recipe.Inputs.Select(inp => $"{inp.Count}x {ItemShortName(inp.Id)}"));
+            var status = new UILabel
+            {
+                Text = $"{ingredients}  ->  {recipe.Output.Name}",
+                FontSize = FontSize.Body,
+                Width = 260,
+                Height = (int)rowHeight,
+                X = 20,
+                Y = (int)rowY + 14,
+                Align = TextAlign.Left,
+            };
+            panel.AddChild(status);
+
+            var button = new UIButton
+            {
+                Text = recipe.DisplayName,
+                Width = 120,
+                Height = (int)rowHeight,
+                X = panelWidth - 140,
+                Y = (int)rowY,
+            };
+            var captured = recipe; // avoid loop variable capture
+            button.OnClick = () =>
+            {
+                if (_crafting.TryCraft(captured))
+                    NotifySuccess($"Crafted {captured.Output.Name}");
+                else
+                    NotifyWarning($"Missing materials for {captured.DisplayName}");
+            };
+            panel.AddChild(button);
+
+            _craftingRows.Add((button, status));
+        }
+
+        var closeHint = new UILabel
+        {
+            Text = "Press C or Esc to close",
+            FontSize = FontSize.Caption,
+            Width = panelWidth,
+            Height = 20,
+            X = 0,
+            Y = panelHeight - 26,
+            Align = TextAlign.Center,
+        };
+        panel.AddChild(closeHint);
+
+        anchor.AddAnchored(panel, Anchor.Center);
+        return anchor;
+    }
+
+    private void RefreshCraftingButtons()
+    {
+        if (_craftingRows.Count == 0) return;
+        for (int i = 0; i < _craftingRows.Count && i < _crafting.Recipes.Count; i++)
+        {
+            bool can = _crafting.CanCraft(_crafting.Recipes[i]);
+            _craftingRows[i].Button.Enabled = can;
+        }
+    }
+
+    // Pretty-print an item id for recipe rows. "material.wood" -> "Wood".
+    private static string ItemShortName(string id)
+    {
+        int dot = id.IndexOf('.');
+        string tail = dot >= 0 && dot + 1 < id.Length ? id[(dot + 1)..] : id;
+        return tail.Length == 0 ? id : char.ToUpper(tail[0]) + tail[1..];
     }
 
     /// <summary>Push the death screen. Call from PlayerStats.OnDied.</summary>
@@ -1013,6 +1152,7 @@ public class HudService : IDisposable
     public void Dispose()
     {
         _inventory.OnInventoryChanged -= SyncInventoryToHud;
+        _inventory.OnInventoryChanged -= RefreshCraftingButtons;
         _inventory.OnActiveHotbarChanged -= SyncActiveHotbar;
         _inventory.OnItemConsumed -= HandleItemConsumed;
         _stats.OnDamageTaken -= HandleDamageTaken;

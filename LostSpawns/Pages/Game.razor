@@ -100,6 +100,7 @@
         Input.OnEscapePressed += HandleEscape;
         Input.OnPointerLockChanged += HandlePointerLockChanged;
         Input.OnInventoryTogglePressed += HandleInventoryToggle;
+        Input.OnCraftingTogglePressed += HandleCraftingToggle;
         Input.OnInteractPressed += HandleInteract;
         Input.OnLeftClickPressed += HandleInteract;       // L-click = break, same as E
         Input.OnRightClickPressed += HandlePlaceBlock;    // R-click = place active hotbar material
@@ -305,6 +306,7 @@
         // dismisses itself when chunk gen completes).
         if (Hud.IsLoading || Hud.IsDead) return;
         if (Hud.IsSettingsOpen)  { Hud.HideSettings();  return; }
+        if (Hud.IsCraftingOpen)  { Hud.HideCrafting();  return; }
         if (Hud.IsInventoryOpen) { Hud.HideInventory(); return; }
         if (Hud.IsPaused) HandleResumeClicked();
         else Hud.ShowPauseMenu();
@@ -317,8 +319,15 @@
         // inventory itself is already up, the toggle closes it (handled inside
         // Hud.ToggleInventory).
         if (Hud.IsInventoryOpen) { Hud.ToggleInventory(); return; }
-        if (Hud.IsLoading || Hud.IsPaused || Hud.IsSettingsOpen) return;
+        if (Hud.IsLoading || Hud.IsPaused || Hud.IsSettingsOpen || Hud.IsCraftingOpen || Hud.IsDead) return;
         Hud.ToggleInventory();
+    }
+
+    private void HandleCraftingToggle()
+    {
+        if (Hud.IsCraftingOpen) { Hud.ToggleCrafting(); return; }
+        if (Hud.IsLoading || Hud.IsPaused || Hud.IsSettingsOpen || Hud.IsInventoryOpen || Hud.IsDead) return;
+        Hud.ToggleCrafting();
     }
 
     // Dev keybinds for testing the damage/heal UX. Remove once real combat /
@@ -627,6 +636,7 @@
         Input.OnEscapePressed -= HandleEscape;
         Input.OnPointerLockChanged -= HandlePointerLockChanged;
         Input.OnInventoryTogglePressed -= HandleInventoryToggle;
+        Input.OnCraftingTogglePressed -= HandleCraftingToggle;
         Input.OnInteractPressed -= HandleInteract;
         Input.OnLeftClickPressed -= HandleInteract;
         Input.OnRightClickPressed -= HandlePlaceBlock;

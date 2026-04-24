@@ -44,6 +44,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on E key press. Used for "interact / break block in crosshair" gameplay.</summary>
     public event Action? OnInteractPressed;
 
+    /// <summary>Fired on C key press. Toggles the crafting screen.</summary>
+    public event Action? OnCraftingTogglePressed;
+
     /// <summary>Fired on left mouse-down while pointer is locked (in-game). Break-block action.</summary>
     public event Action? OnLeftClickPressed;
 
@@ -130,6 +133,10 @@ public class InputService : IAsyncDisposable
         // Interact / break block in crosshair on E.
         if (!e.Repeat && (e.Key == "e" || e.Key == "E"))
             OnInteractPressed?.Invoke();
+
+        // Crafting screen toggle on C.
+        if (!e.Repeat && (e.Key == "c" || e.Key == "C"))
+            OnCraftingTogglePressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
         if (!e.Repeat && e.Key == "F9")
