@@ -38,6 +38,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired whenever pointer-lock state changes. Argument: new locked state.</summary>
     public event Action<bool>? OnPointerLockChanged;
 
+    /// <summary>Fired whenever the inventory-toggle key is pressed (default I/Tab).</summary>
+    public event Action? OnInventoryTogglePressed;
+
     /// <summary>Normalized XZ move vector: X=strafe, Y=forward.</summary>
     public Vector2 MoveVector => new(
         (Right ? 1f : 0f) - (Left ? 1f : 0f),
@@ -94,6 +97,10 @@ public class InputService : IAsyncDisposable
         KeysDown.Add(e.Code);
         if (!e.Repeat && e.Key == "Escape")
             OnEscapePressed?.Invoke();
+        // Inventory toggle: I or Tab. Tab is a common browser focus key so Game.razor
+        // handles the actual open/close logic - this only fires the intent.
+        if (!e.Repeat && (e.Key == "i" || e.Key == "I" || e.Key == "Tab"))
+            OnInventoryTogglePressed?.Invoke();
     }
 
     private void OnKeyUp(KeyboardEvent e)

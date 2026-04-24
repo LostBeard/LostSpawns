@@ -108,6 +108,7 @@
         // the player is never left in a half-paused / half-playing state if they alt-tab.
         Input.OnEscapePressed += HandleEscape;
         Input.OnPointerLockChanged += HandlePointerLockChanged;
+        Input.OnInventoryTogglePressed += HandleInventoryToggle;
         Hud.OnResumeClicked += HandleResumeClicked;
         Hud.OnSettingsClicked += HandleSettingsClicked;
         Hud.OnQuitToMenuClicked += HandleQuitToMenuClicked;
@@ -123,8 +124,18 @@
 
     private void HandleEscape()
     {
+        // Priority: close inventory first, then toggle pause menu. Prevents the
+        // usual "hit Escape once and two modals fight each other" trap.
+        if (Hud.IsInventoryOpen) { Hud.HideInventory(); return; }
         if (Hud.IsPaused) HandleResumeClicked();
         else Hud.ShowPauseMenu();
+    }
+
+    private void HandleInventoryToggle()
+    {
+        // Don't let inventory open on top of the pause menu - pause wins.
+        if (Hud.IsPaused) return;
+        Hud.ToggleInventory();
     }
 
     private void HandlePointerLockChanged(bool locked)
@@ -160,11 +171,12 @@
 
     private void OnGameUpdate(float deltaTime)
     {
-        // While paused: don't feed camera movement, mouse look, or FPS counter updates.
-        // Chunk streaming + HUD input still run so the menu stays interactive.
-        if (Hud.IsPaused)
+        // While any menu is open: don't feed camera movement, mouse look, or FPS
+        // counter updates. Chunk streaming + HUD input still run so the menu stays
+        // interactive. Drain mouse deltas so resuming doesn't snap the view.
+        if (Hud.IsAnyMenuOpen)
         {
-            Input.ConsumeMouseDelta(); // drain stale deltas so Resume doesn't snap the view
+            Input.ConsumeMouseDelta();
             Hud.Update(deltaTime, Renderer.Camera.Position, Renderer.Camera.Yaw);
             return;
         }
@@ -213,6 +225,7 @@
     {
         Input.OnEscapePressed -= HandleEscape;
         Input.OnPointerLockChanged -= HandlePointerLockChanged;
+        Input.OnInventoryTogglePressed -= HandleInventoryToggle;
         Hud.OnResumeClicked -= HandleResumeClicked;
         Hud.OnSettingsClicked -= HandleSettingsClicked;
         Hud.OnQuitToMenuClicked -= HandleQuitToMenuClicked;

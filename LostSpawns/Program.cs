@@ -18,6 +18,7 @@ builder.Services.AddSingleton<VoxelEngineService>();
 builder.Services.AddSingleton<WorldService>();
 builder.Services.AddSingleton<RenderService>();
 builder.Services.AddSingleton<PlayerStatsService>();
+builder.Services.AddSingleton<InventoryService>();
 builder.Services.AddSingleton<HudService>();
 
 // GPU-rendered game UI overlay (SDF fonts, HUD elements, inventory, chat)

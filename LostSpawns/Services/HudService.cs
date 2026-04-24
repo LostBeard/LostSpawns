@@ -23,7 +23,10 @@ public class HudService : IDisposable
 {
     private readonly GameUIService _ui;
     private readonly PlayerStatsService _stats;
+    private readonly InventoryService _inventory;
     private RenderService? _renderer;
+    private UIGrid? _backpackGrid;
+    private UIHotbar? _inventoryHotbarRow;
 
     // HUD elements
     public UIStatusHUD StatusHUD { get; private set; } = null!;
@@ -38,6 +41,12 @@ public class HudService : IDisposable
     /// <summary>True while the pause menu is on top of the screen stack.</summary>
     public bool IsPaused => _ui.Screens.ActiveScreen == "pause";
 
+    /// <summary>True while the inventory screen is on top of the screen stack.</summary>
+    public bool IsInventoryOpen => _ui.Screens.ActiveScreen == "inventory";
+
+    /// <summary>True while any modal overlay (pause, inventory) covers the HUD.</summary>
+    public bool IsAnyMenuOpen => IsPaused || IsInventoryOpen;
+
     /// <summary>Fired when the player clicks Resume in the pause menu.</summary>
     public event Action? OnResumeClicked;
 
@@ -47,10 +56,12 @@ public class HudService : IDisposable
     /// <summary>Fired when the player clicks Quit to Menu in the pause menu.</summary>
     public event Action? OnQuitToMenuClicked;
 
-    public HudService(GameUIService ui, PlayerStatsService stats)
+    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory)
     {
         _ui = ui;
         _stats = stats;
+        _inventory = inventory;
+        _inventory.OnInventoryChanged += SyncInventoryToHud;
     }
 
     /// <summary>
@@ -95,11 +106,7 @@ public class HudService : IDisposable
         root.AddAnchored(StatusHUD, Anchor.BottomLeft, offsetX: 16, offsetY: -16);
 
         // === Hotbar (bottom-center) ===
-        Hotbar = new UIHotbar { SlotCount = 9 };
-        Hotbar.SetSlot(0, "Axe");
-        Hotbar.SetSlot(1, "Pick");
-        Hotbar.SetSlot(4, "Bandage");
-        Hotbar.SetSlot(8, "Map");
+        Hotbar = new UIHotbar { SlotCount = InventoryService.HotbarSize };
         Hotbar.SelectedSlot = 0;
         root.AddAnchored(Hotbar, Anchor.BottomCenter, offsetY: -12);
 
@@ -128,6 +135,13 @@ public class HudService : IDisposable
 
         // === Pause menu (registered but not pushed; Game.razor pushes on Escape) ===
         _ui.Screens.Register("pause", BuildPauseMenu());
+
+        // === Inventory screen (registered but not pushed; Game.razor pushes on I) ===
+        _ui.Screens.Register("inventory", BuildInventoryScreen());
+
+        // Push current inventory state into both the persistent hotbar and the
+        // inventory screen's grid, so first paint matches the data model.
+        SyncInventoryToHud();
     }
 
     private UIElement BuildPauseMenu()
@@ -209,6 +223,127 @@ public class HudService : IDisposable
         _ui.Screens.Pop();
     }
 
+    /// <summary>Toggle the inventory screen.</summary>
+    public void ToggleInventory()
+    {
+        if (IsInventoryOpen) _ui.Screens.Pop();
+        else _ui.Screens.Push("inventory");
+    }
+
+    /// <summary>Pop the inventory screen (back to HUD).</summary>
+    public void HideInventory()
+    {
+        if (_ui.Screens.ActiveScreen != "inventory") return;
+        _ui.Screens.Pop();
+    }
+
+    private UIElement BuildInventoryScreen()
+    {
+        // Center-anchored so the panel naturally retargets to VR WorldSpace / AR
+        // ViewAnchored without any screen-space pixel offsets that wouldn't translate.
+        var anchor = new UIAnchorPanel
+        {
+            Width = _renderer!.CanvasWidth,
+            Height = _renderer.CanvasHeight,
+        };
+
+        var panel = new UIPanel
+        {
+            // Sized to fit a 4x8 backpack grid (8 cols * 52 = 416 + padding) + hotbar row below.
+            Width = 460,
+            Height = 380,
+            CornerRadius = 10,
+        };
+
+        var title = new UILabel
+        {
+            Text = "INVENTORY",
+            FontSize = FontSize.Heading,
+            Width = 460,
+            Height = 36,
+            X = 0,
+            Y = 16,
+            Align = TextAlign.Center,
+        };
+        panel.AddChild(title);
+
+        // Backpack grid: 8 cols x 4 rows, 48px cells with 4px gap = 412x204 usable.
+        // Placed slightly left of center to fit the panel horizontal padding.
+        _backpackGrid = new UIGrid
+        {
+            Columns = InventoryService.BackpackColumns,
+            Rows = InventoryService.BackpackRows,
+            CellSize = 48,
+            CellGap = 4,
+            Width = InventoryService.BackpackColumns * 52, // CellSize + CellGap
+            Height = InventoryService.BackpackRows * 52,
+            X = 22,
+            Y = 64,
+        };
+        _backpackGrid.OnCellClicked = idx =>
+        {
+            // v1 behavior: click to select. Drag/drop will layer on top in a follow-up.
+            _backpackGrid!.SelectedIndex = idx;
+        };
+        panel.AddChild(_backpackGrid);
+
+        // Hotbar row below the backpack so the player sees both at once.
+        _inventoryHotbarRow = new UIHotbar
+        {
+            SlotCount = InventoryService.HotbarSize,
+            SlotSize = 44,
+            SlotGap = 4,
+            X = (460 - (InventoryService.HotbarSize * 48)) / 2,
+            Y = 290,
+        };
+        panel.AddChild(_inventoryHotbarRow);
+
+        var closeLabel = new UILabel
+        {
+            Text = "Press I or Esc to close",
+            FontSize = FontSize.Caption,
+            Width = 460,
+            Height = 20,
+            X = 0,
+            Y = 350,
+            Align = TextAlign.Center,
+        };
+        panel.AddChild(closeLabel);
+
+        anchor.AddAnchored(panel, Anchor.Center);
+        return anchor;
+    }
+
+    private void SyncInventoryToHud()
+    {
+        if (Hotbar != null)
+        {
+            for (int i = 0; i < InventoryService.HotbarSize; i++)
+            {
+                var item = _inventory.Hotbar[i];
+                Hotbar.SetSlot(i, item?.Name);
+            }
+        }
+
+        if (_inventoryHotbarRow != null)
+        {
+            for (int i = 0; i < InventoryService.HotbarSize; i++)
+            {
+                var item = _inventory.Hotbar[i];
+                _inventoryHotbarRow.SetSlot(i, item?.Name);
+            }
+        }
+
+        if (_backpackGrid != null)
+        {
+            for (int i = 0; i < InventoryService.BackpackSize; i++)
+            {
+                var item = _inventory.Backpack[i];
+                _backpackGrid.SetCell(i, item?.Name);
+            }
+        }
+    }
+
     private void SyncStatsToHud()
     {
         StatusHUD.Health = _stats.Health;
@@ -280,6 +415,7 @@ public class HudService : IDisposable
 
     public void Dispose()
     {
+        _inventory.OnInventoryChanged -= SyncInventoryToHud;
         if (_renderer != null)
             _renderer.OnPostRender = null;
     }
