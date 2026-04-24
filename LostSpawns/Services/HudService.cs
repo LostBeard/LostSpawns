@@ -1622,6 +1622,22 @@ public class HudService : IDisposable
             });
         }
 
+        // Warm orange screen tint when the player is inside a fire's warmth
+        // aura. Scales intensity with the bonus so a barely-in-range fire
+        // gives only a faint glow while sitting in one paints a clear cozy
+        // tone. Cleared immediately when walking away.
+        float warmth = _fires.GetWarmthBonusAt(cameraPosition);
+        if (warmth > 0.02f)
+        {
+            int alpha = Math.Clamp((int)(warmth * 120f), 10, 70);
+            ScreenOverlay?.SetPersistent("fireglow",
+                System.Drawing.Color.FromArgb(alpha, 230, 120, 40));
+        }
+        else
+        {
+            ScreenOverlay?.ClearPersistent("fireglow");
+        }
+
         // Update screen overlay effects
         ScreenOverlay.Update(deltaTime);
 
