@@ -914,10 +914,15 @@
         // Passive for MVP (no equipment slot system yet) - just having one
         // in inventory is enough to notice the temperature track.
         float coatBonus = Inventory.HasItem("gear.fur_coat") ? 0.15f : 0f;
-        float ambient = Time.TargetTemperature
-                      - Weather.RainIntensity * 0.1f
-                      + warmthBonus
-                      + coatBonus;
+        // Clamp to [0.05, 0.85] so stacking fire + coat + noon sun doesn't
+        // drive the player into heatstroke range, and an unfueled night
+        // can't collapse the ambient below the bottom of the temp track.
+        float ambient = Math.Clamp(
+            Time.TargetTemperature
+                - Weather.RainIntensity * 0.1f
+                + warmthBonus
+                + coatBonus,
+            0.05f, 0.85f);
         // Camping = faster recovery. Multiplier scales with warmth so a
         // barely-in-range fire helps less than one the player is practically
         // sitting in, but still beats out-in-the-cold.
