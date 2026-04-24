@@ -56,6 +56,24 @@ public class WorldTimeService
     }
 
     /// <summary>
+    /// Target core-temperature comfort [0,1] that the player drifts toward based on
+    /// time of day. 0.5 = comfortable; lower = colder ambient; higher = hotter.
+    /// Survival code reads this and gently pulls the actual Temperature stat toward
+    /// it so nights feel cold and days feel warm.
+    /// </summary>
+    public float TargetTemperature
+    {
+        get
+        {
+            float t = DayFraction;
+            if (t < 0.12f) return 0.42f; // Dawn: cool, warming up
+            if (t < 0.48f) return 0.52f; // Day: comfortable
+            if (t < 0.58f) return 0.40f; // Dusk: cooling
+            return 0.22f;                // Night: cold
+        }
+    }
+
+    /// <summary>
     /// DayFraction mapped to a 24-hour clock string "HH:MM" where 0.00 = 06:00
     /// (start of day) for a more readable display. Purely cosmetic.
     /// </summary>

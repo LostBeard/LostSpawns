@@ -226,8 +226,10 @@
         // Gameplay simulation: time advances, survival stats decay, etc. Paused /
         // inventory / settings / loading all short-circuit above this point so the
         // world clock (and hunger/thirst) literally stop while menus are up.
+        // Temperature target comes from WorldTimeService so nights feel cold and
+        // days warm; future clothing system can modulate this before passing in.
         Time.Tick(deltaTime);
-        Stats.Tick(deltaTime);
+        Stats.Tick(deltaTime, Time.TargetTemperature);
 
         Renderer.Camera.ProcessKeyboard(Input.KeysDown, deltaTime);
 

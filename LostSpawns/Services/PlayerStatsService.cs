@@ -103,21 +103,44 @@ public class PlayerStatsService
     public float StarvationDamageRate { get; set; } = 0.005f;
 
     /// <summary>
+    /// How fast body temperature drifts toward its ambient target. Lower = slower
+    /// response; warm clothing / gear effectively reduces this on the consuming side.
+    /// </summary>
+    public float TemperatureAdaptRate { get; set; } = 0.015f;
+
+    /// <summary>Hypothermia HP drain per second when Temperature &lt; 0.15.</summary>
+    public float HypothermiaDamageRate { get; set; } = 0.004f;
+
+    /// <summary>Heatstroke HP drain per second when Temperature &gt; 0.85.</summary>
+    public float HeatstrokeDamageRate { get; set; } = 0.004f;
+
+    /// <summary>
     /// Advance the survival simulation by `dt` seconds. Drains hunger + thirst,
-    /// regens stamina, damages HP when starving or dehydrated. Call from the game
+    /// regens stamina, damages HP when starving/dehydrated/freezing/overheating,
+    /// drifts Temperature toward the given ambient target (use WorldTimeService's
+    /// TargetTemperature for the default day-night coupling). Call from the game
     /// loop only while unpaused (pausing should stop the tick).
     /// </summary>
-    public void Tick(float dt)
+    public void Tick(float dt, float ambientTarget = 0.5f)
     {
         if (dt <= 0) return;
         Hunger = _hunger - dt * HungerDecayRate;
         Thirst = _thirst - dt * ThirstDecayRate;
         Stamina = _stamina + dt * StaminaRegenRate;
 
-        // Starvation / dehydration HP drain. Either condition alone is enough;
-        // both simultaneously double the rate (two TakeDamage calls).
+        // Temperature drifts toward the ambient target. Step size is clamped so
+        // we never overshoot within a single tick.
+        float tempDelta = ambientTarget - _temperature;
+        float tempStep = MathF.Sign(tempDelta) * MathF.Min(MathF.Abs(tempDelta), dt * TemperatureAdaptRate);
+        Temperature = _temperature + tempStep;
+
+        // Starvation / dehydration / hypothermia / heatstroke HP drain. Multiple
+        // conditions stack multiplicatively - if you're starving AND freezing, you
+        // die roughly twice as fast.
         if (_hunger <= 0f) TakeDamage(dt * StarvationDamageRate);
         if (_thirst <= 0f) TakeDamage(dt * StarvationDamageRate);
+        if (_temperature < 0.15f) TakeDamage(dt * HypothermiaDamageRate);
+        if (_temperature > 0.85f) TakeDamage(dt * HeatstrokeDamageRate);
     }
 
     /// <summary>Reset all stats to full (for respawn, new character, test harness).</summary>

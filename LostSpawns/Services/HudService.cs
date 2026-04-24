@@ -44,9 +44,11 @@ public class HudService : IDisposable
     private UILabel? _loadingStatus;
 
     // Last-seen stat values for threshold-cross detection. Start at 1.0 (fed/hydrated)
-    // so the first tick below 0.5 fires a "Peckish"/"Moist" toast.
+    // so the first tick below 0.5 fires a "Peckish"/"Moist" toast. Temperature starts
+    // at 0.5 (comfortable) so the first cold/hot crossing fires on drift.
     private float _lastHungerSeen = 1f;
     private float _lastThirstSeen = 1f;
+    private float _lastTempSeen = 0.5f;
 
     public bool IsInitialized { get; private set; }
 
@@ -762,12 +764,42 @@ public class HudService : IDisposable
             ScreenOverlay?.ClearPersistent("lowHealth");
         }
 
-        // Threshold-cross toasts for hunger + thirst. Fires exactly once on the
-        // frame the value drops past each threshold (0.5 / 0.3 / 0.1). Recovery
-        // above a threshold resets it, so eating/drinking and then starving
-        // again re-fires the message chain.
+        // Persistent blue vignette when body temperature is cold. Ramps in from
+        // Temperature 0.3 down to 0. Complements the red low-HP vignette from
+        // hypothermia damage.
+        if (_stats.Temperature < 0.30f)
+        {
+            float t = 1f - (_stats.Temperature / 0.30f);
+            int alpha = Math.Clamp((int)(15 + t * 90f), 15, 110);
+            ScreenOverlay?.SetPersistent("cold",
+                System.Drawing.Color.FromArgb(alpha, 80, 140, 220));
+        }
+        else
+        {
+            ScreenOverlay?.ClearPersistent("cold");
+        }
+
+        // Threshold-cross toasts for hunger + thirst + temperature. Fires exactly
+        // once on the frame the value crosses each threshold. Recovery on the other
+        // side of the threshold resets it, so warming up / cooling down re-fires.
         CheckHungerThreshold();
         CheckThirstThreshold();
+        CheckTemperatureThreshold();
+    }
+
+    private void CheckTemperatureThreshold()
+    {
+        float cur = _stats.Temperature, prev = _lastTempSeen;
+
+        // Cold side (dropping below thresholds)
+        if (prev > 0.30f && cur <= 0.30f) Notify("Cold");
+        if (prev > 0.15f && cur <= 0.15f) NotifyDamage("Freezing!");
+
+        // Hot side (rising above thresholds)
+        if (prev < 0.70f && cur >= 0.70f) Notify("Hot");
+        if (prev < 0.85f && cur >= 0.85f) NotifyDamage("Heatstroke!");
+
+        _lastTempSeen = cur;
     }
 
     private void CheckHungerThreshold()
