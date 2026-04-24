@@ -65,9 +65,8 @@ public class Camera
         if (keysDown.Contains("KeyS")) Position -= flatFront * velocity;
         if (keysDown.Contains("KeyA")) Position -= flatRight * velocity;
         if (keysDown.Contains("KeyD")) Position += flatRight * velocity;
-        if (keysDown.Contains("Space")) Position += Vector3.UnitY * velocity;
-        if (keysDown.Contains("ControlLeft") || keysDown.Contains("ControlRight"))
-            Position -= Vector3.UnitY * velocity;
+        // Y-axis (Space/Ctrl) was the old fly-mode; gravity + jump live in Game.razor
+        // now. Leave WASD as horizontal-only so the camera's movement stays clean.
     }
 
     /// <summary>Returns 4×4 view matrix (column-major, ready for GPU upload).</summary>

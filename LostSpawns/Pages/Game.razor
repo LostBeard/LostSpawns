@@ -85,7 +85,9 @@
                 if (h > 68) { spawnHeight = h; break; }
             }
         }
-        Renderer.Camera.Position = new System.Numerics.Vector3(0, spawnHeight + 8, 0);
+        // Spawn camera a few blocks above the terrain top so gravity settles the
+        // player cleanly on the grass. EyeHeight 1.8 = eyes; adding 2 = small fall.
+        Renderer.Camera.Position = new System.Numerics.Vector3(0, spawnHeight + EyeHeight + 2f, 0);
         Renderer.Camera.Yaw = 45f;
         Renderer.Camera.Pitch = -15f;
 
@@ -136,11 +138,84 @@
 
     private int _initialLoadExpectedColumns = 49; // radius 4 circle fallback
 
+    // Vertical physics. Gravity pulls the camera down each frame; a downward
+    // raycast finds the terrain and clamps the camera to block_top + EyeHeight.
+    // Jump writes a positive impulse into _verticalVelocity and Space releases
+    // the fly-forever behavior of the old code.
+    private float _verticalVelocity;
+    private bool _grounded;
+    private const float Gravity = 20f;         // units/sec^2
+    private const float JumpImpulse = 7f;      // units/sec; peak ~1.2 blocks
+    private const float EyeHeight = 1.8f;      // camera above feet
+    private const float GroundCheckRange = 3f; // raycast distance below camera
+
     // Cooldown between successive block actions (break or place). Tuned so a fast
     // double-click chops exactly once; rapid auto-fire is blocked at the source.
     private const float BlockActionCooldownSec = 0.25f;
     private const float BlockActionStaminaCost = 0.04f;
     private DateTime _lastBlockActionTime = DateTime.MinValue;
+
+    private void ApplyGravityAndJump(float dt)
+    {
+        // Apply gravity to vertical velocity every tick. Ground check then
+        // cancels downward motion + snaps to block_top + EyeHeight if we've
+        // fallen into / onto terrain.
+        _verticalVelocity -= Gravity * dt;
+
+        var cam = Renderer.Camera;
+        var pos = cam.Position;
+
+        // Safety: if the camera somehow falls below the loaded world (player
+        // walked off the map edge, initial spawn raycast missed), respawn at
+        // the heightmap surface instead of freefalling into the void.
+        if (pos.Y < -8f)
+        {
+            int h = World.GetHeightAt(pos.X, pos.Z);
+            pos.Y = h + EyeHeight + 2f;
+            _verticalVelocity = 0;
+        }
+
+        // Apply vertical motion first, then check ground to snap if we passed
+        // through the surface this frame.
+        pos.Y += _verticalVelocity * dt;
+
+        var down = new System.Numerics.Vector3(0, -1, 0);
+        var hit = World.Raycast(pos, down, GroundCheckRange);
+        if (hit.DidHit)
+        {
+            // Raycast reports the hit block's integer coordinates + hit face. For
+            // a -Y ray the player lands on the +Y face of the block below, so the
+            // walkable top surface is at (BlockY + 1).
+            float groundTop = hit.BlockY + 1f;
+            float minEyeY = groundTop + EyeHeight;
+
+            if (pos.Y <= minEyeY)
+            {
+                pos.Y = minEyeY;
+                if (_verticalVelocity < 0) _verticalVelocity = 0;
+                _grounded = true;
+            }
+            else
+            {
+                _grounded = false;
+            }
+        }
+        else
+        {
+            _grounded = false;
+        }
+
+        // Jump only works grounded. Eats a bit of stamina so you can't hop-spam
+        // away from predators forever.
+        if (_grounded && Input.KeysDown.Contains("Space") && Stats.Stamina > 0.05f)
+        {
+            _verticalVelocity = JumpImpulse;
+            Stats.Stamina = Stats.Stamina - 0.05f;
+            _grounded = false;
+        }
+
+        cam.Position = pos;
+    }
 
     private bool BlockActionReady()
     {
@@ -381,6 +456,10 @@
         var (dx, dy) = Input.ConsumeMouseDelta();
         if (dx != 0 || dy != 0)
             Renderer.Camera.ProcessMouseMovement((float)dx, (float)dy);
+
+        // Vertical physics: gravity + ground clamp + jump impulse. Applied after
+        // horizontal WASD so ground check sees the final XZ position this frame.
+        ApplyGravityAndJump(deltaTime);
 
         // Crosshair turns target-colored when a block is within E-press reach.
         // Same 5m range as HandleInteract uses so the visual matches actual ability.
