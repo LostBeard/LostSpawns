@@ -690,7 +690,7 @@ public class HudService : IDisposable
             for (int i = 0; i < InventoryService.HotbarSize; i++)
             {
                 var item = _inventory.Hotbar[i];
-                _inventoryHotbarRow.SetCell(i, item?.Name);
+                _inventoryHotbarRow.SetCell(i, FormatCellLabel(item), CategoryColor(item));
             }
         }
 
@@ -699,9 +699,43 @@ public class HudService : IDisposable
             for (int i = 0; i < InventoryService.BackpackSize; i++)
             {
                 var item = _inventory.Backpack[i];
-                _backpackGrid.SetCell(i, item?.Name);
+                _backpackGrid.SetCell(i, FormatCellLabel(item), CategoryColor(item));
             }
         }
+    }
+
+    private static string? FormatCellLabel(InventoryItem? item)
+    {
+        if (item is null) return null;
+        // Prefix a glyph per category so slots are quickly recognizable even before
+        // reading the name. ASCII-only - font atlas is guaranteed to have these.
+        string glyph = item.Category switch
+        {
+            ItemCategory.Food     => "*",
+            ItemCategory.Drink    => "~",
+            ItemCategory.Medical  => "+",
+            ItemCategory.Tool     => "/",
+            ItemCategory.Material => "#",
+            ItemCategory.Marker   => "!",
+            _ => "",
+        };
+        string stack = item.Count > 1 ? $" x{item.Count}" : "";
+        return string.IsNullOrEmpty(glyph) ? $"{item.Name}{stack}" : $"{glyph} {item.Name}{stack}";
+    }
+
+    private static System.Drawing.Color? CategoryColor(InventoryItem? item)
+    {
+        if (item is null) return null;
+        return item.Category switch
+        {
+            ItemCategory.Food     => System.Drawing.Color.FromArgb(255, 240, 170, 80),  // warm orange
+            ItemCategory.Drink    => System.Drawing.Color.FromArgb(255, 120, 180, 240), // cyan blue
+            ItemCategory.Medical  => System.Drawing.Color.FromArgb(255, 240, 120, 120), // pale red
+            ItemCategory.Tool     => System.Drawing.Color.FromArgb(255, 200, 200, 210), // muted gray
+            ItemCategory.Material => System.Drawing.Color.FromArgb(255, 220, 190, 140), // sandy tan
+            ItemCategory.Marker   => System.Drawing.Color.FromArgb(255, 240, 220, 110), // warm yellow
+            _ => null,
+        };
     }
 
     private void SyncStatsToHud()

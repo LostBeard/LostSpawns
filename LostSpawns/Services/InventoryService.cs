@@ -5,7 +5,31 @@ namespace LostSpawns.Services;
 /// PLAN-Survival-Needs / PLAN-Clothing-Storage land, this grows into a richer
 /// record with weight, bulk, condition, stack cap, damage, etc.
 /// </summary>
-public record InventoryItem(string Id, string Name, int Count = 1);
+/// <summary>
+/// High-level item categories. Drives HUD tinting so Water / Beans / Bandage are
+/// visibly different at a glance in the inventory grid, without needing a full
+/// sprite atlas. When real icons land, categories will still classify items for
+/// sorting + filter UI.
+/// </summary>
+public enum ItemCategory
+{
+    /// <summary>Default / unknown. Light gray label.</summary>
+    None,
+    /// <summary>Solid food. Warm orange.</summary>
+    Food,
+    /// <summary>Drinkable. Cyan-blue.</summary>
+    Drink,
+    /// <summary>Medical (bandage, painkiller, etc). Red cross red.</summary>
+    Medical,
+    /// <summary>Tool or weapon. Muted gray.</summary>
+    Tool,
+    /// <summary>Raw material / crafting component. Sandy tan.</summary>
+    Material,
+    /// <summary>Marker item (map, flare). Warm yellow.</summary>
+    Marker,
+}
+
+public record InventoryItem(string Id, string Name, int Count = 1, ItemCategory Category = ItemCategory.None);
 
 /// <summary>
 /// Payload carried by GameUIService.DragDropManager during an inventory drag.
@@ -49,18 +73,18 @@ public class InventoryService
     {
         _stats = stats;
         // Starter load matches the pre-service hardcoded HUD: Axe on 1, Pick on 2, Bandage on 5, Map on 9.
-        _hotbar[0] = new InventoryItem("tool.axe", "Axe");
-        _hotbar[1] = new InventoryItem("tool.pick", "Pick");
-        _hotbar[4] = new InventoryItem("med.bandage", "Bandage");
-        _hotbar[8] = new InventoryItem("tool.map", "Map");
+        _hotbar[0] = new InventoryItem("tool.axe",       "Axe",       1, ItemCategory.Tool);
+        _hotbar[1] = new InventoryItem("tool.pick",      "Pick",      1, ItemCategory.Tool);
+        _hotbar[4] = new InventoryItem("med.bandage",    "Bandage",   1, ItemCategory.Medical);
+        _hotbar[8] = new InventoryItem("tool.map",       "Map",       1, ItemCategory.Marker);
 
         // Starter backpack so the inventory screen has something visible on first open.
-        _backpack[0] = new InventoryItem("consume.water", "Water", 2);
-        _backpack[1] = new InventoryItem("consume.beans", "Beans", 3);
-        _backpack[2] = new InventoryItem("material.cloth", "Cloth", 5);
-        _backpack[3] = new InventoryItem("material.rope", "Rope");
-        _backpack[8] = new InventoryItem("tool.flare", "Flare", 2);
-        _backpack[9] = new InventoryItem("med.painkiller", "Painkiller");
+        _backpack[0] = new InventoryItem("consume.water",    "Water",      2, ItemCategory.Drink);
+        _backpack[1] = new InventoryItem("consume.beans",    "Beans",      3, ItemCategory.Food);
+        _backpack[2] = new InventoryItem("material.cloth",   "Cloth",      5, ItemCategory.Material);
+        _backpack[3] = new InventoryItem("material.rope",    "Rope",       1, ItemCategory.Material);
+        _backpack[8] = new InventoryItem("tool.flare",       "Flare",      2, ItemCategory.Marker);
+        _backpack[9] = new InventoryItem("med.painkiller",   "Painkiller", 1, ItemCategory.Medical);
     }
 
     private readonly InventoryItem?[] _hotbar = new InventoryItem?[HotbarSize];
