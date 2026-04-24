@@ -102,12 +102,13 @@ public class EntityService
 
     public WanderingEntity Spawn(EntityKind kind, Vector3 pos, WorldService world)
     {
-        int groundY = world.GetHeightAt(pos.X, pos.Z) + 1;
+        int ground = world.GetHeightAt(pos.X, pos.Z);
+        float spawnY = kind == EntityKind.Crow ? ground + 5f : ground + 1f;
         var e = new WanderingEntity
         {
             Id = _nextId++,
             Kind = kind,
-            Position = new Vector3(pos.X, groundY, pos.Z),
+            Position = new Vector3(pos.X, spawnY, pos.Z),
             WanderRetargetIn = (float)_rng.NextDouble() * WanderRetargetSeconds,
             Health = MaxHealthForKind(kind),
             MaxHealth = MaxHealthForKind(kind),
@@ -226,10 +227,21 @@ public class EntityService
             e.Position += e.Velocity * dt;
 
             // Snap Y to the heightmap so entities visually walk on terrain
-            // rather than clipping through / floating above. Cheap because
-            // GetHeightAt is direct heightmap lookup.
-            int groundY = world.GetHeightAt(e.Position.X, e.Position.Z) + 1;
-            e.Position = new Vector3(e.Position.X, groundY, e.Position.Z);
+            // rather than clipping through / floating above. Crows fly at
+            // canopy height with a gentle bob; everyone else walks at
+            // ground + 1.
+            int groundY = world.GetHeightAt(e.Position.X, e.Position.Z);
+            float y;
+            if (e.Kind == EntityKind.Crow)
+            {
+                float bob = 0.3f * MathF.Sin((float)Environment.TickCount * 0.003f + e.Id);
+                y = groundY + 5f + bob;
+            }
+            else
+            {
+                y = groundY + 1;
+            }
+            e.Position = new Vector3(e.Position.X, y, e.Position.Z);
         }
 
         // Respawn tick - only advances while population is below cap so a
