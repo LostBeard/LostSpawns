@@ -47,6 +47,10 @@ public class CraftingService
                 "Bandage",
                 new[] { ("material.cloth", 1), ("material.rope", 1) },
                 new InventoryItem("med.bandage", "Bandage", 1, ItemCategory.Medical)),
+            new CraftingRecipe(
+                "Campfire",
+                new[] { ("material.wood", 4), ("material.leaves", 2) },
+                new InventoryItem("place.campfire", "Campfire", 1, ItemCategory.Marker)),
         };
 
         // Register effects for any new outputs the crafting system introduces.
