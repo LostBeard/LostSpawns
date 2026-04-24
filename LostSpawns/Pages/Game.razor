@@ -183,6 +183,32 @@
     private const float BlockActionStaminaCost = 0.04f;
     private DateTime _lastBlockActionTime = DateTime.MinValue;
 
+    // Camera bob while walking. Phase advances with horizontal speed; offsets
+    // are applied on top of the clean camera position AT THE END of the update
+    // and the previous frame's applied offsets are removed first so bob never
+    // leaks into gravity + collision + ground-check math.
+    private float _bobPhase;
+    private float _bobCurrentY;
+    private float _bobCurrentX;
+    private float _bobAppliedX;
+    private float _bobAppliedY;
+    private float _bobAppliedXOffset; // world-space X contribution from lateral sway
+    private float _bobAppliedZOffset; // world-space Z contribution from lateral sway
+    private const float BobWalkSpeed = 8f;       // rad/sec of bob phase while walking
+    private const float BobSprintSpeed = 13f;    // rad/sec of bob phase while sprinting
+    private const float BobAmplitudeY = 0.08f;   // vertical bob meters
+    private const float BobAmplitudeX = 0.05f;   // lateral sway meters
+    private const float BobSmoothing = 8f;       // exp-decay per second back to zero when stopping
+
+    // Exponential approach: smoothly glide `current` toward `target` at a rate
+    // where `rate=8` means roughly halfway in ~0.09s. dt-scaled so the feel is
+    // the same at 30 or 240 fps.
+    private static float ExpApproach(float current, float target, float rate, float dt)
+    {
+        float k = 1f - MathF.Exp(-rate * dt);
+        return current + (target - current) * k;
+    }
+
     private bool IsInsideSolidBlock(System.Numerics.Vector3 camPos)
     {
         // Player occupies a single-block AABB from feet (camPos.Y - EyeHeight) up
@@ -613,6 +639,18 @@
 
         // Camera sees the sprint gate too so we can't sprint-speed when stamina is
         // empty even if Shift is still held.
+        // Strip any previously-applied bob so gravity / collision / ground-check
+        // operates on the clean camera position. The bob gets re-applied at the
+        // end of OnGameUpdate (or subtracted to zero if the player stopped).
+        if (_bobAppliedY != 0 || _bobAppliedXOffset != 0 || _bobAppliedZOffset != 0)
+        {
+            var cp = Renderer.Camera.Position;
+            Renderer.Camera.Position = new System.Numerics.Vector3(
+                cp.X - _bobAppliedXOffset,
+                cp.Y - _bobAppliedY,
+                cp.Z - _bobAppliedZOffset);
+        }
+
         // Save horizontal position, let camera move, then:
         //   1. If post-move is clear, keep it.
         //   2. Else try stepping UP one voxel - handles 1-block ledges, terraces,
@@ -652,6 +690,36 @@
         // Vertical physics: gravity + ground clamp + jump impulse. Applied after
         // horizontal WASD so ground check sees the final XZ position this frame.
         ApplyGravityAndJump(deltaTime);
+
+        // Camera bob: phase advances proportionally to walk/sprint; target
+        // amplitudes smoothly blend toward zero when the player stops so the
+        // camera doesn't snap. Applied as an offset on top of the stable
+        // post-physics position.
+        bool walking = _grounded && movingKey;
+        if (walking)
+        {
+            _bobPhase += deltaTime * (sprinting ? BobSprintSpeed : BobWalkSpeed);
+            float targetY = MathF.Sin(_bobPhase) * BobAmplitudeY;
+            float targetX = MathF.Sin(_bobPhase * 0.5f) * BobAmplitudeX;
+            _bobCurrentY = ExpApproach(_bobCurrentY, targetY, BobSmoothing, deltaTime);
+            _bobCurrentX = ExpApproach(_bobCurrentX, targetX, BobSmoothing, deltaTime);
+        }
+        else
+        {
+            _bobCurrentY = ExpApproach(_bobCurrentY, 0f, BobSmoothing, deltaTime);
+            _bobCurrentX = ExpApproach(_bobCurrentX, 0f, BobSmoothing, deltaTime);
+        }
+
+        var camNow = Renderer.Camera.Position;
+        var right = Renderer.Camera.Right;
+        _bobAppliedXOffset = right.X * _bobCurrentX;
+        _bobAppliedZOffset = right.Z * _bobCurrentX;
+        _bobAppliedX = _bobCurrentX;
+        _bobAppliedY = _bobCurrentY;
+        Renderer.Camera.Position = new System.Numerics.Vector3(
+            camNow.X + _bobAppliedXOffset,
+            camNow.Y + _bobAppliedY,
+            camNow.Z + _bobAppliedZOffset);
 
         // Crosshair turns target-colored when a block is within E-press reach.
         // Same 5m range as HandleInteract uses so the visual matches actual ability.
