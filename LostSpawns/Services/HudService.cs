@@ -1019,6 +1019,52 @@ public class HudService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Narrow durability bar painted just above the active hotbar slot when
+    /// the equipped item has a UsesRemaining counter. Fill ratio = remaining
+    /// / 100 (the starter use count; good-enough assumption since all tools
+    /// spawn at 100 - a proper scheme would store MaxUses per-item).
+    ///
+    /// Position is computed from the hotbar's known layout (9 slots @ 48px
+    /// + 4px gap, anchored BottomCenter -12) so we don't have to route the
+    /// slot rect back out of UIHotbar.
+    /// </summary>
+    private void DrawDurabilityBar(int viewportWidth, int viewportHeight)
+    {
+        var active = _inventory.ActiveItem;
+        if (active is null || active.UsesRemaining is null) return;
+
+        int remaining = active.UsesRemaining.Value;
+        const int assumedMax = 100;
+        float ratio = Math.Clamp(remaining / (float)assumedMax, 0f, 1f);
+
+        const float slotSize = 48f;
+        const float slotGap = 4f;
+        const int slotCount = 9;
+        float rowWidth = slotCount * slotSize + (slotCount - 1) * slotGap;
+        float leftEdge = (viewportWidth - rowWidth) * 0.5f;
+        float slotStride = slotSize + slotGap;
+        float slotX = leftEdge + _inventory.ActiveHotbarIndex * slotStride;
+
+        // Bar sits in the top ~3px of the slot box. Hotbar bottom = vh-12;
+        // top = vh-12-slotSize = vh-60. Bar at y = vh-60+2 for a 3px slice.
+        float barY = viewportHeight - 60 + 2;
+        float barH = 3f;
+        float barW = slotSize - 4;
+        float barX = slotX + 2;
+
+        _ui.Renderer.DrawRect(barX, barY, barW, barH,
+            System.Drawing.Color.FromArgb(200, 30, 30, 30));
+
+        // Color ramps green -> yellow -> red as durability drops.
+        var full = ratio > 0.6f
+            ? System.Drawing.Color.FromArgb(230, 80, 220, 120)
+            : ratio > 0.3f
+                ? System.Drawing.Color.FromArgb(230, 220, 200, 80)
+                : System.Drawing.Color.FromArgb(230, 230, 80, 80);
+        _ui.Renderer.DrawRect(barX, barY, barW * ratio, barH, full);
+    }
+
     private void DrawEntityBillboards(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null || _entities.Entities.Count == 0) return;
@@ -1450,6 +1496,10 @@ public class HudService : IDisposable
             // Entity billboards: 2D colored squares at each entity's projected
             // screen position. Renders on top of terrain, below rain + flashes.
             DrawEntityBillboards(viewportWidth, viewportHeight);
+
+            // Durability bar above the active hotbar slot for tools that can
+            // break. Small but always-visible so the player isn't surprised.
+            DrawDurabilityBar(viewportWidth, viewportHeight);
 
             // Rain particles render on top of the voxel scene but below menus.
             DrawRain(viewportWidth, viewportHeight);
