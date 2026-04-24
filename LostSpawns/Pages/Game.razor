@@ -480,7 +480,7 @@
         }
 
         var hit = World.Raycast(origin, dir, maxDistance: 5f);
-        if (!hit.DidHit) return;
+        if (!hit.DidHit) { Audio.PlayWhoosh(); return; }
 
         // Peek at the target block before breaking - tool requirement check.
         var targetType = (LostSpawns.Models.BlockType)hit.BlockType;
@@ -496,7 +496,7 @@
         }
 
         var brokenType = World.TryBreakBlock(hit.BlockX, hit.BlockY, hit.BlockZ);
-        if (brokenType == LostSpawns.Models.BlockType.Air) return;
+        if (brokenType == LostSpawns.Models.BlockType.Air) { Audio.PlayWhoosh(); return; }
 
         // Successful swing charges the cooldown + stamina cost. Missed swings (air,
         // out of range, wrong tool) don't cost anything so the player can re-aim.

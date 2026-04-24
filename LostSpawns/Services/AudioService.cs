@@ -96,6 +96,33 @@ public class AudioService : IDisposable
         PlayBeep(180f, 0.10f, 0.22f, "square");
     }
 
+    /// <summary>Quick airy whoosh - missed swing at nothing.</summary>
+    public void PlayWhoosh()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "sine";
+            double t = _ctx.CurrentTime;
+            // Descending whistle - 500 -> 250 Hz over 120ms at low gain.
+            osc.Frequency.SetValueAtTime(500f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(250f, t + 0.12);
+            gain.Gain.SetValueAtTime(0f, t);
+            gain.Gain.LinearRampToValueAtTime(0.08f, t + 0.02);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.14);
+            osc.Connect(gain);
+            gain.Connect(_ctx.Destination);
+            osc.Start();
+            osc.Stop((float)(t + 0.14));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayWhoosh failed: {ex.Message}");
+        }
+    }
+
     /// <summary>Sharp rising tone for damage taken.</summary>
     public void PlayDamage()
     {
