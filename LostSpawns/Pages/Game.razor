@@ -173,12 +173,35 @@
         return World.IsSolidAt(ix, feetY, iz) || World.IsSolidAt(ix, headY, iz);
     }
 
+    private bool IsInWater()
+    {
+        var pos = Renderer.Camera.Position;
+        int ix = (int)MathF.Floor(pos.X);
+        int iz = (int)MathF.Floor(pos.Z);
+        int feetY = (int)MathF.Floor(pos.Y - EyeHeight + 0.1f);
+        return World.GetBlockAt(ix, feetY, iz) == LostSpawns.Models.BlockType.Water;
+    }
+
     private void ApplyGravityAndJump(float dt)
     {
+        // Water-reduced gravity: swimming is floatier than free-fall. Classic
+        // Minecraft-style "hold space to ascend" handled further down.
+        bool inWater = IsInWater();
+        float gravity = inWater ? Gravity * 0.3f : Gravity;
+
         // Apply gravity to vertical velocity every tick. Ground check then
         // cancels downward motion + snaps to block_top + EyeHeight if we've
         // fallen into / onto terrain.
-        _verticalVelocity -= Gravity * dt;
+        _verticalVelocity -= gravity * dt;
+
+        // In water, cap downward speed so the player sinks slowly, and apply a
+        // gentle upward thrust when Space is held (swim up).
+        if (inWater)
+        {
+            if (_verticalVelocity < -3f) _verticalVelocity = -3f;
+            if (Input.KeysDown.Contains("Space")) _verticalVelocity += 20f * dt;
+            if (_verticalVelocity > 4f) _verticalVelocity = 4f; // cap ascent too
+        }
 
         var cam = Renderer.Camera;
         var pos = cam.Position;
@@ -237,9 +260,9 @@
             if (-_verticalVelocity > _peakFallSpeed) _peakFallSpeed = -_verticalVelocity;
         }
 
-        // Jump only works grounded. Eats a bit of stamina so you can't hop-spam
-        // away from predators forever.
-        if (_grounded && Input.KeysDown.Contains("Space") && Stats.Stamina > 0.05f)
+        // Jump only works grounded AND not in water - swim-up handles Space in water.
+        // Eats a bit of stamina so you can't hop-spam away from predators forever.
+        if (!inWater && _grounded && Input.KeysDown.Contains("Space") && Stats.Stamina > 0.05f)
         {
             _verticalVelocity = JumpImpulse;
             Stats.Stamina = Stats.Stamina - 0.05f;
