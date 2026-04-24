@@ -96,6 +96,39 @@ public class AudioService : IDisposable
         PlayBeep(180f, 0.10f, 0.22f, "square");
     }
 
+    /// <summary>Short upward blip - player jump push-off.</summary>
+    public void PlayJump()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "sine";
+            double t = _ctx.CurrentTime;
+            osc.Frequency.SetValueAtTime(180f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(280f, t + 0.08);
+            gain.Gain.SetValueAtTime(0f, t);
+            gain.Gain.LinearRampToValueAtTime(0.10f, t + 0.01);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.1);
+            osc.Connect(gain);
+            gain.Connect(_ctx.Destination);
+            osc.Start();
+            osc.Stop((float)(t + 0.1));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayJump failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Landing impact thump - scales gain with fall speed.</summary>
+    public void PlayLand(float intensity)
+    {
+        if (intensity < 0.05f) return;
+        PlayBeep(80f, 0.08f, Math.Clamp(intensity * 0.25f, 0.05f, 0.3f), "triangle");
+    }
+
     /// <summary>Quick airy whoosh - missed swing at nothing.</summary>
     public void PlayWhoosh()
     {

@@ -341,6 +341,10 @@
                     float dmg = excess * FallDamageScale;
                     Stats.TakeDamage(dmg);
                 }
+                // Landing audio - gain scales with peak fall speed so big
+                // drops thud harder than hops. Only plays on actual landings,
+                // not each frame we're grounded.
+                if (justLanded) Audio.PlayLand(_peakFallSpeed / 20f);
                 _peakFallSpeed = 0;
             }
             else
@@ -362,6 +366,7 @@
             _verticalVelocity = JumpImpulse;
             Stats.Stamina = Stats.Stamina - 0.05f;
             _grounded = false;
+            Audio.PlayJump();
         }
 
         cam.Position = pos;
