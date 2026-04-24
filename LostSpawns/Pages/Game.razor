@@ -713,6 +713,24 @@
 
     private void HandleDebugToggle() => Hud.ToggleDebug();
 
+    /// <summary>
+    /// True if any entity currently charging the player is within range.
+    /// Used to gate stamina regen - fleeing rabbits don't count, a
+    /// boar / wolf bearing down on you does.
+    /// </summary>
+    private bool IsHostileNearby(System.Numerics.Vector3 pos, float range)
+    {
+        float r2 = range * range;
+        foreach (var e in Wildlife.Entities)
+        {
+            if (e.Alert != LostSpawns.Services.AlertMode.Charge) continue;
+            float dx = pos.X - e.Position.X;
+            float dz = pos.Z - e.Position.Z;
+            if (dx * dx + dz * dz <= r2) return true;
+        }
+        return false;
+    }
+
     private void HandleSleep()
     {
         if (Hud.IsAnyMenuOpen) return;
@@ -1009,6 +1027,11 @@
         // barely-in-range fire helps less than one the player is practically
         // sitting in, but still beats out-in-the-cold.
         Stats.HealthRegenMultiplier = warmthBonus > 0 ? 1f + warmthBonus * 3f : 1f;
+
+        // Stamina regen pauses while a hostile is within 6 blocks and
+        // charging - can't catch your breath with a wolf running you down.
+        Stats.StaminaRegenBlocked = IsHostileNearby(Renderer.Camera.Position, 6f);
+
         Stats.Tick(deltaTime, ambient, sprinting);
         // Wildlife wanders each frame; gated by the same active-play branch so
         // critters hold still while the player is paused / in menus.

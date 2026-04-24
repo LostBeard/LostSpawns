@@ -166,6 +166,13 @@ public class PlayerStatsService
     public float HealthRegenMultiplier { get; set; } = 1f;
 
     /// <summary>
+    /// When true, stamina regen is skipped this tick. Set by Game.razor when a
+    /// hostile entity is in combat proximity so the player can't just stand
+    /// still catching their breath with a wolf charging them.
+    /// </summary>
+    public bool StaminaRegenBlocked { get; set; }
+
+    /// <summary>
     /// How fast body temperature drifts toward its ambient target. Lower = slower
     /// response; warm clothing / gear effectively reduces this on the consuming side.
     /// </summary>
@@ -193,7 +200,7 @@ public class PlayerStatsService
         // player can't cheese a fractional-frame micro-sprint to keep regen going.
         if (sprinting)
             Stamina = _stamina - dt * SprintDrainRate;
-        else
+        else if (!StaminaRegenBlocked)
             Stamina = _stamina + dt * StaminaRegenRate;
 
         // Temperature drifts toward the ambient target. Step size is clamped so
