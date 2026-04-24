@@ -101,6 +101,11 @@ public class InventoryService
         ["consume.beans"]    = new(Hunger: 0.30f, DisplayVerb: "Ate"),
         ["med.bandage"]      = new(Health: 0.30f, DisplayVerb: "Applied"),
         ["med.painkiller"]   = new(Health: 0.20f, Stamina: 0.15f, DisplayVerb: "Took"),
+        // Raw meat: restores hunger but much less than cooked would. Slightly
+        // penalizes health to motivate cooking once the campfire lands. Boar
+        // yields a bigger piece than rabbit so its bonus is bigger too.
+        ["food.rabbit_meat"] = new(Hunger: 0.20f, Health: -0.05f, DisplayVerb: "Ate raw"),
+        ["food.boar_meat"]   = new(Hunger: 0.35f, Health: -0.05f, DisplayVerb: "Ate raw"),
     };
 
     /// <summary>Fired whenever any slot changes (set, clear, move).</summary>
@@ -223,7 +228,8 @@ public class InventoryService
         if (item is null) return false;
         if (!Effects.TryGetValue(item.Id, out var effect)) return false;
 
-        if (effect.Health  > 0) _stats.Heal(effect.Health);
+        if (effect.Health > 0)      _stats.Heal(effect.Health);
+        else if (effect.Health < 0) _stats.TakeDamage(-effect.Health);
         if (effect.Hunger  > 0) _stats.Hunger  = _stats.Hunger  + effect.Hunger;
         if (effect.Thirst  > 0) _stats.Thirst  = _stats.Thirst  + effect.Thirst;
         if (effect.Stamina > 0) _stats.Stamina = _stats.Stamina + effect.Stamina;
