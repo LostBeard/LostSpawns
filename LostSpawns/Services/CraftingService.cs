@@ -51,6 +51,14 @@ public class CraftingService
                 "Campfire",
                 new[] { ("material.wood", 4), ("material.leaves", 2) },
                 new InventoryItem("place.campfire", "Campfire", 1, ItemCategory.Marker)),
+            new CraftingRecipe(
+                "Axe",
+                new[] { ("material.wood", 2), ("material.stone", 1) },
+                new InventoryItem("tool.axe", "Axe", 1, ItemCategory.Tool, UsesRemaining: 100)),
+            new CraftingRecipe(
+                "Pick",
+                new[] { ("material.wood", 1), ("material.stone", 2) },
+                new InventoryItem("tool.pick", "Pick", 1, ItemCategory.Tool, UsesRemaining: 100)),
         };
 
         // Register effects for any new outputs the crafting system introduces.
