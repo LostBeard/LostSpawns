@@ -23,6 +23,16 @@ public class PlayerStatsService
     /// <summary>Accumulated XP - gained from kills, chops, crafts.</summary>
     public int Experience { get; private set; }
 
+    /// <summary>Lifetime kills tally - incremented once per downed entity.</summary>
+    public int Kills { get; private set; }
+
+    /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
+    public void RecordKill()
+    {
+        Kills++;
+        OnStatsChanged?.Invoke();
+    }
+
     /// <summary>
     /// Player level derived from accumulated XP. Formula: floor(sqrt(XP /
     /// 50)) + 1 so level 1 = 0-49 XP, level 2 = 50-199, level 3 = 200-449,

@@ -586,6 +586,7 @@
             _ => 1,
         };
         Stats.AwardXp(xp);
+        Stats.RecordKill();
 
         var drop = LootForEntityKind(e.Kind);
         if (drop is null) { Hud.Notify($"Killed {e.Kind} (+{xp} XP)"); return; }

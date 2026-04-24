@@ -1647,7 +1647,7 @@ public class HudService : IDisposable
             _debugLabel.Text =
                 $"{(int)_fpsSmoothed} fps    " +
                 $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}    " +
-                $"Lv {_stats.Level}  XP {_stats.Experience}";
+                $"Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}";
         }
 
         // Update compass bearing from camera yaw
