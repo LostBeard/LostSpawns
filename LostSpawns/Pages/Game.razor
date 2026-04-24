@@ -829,6 +829,14 @@
         _peakFallSpeed = 0;
         _grounded = false;
 
+        // Respawn cleanup: abandon uncollected ground loot (it's gone with the
+        // body) and reset the wandering entity population. Campfires are
+        // deliberately preserved since they represent player investment - a
+        // chopped-down tree is still chopped down, a lit fire still lit.
+        Ground.Items.Clear();
+        Wildlife.Entities.Clear();
+        Wildlife.SpawnStarter(Renderer.Camera.Position, World);
+
         // Re-request pointer lock so the player can look around immediately.
         try
         {
