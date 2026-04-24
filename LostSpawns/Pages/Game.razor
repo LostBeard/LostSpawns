@@ -223,15 +223,26 @@
             return;
         }
 
+        // Sprint gate: holding Shift + actually moving + having stamina above the
+        // cutoff. 0.05 threshold prevents frame-by-frame flicker around zero.
+        bool movingKey =
+            Input.KeysDown.Contains("KeyW") || Input.KeysDown.Contains("KeyS") ||
+            Input.KeysDown.Contains("KeyA") || Input.KeysDown.Contains("KeyD");
+        bool shiftHeld =
+            Input.KeysDown.Contains("ShiftLeft") || Input.KeysDown.Contains("ShiftRight");
+        bool sprinting = shiftHeld && movingKey && Stats.Stamina > 0.05f;
+
         // Gameplay simulation: time advances, survival stats decay, etc. Paused /
         // inventory / settings / loading all short-circuit above this point so the
         // world clock (and hunger/thirst) literally stop while menus are up.
         // Temperature target comes from WorldTimeService so nights feel cold and
         // days warm; future clothing system can modulate this before passing in.
         Time.Tick(deltaTime);
-        Stats.Tick(deltaTime, Time.TargetTemperature);
+        Stats.Tick(deltaTime, Time.TargetTemperature, sprinting);
 
-        Renderer.Camera.ProcessKeyboard(Input.KeysDown, deltaTime);
+        // Camera sees the sprint gate too so we can't sprint-speed when stamina is
+        // empty even if Shift is still held.
+        Renderer.Camera.ProcessKeyboard(Input.KeysDown, deltaTime, allowSprint: sprinting);
 
         var (dx, dy) = Input.ConsumeMouseDelta();
         if (dx != 0 || dy != 0)

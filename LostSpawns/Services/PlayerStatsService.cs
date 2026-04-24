@@ -96,8 +96,11 @@ public class PlayerStatsService
     /// <summary>Thirst drain per real-world second. Slightly faster than hunger per PLAN-Survival-Needs.</summary>
     public float ThirstDecayRate { get; set; } = 0.004f;
 
-    /// <summary>Stamina regen per real-world second (clamped to 1.0).</summary>
+    /// <summary>Stamina regen per real-world second while not sprinting (clamped to 1.0).</summary>
     public float StaminaRegenRate { get; set; } = 0.10f;
+
+    /// <summary>Stamina drain per real-world second while sprinting. Must exceed regen to actually deplete.</summary>
+    public float SprintDrainRate { get; set; } = 0.20f;
 
     /// <summary>HP drain per real-world second while hunger or thirst is at 0.</summary>
     public float StarvationDamageRate { get; set; } = 0.005f;
@@ -116,17 +119,22 @@ public class PlayerStatsService
 
     /// <summary>
     /// Advance the survival simulation by `dt` seconds. Drains hunger + thirst,
-    /// regens stamina, damages HP when starving/dehydrated/freezing/overheating,
-    /// drifts Temperature toward the given ambient target (use WorldTimeService's
-    /// TargetTemperature for the default day-night coupling). Call from the game
-    /// loop only while unpaused (pausing should stop the tick).
+    /// regens stamina (or drains while sprinting), damages HP when starving /
+    /// dehydrated / freezing / overheating, drifts Temperature toward the given
+    /// ambient target (use WorldTimeService's TargetTemperature for the default
+    /// day-night coupling). Call from the game loop only while unpaused.
     /// </summary>
-    public void Tick(float dt, float ambientTarget = 0.5f)
+    public void Tick(float dt, float ambientTarget = 0.5f, bool sprinting = false)
     {
         if (dt <= 0) return;
         Hunger = _hunger - dt * HungerDecayRate;
         Thirst = _thirst - dt * ThirstDecayRate;
-        Stamina = _stamina + dt * StaminaRegenRate;
+        // Sprint drains stamina; otherwise it regens. Mutually exclusive so the
+        // player can't cheese a fractional-frame micro-sprint to keep regen going.
+        if (sprinting)
+            Stamina = _stamina - dt * SprintDrainRate;
+        else
+            Stamina = _stamina + dt * StaminaRegenRate;
 
         // Temperature drifts toward the ambient target. Step size is clamped so
         // we never overshoot within a single tick.

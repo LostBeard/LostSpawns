@@ -49,6 +49,7 @@ public class HudService : IDisposable
     private float _lastHungerSeen = 1f;
     private float _lastThirstSeen = 1f;
     private float _lastTempSeen = 0.5f;
+    private float _lastStaminaSeen = 1f;
 
     public bool IsInitialized { get; private set; }
 
@@ -779,12 +780,23 @@ public class HudService : IDisposable
             ScreenOverlay?.ClearPersistent("cold");
         }
 
-        // Threshold-cross toasts for hunger + thirst + temperature. Fires exactly
-        // once on the frame the value crosses each threshold. Recovery on the other
-        // side of the threshold resets it, so warming up / cooling down re-fires.
+        // Threshold-cross toasts for hunger + thirst + temperature + stamina. Fires
+        // exactly once on the frame the value crosses each threshold. Recovery on
+        // the other side resets it.
         CheckHungerThreshold();
         CheckThirstThreshold();
         CheckTemperatureThreshold();
+        CheckStaminaThreshold();
+    }
+
+    private void CheckStaminaThreshold()
+    {
+        float cur = _stats.Stamina, prev = _lastStaminaSeen;
+        // Fire "Winded" once when stamina hits empty mid-sprint. Comes back "Rested"
+        // when it recovers above 0.50 so the next sprint opportunity is obvious.
+        if (prev > 0.05f && cur <= 0.05f) NotifyWarning("Winded");
+        if (prev < 0.50f && cur >= 0.50f) Notify("Rested");
+        _lastStaminaSeen = cur;
     }
 
     private void CheckTemperatureThreshold()

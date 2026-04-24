@@ -48,10 +48,12 @@ public class Camera
     /// <summary>
     /// Process WASD keyboard movement with sprint support.
     /// Shift = sprint, Space = up, Ctrl = down.
+    /// allowSprint lets the caller veto sprint when the player's stamina is empty.
     /// </summary>
-    public void ProcessKeyboard(HashSet<string> keysDown, float deltaTime)
+    public void ProcessKeyboard(HashSet<string> keysDown, float deltaTime, bool allowSprint = true)
     {
-        bool sprinting = keysDown.Contains("ShiftLeft") || keysDown.Contains("ShiftRight");
+        bool sprinting = allowSprint &&
+            (keysDown.Contains("ShiftLeft") || keysDown.Contains("ShiftRight"));
         float speed = sprinting ? MovementSpeed * SprintMultiplier : MovementSpeed;
         float velocity = speed * deltaTime;
 
