@@ -187,6 +187,19 @@
         var hit = World.Raycast(origin, dir, maxDistance: 5f);
         if (!hit.DidHit) return;
 
+        // Peek at the target block before breaking - tool requirement check.
+        var targetType = (LostSpawns.Models.BlockType)hit.BlockType;
+        var requiredTool = RequiredToolForBlockType(targetType);
+        if (requiredTool != null && Inventory.ActiveItem?.Id != requiredTool)
+        {
+            // Phrase the toast from the tool's Id. "tool.axe" -> "Axe".
+            string toolName = requiredTool.StartsWith("tool.")
+                ? char.ToUpper(requiredTool[5]) + requiredTool[6..]
+                : requiredTool;
+            Hud.NotifyWarning($"Need a {toolName}");
+            return;
+        }
+
         var brokenType = World.TryBreakBlock(hit.BlockX, hit.BlockY, hit.BlockZ);
         if (brokenType == LostSpawns.Models.BlockType.Air) return;
 
@@ -201,6 +214,20 @@
         if (added) Hud.NotifySuccess($"+1 {drop.Name}");
         else Hud.NotifyWarning($"Inventory full - {drop.Name} dropped");
     }
+
+    /// <summary>
+    /// Returns the item Id of the tool required to break the given block, or null
+    /// if hands are enough. Keeping the mapping local to Game.razor so gameplay
+    /// knobs (which tools unlock which blocks) stay out of the general inventory /
+    /// world services.
+    /// </summary>
+    private static string? RequiredToolForBlockType(LostSpawns.Models.BlockType t) => t switch
+    {
+        LostSpawns.Models.BlockType.Wood   => "tool.axe",
+        LostSpawns.Models.BlockType.Leaves => "tool.axe",
+        LostSpawns.Models.BlockType.Stone  => "tool.pick",
+        _ => null,
+    };
 
     private static LostSpawns.Services.InventoryItem? DropForBlockType(LostSpawns.Models.BlockType t) => t switch
     {
