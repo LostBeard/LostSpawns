@@ -1640,7 +1640,8 @@ public class HudService : IDisposable
             _fpsAccumTime = 0;
             _debugLabel.Text =
                 $"{(int)_fpsSmoothed} fps    " +
-                $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}";
+                $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}    " +
+                $"XP {_stats.Experience}";
         }
 
         // Update compass bearing from camera yaw

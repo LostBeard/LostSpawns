@@ -20,6 +20,17 @@ public class PlayerStatsService
     private float _thirst = 0.7f;
     private float _temperature = 0.5f;
 
+    /// <summary>Accumulated XP - gained from kills, chops, crafts. No leveling effect yet.</summary>
+    public int Experience { get; private set; }
+
+    /// <summary>Grant XP and fire OnStatsChanged so the HUD refreshes.</summary>
+    public void AwardXp(int amount)
+    {
+        if (amount <= 0) return;
+        Experience += amount;
+        OnStatsChanged?.Invoke();
+    }
+
     /// <summary>Fired whenever any stat changes to a new value.</summary>
     public event Action? OnStatsChanged;
 
@@ -194,6 +205,9 @@ public class PlayerStatsService
         _hunger = 1f;
         _thirst = 1f;
         _temperature = 0.5f;
+        // XP is deliberately preserved across respawn - it represents lifetime
+        // progress, not current-life vitality. A future "tier" system will
+        // unlock new recipes based on total XP earned.
         _deathFired = false;
         OnStatsChanged?.Invoke();
     }

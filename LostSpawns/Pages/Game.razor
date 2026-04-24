@@ -486,6 +486,7 @@
         ConsumeBlockActionCost();
         ApplyCameraKick();
         DegradeActiveToolWithFeedback();
+        Stats.AwardXp(1);
 
         var drop = DropForBlockType(brokenType);
         if (drop is null)
@@ -574,15 +575,27 @@
 
     private void HandleEntityKilled(LostSpawns.Services.WanderingEntity e)
     {
+        // XP reward by kind - higher threats give more. Survives respawn per
+        // PlayerStatsService's ResetToDefaults contract.
+        int xp = e.Kind switch
+        {
+            LostSpawns.Services.EntityKind.Wolf   => 15,
+            LostSpawns.Services.EntityKind.Boar   => 10,
+            LostSpawns.Services.EntityKind.Rabbit => 5,
+            LostSpawns.Services.EntityKind.Crow   => 3,
+            _ => 1,
+        };
+        Stats.AwardXp(xp);
+
         var drop = LootForEntityKind(e.Kind);
-        if (drop is null) { Hud.Notify($"Killed {e.Kind}"); return; }
+        if (drop is null) { Hud.Notify($"Killed {e.Kind} (+{xp} XP)"); return; }
 
         // Loot now lands on the ground at the entity's death position -
         // walking over it auto-picks it up (see GroundItemService.Tick).
         // Makes kills visually meaningful + keeps loot out of inventory
         // when it's already full, so nothing's silently lost.
         Ground.Drop(e.Position, drop);
-        Hud.Notify($"Killed {e.Kind} - drop on the ground");
+        Hud.Notify($"Killed {e.Kind} (+{xp} XP) - drop on the ground");
     }
 
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)

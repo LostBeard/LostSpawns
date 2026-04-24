@@ -73,6 +73,7 @@ public class SaveService
                 Hunger = _stats.Hunger,
                 Thirst = _stats.Thirst,
                 Temperature = _stats.Temperature,
+                Experience = _stats.Experience,
                 Hotbar = ToDtoArray(_inventory.Hotbar),
                 Backpack = ToDtoArray(_inventory.Backpack),
                 ActiveHotbarIndex = _inventory.ActiveHotbarIndex,
@@ -135,6 +136,8 @@ public class SaveService
             _stats.Hunger = state.Hunger;
             _stats.Thirst = state.Thirst;
             _stats.Temperature = state.Temperature;
+            if (state.Experience > _stats.Experience)
+                _stats.AwardXp(state.Experience - _stats.Experience);
 
             // Apply inventory slot by slot. Nulls stay null.
             if (state.Hotbar != null)
@@ -262,6 +265,7 @@ public class SaveService
         public float Hunger { get; set; }
         public float Thirst { get; set; }
         public float Temperature { get; set; }
+        public int Experience { get; set; }
         public InventoryItemDto?[]? Hotbar { get; set; }
         public InventoryItemDto?[]? Backpack { get; set; }
         public int ActiveHotbarIndex { get; set; }
