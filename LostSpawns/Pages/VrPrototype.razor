@@ -2,28 +2,31 @@
 @using System.Numerics
 @using SpawnDev.BlazorJS
 @using SpawnDev.BlazorJS.JSObjects
+@using SpawnDev.ILGPU.WebGPU
 @using SpawnDev.VoxelEngine.Rendering
 @using LostSpawns.Models
+@using LostSpawns.Services
 @implements IAsyncDisposable
 @inject VoxelEngineService Engine
 @inject WorldService World
 
 <PageTitle>Lost Spawns VR</PageTitle>
 
-<h3>Lost Spawns VR - Phase C step 2a (real terrain chunk)</h3>
+<h3>Lost Spawns VR - Phase C step 2b + 2c (zero-copy GPU terrain via VR.1c bridge, streaming + locomotion)</h3>
 
 <p>
-    Phase C step 2a: the VR page now calls <code>VoxelEngineService</code>'s real
-    ILGPU heightmap kernel to generate a 16x16 chunk of Perlin terrain, then feeds
-    each block into the existing instanced render path. Step 1 (plumbing) + step 2a
-    (real terrain via real ILGPU compute) both satisfied. Step 2b will swap per-block
-    instancing for the greedy-mesh + PackedQuad readback path so sections render as
-    single draws instead of per-block instances.
+    Terrain is fully GPU-resident. <code>WorldService</code> streams greedy-meshed PackedQuad buffers
+    on WebGPU via ILGPU. <code>VertexPullPipeline</code> renders per-eye scenes into a wide
+    <code>OffscreenCanvas</code> (2*fbW x fbH) with stereo viewport switching. WebGL2 samples via
+    non-destructive <code>texImage2D(canvas)</code> (VR.1c bridge, commit <code>8252fe4</code>) and
+    presents each half into its eye's <code>XRWebGLLayer</code> viewport. Zero CPU readback of quad data.
 </p>
 <p style="font-size:0.85em;color:#888;">
-    Scene: 16x16 Perlin heightmap chunk placed 10 m ahead of the spawn point, plus
-    the original VR.2 floor grid, 3 rotating cubes, controller grips + rays + hit
-    markers, and trigger-drop cubes. Aim + squeeze your trigger to drop more cubes.
+    Scene: GPU-rendered terrain (greedy-merged, block-type colored) + VR.2 overlays (floor grid,
+    3 rotating cubes, controller grips + rays + hit markers, trigger-drop cubes).
+    <strong>Controls:</strong> Right stick = translate (forward in facing direction),
+    Left stick X = ±30° snap-turn, Trigger = drop cube at ray-floor hit.
+    Terrain chunks stream as you walk across chunk boundaries.
 </p>
 
 @if (_report != null)
@@ -75,6 +78,9 @@
         <div>Framebuffer dim : @_framebufferDim</div>
         <div>Reference space : @(_refSpaceTypeLabel ?? "(none)")</div>
         <div>Draw calls/frame: @_drawsPerFrame</div>
+        <div>Terrain sections: @_visibleCount</div>
+        <div>Locomotion pos  : (@_locomotionPos.X.ToString("0.00"), @_locomotionPos.Y.ToString("0.00"), @_locomotionPos.Z.ToString("0.00"))</div>
+        <div>Locomotion yaw  : @((_locomotionYaw * 180f / MathF.PI).ToString("0"))°</div>
         <div>Last GL error   : @_lastGlError</div>
         <div>Debug           : @_debugLine</div>
     </div>
@@ -110,14 +116,59 @@
     const int InstanceStrideFloats = 20;         // 16 matrix + 4 tint
     const int InstanceStrideBytes = InstanceStrideFloats * 4;
 
+    // VR.1c bridge: WebGPU scene render into a wide (2*fbW x fbH) OffscreenCanvas,
+    // WebGL2 samples the canvas via gl.texImage2D and presents per eye via fullscreen
+    // triangle. No CPU readback — terrain quads live in WebGPU GPUBuffer (produced by
+    // WorldService.GenerateChunksAsync) and are rendered by VertexPullPipeline directly.
+    GPUDevice? _gpuDevice;
+    GPUQueue? _gpuQueue;
+    OffscreenCanvas? _offscreen;
+    GPUCanvasContext? _offscreenCtx;
+    string _gpuCanvasFormat = "bgra8unorm";
+    GPUTexture? _depthTexture;
+    GPUTextureView? _depthView;
+    VertexPullPipeline? _voxelPipeline;
+    int _offscreenW;                 // 2 * framebufferW (wide stereo canvas)
+    int _offscreenH;                 // framebufferH
+    int _eyeW;                       // framebufferW (half of _offscreenW)
+    int _eyeH;                       // framebufferH
+
+    // Per-eye uniform-slot fanout for the pipeline's dynamic ring buffer:
+    // slot layout for frame = [L0, L1, ..., L(N-1), R0, R1, ..., R(N-1)].
+    // N visible sections per eye => 2*N total slots per frame.
+    const int MaxVisibleSections = 256;      // per eye; 2x when stereo doubled
+    readonly GPUBuffer[] _visibleQuadBuffers = new GPUBuffer[MaxVisibleSections];
+    readonly int[] _visibleQuadCounts = new int[MaxVisibleSections];
+    int _visibleCount;
+
+    // WebGL2 present layer: textures + shader for sampling the OffscreenCanvas
+    // into each XR eye viewport.
+    WebGLProgram? _presentProgram;
+    WebGLTexture? _presentTex;
+    WebGLUniformLocation? _uPresentUvXOffset;
+
     XRSession? _session;
     XRWebGLLayer? _xrLayer;
-    XRReferenceSpace? _refSpace;
+    XRReferenceSpace? _baseRefSpace;  // root reference space from requestReferenceSpace; never disposed mid-session
+    XRReferenceSpace? _refSpace;      // current = base OR an offset derived from base via getOffsetReferenceSpace
     string? _refSpaceTypeLabel;
     string[]? _enabledFeatures;
 
+    // Locomotion. Driven by thumbsticks; integrated into a world-axis offset + Y-yaw
+    // applied via XRReferenceSpace.getOffsetReferenceSpace each frame, which naturally
+    // moves the head AND controller poses together (no view-matrix hackery).
+    // Right stick: translate (strafe + forward/back relative to current yaw).
+    // Left stick X: snap-turn yaw in ±30° steps (debounced).
+    Vector3 _locomotionPos = Vector3.Zero;
+    Vector3 _locomotionPosApplied = Vector3.Zero;   // snapshot of _locomotionPos when _refSpace was last derived
+    float   _locomotionYaw = 0f;                    // radians, right-hand rule about +Y; + = turn left
+    float   _locomotionYawApplied = 0f;             // snapshot
+    bool    _snapArmed = true;                      // true when left stick has returned near center since last snap
+    double _lastFrameTimeMs = 0;
+
     bool _sessionActive;
     bool _starting;
+    bool _terrainLoadedOnGpu;        // true once WorldService.GenerateChunksAsync has populated World.Sections
     int _frameCount;
     int _viewsPerFrame;
     int _drawsPerFrame;
@@ -231,6 +282,36 @@ void main() {
 }
 ";
 
+    // VR.1c bridge present shader: fullscreen triangle, samples the correct half of the
+    // wide OffscreenCanvas (left eye: uv.x in [0, 0.5]; right eye: [0.5, 1.0]).
+    // Math reproduces the classic fullscreen-triangle trick with per-eye uv offset:
+    //   vertex positions: (-1,-1), (3,-1), (-1,3)  -> covers visible screen [-1,1]^2
+    //   vertex uvs:       (off,0),  (off+1,0), (off,2)  where off = 0 (left) or 0.5 (right)
+    //   visible portion interpolates uv.x in [off, off+0.5] and uv.y in [0, 1].
+    const string PresentVertSrc = @"#version 300 es
+out vec2 v_uv;
+uniform float u_uvXOffset;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  v_uv = vec2(u_uvXOffset + p.x * 0.5, p.y);
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+";
+
+    const string PresentFragSrc = @"#version 300 es
+precision mediump float;
+in vec2 v_uv;
+uniform sampler2D u_tex;
+out vec4 out_color;
+void main() {
+  // WebGL's default UNPACK_FLIP_Y_WEBGL=false uploads canvas source with row-0 at
+  // texel y=0, but WebGL's texture sampling treats uv.y=0 as the BOTTOM of the
+  // image when mapped through a fullscreen quad with natural v_uv math. So sample
+  // with 1-v_uv.y to counter the flip (matches VR.1c pattern).
+  out_color = texture(u_tex, vec2(v_uv.x, 1.0 - v_uv.y));
+}
+";
+
     protected override async Task OnInitializedAsync()
     {
         _report = await RenderPathDetector.DetectAsync(JS);
@@ -293,22 +374,53 @@ void main() {
 
             try
             {
-                _refSpace = await _session.RequestReferenceSpace(XRReferenceSpaceType.LocalFloor);
+                _baseRefSpace = await _session.RequestReferenceSpace(XRReferenceSpaceType.LocalFloor);
                 _refSpaceTypeLabel = "local-floor";
             }
             catch
             {
-                _refSpace = await _session.RequestReferenceSpace(XRReferenceSpaceType.Local);
+                _baseRefSpace = await _session.RequestReferenceSpace(XRReferenceSpaceType.Local);
                 _refSpaceTypeLabel = "local";
             }
+            // _refSpace starts identical to _baseRefSpace (zero locomotion offset); once the
+            // user pushes a thumbstick, ApplyLocomotion derives a fresh offset space per frame.
+            _refSpace = _baseRefSpace;
+
+            // Hint the runtime to deliver frames at the highest supported rate up to 120Hz.
+            // Quest 3S native browser offers 72/80/90/120; content-default is usually 72.
+            // Fire-and-forget, fault-observed.
+            try
+            {
+                using var rates = _session.SupportedFrameRates;
+                if (rates != null && rates.Length > 0)
+                {
+                    var arr = rates.ToArray();
+                    float target = 0;
+                    for (int i = 0; i < arr.Length; i++)
+                        if (arr[i] > target && arr[i] <= 120) target = arr[i];
+                    if (target > 0)
+                    {
+                        _ = _session.UpdateTargetFrameRate(target)
+                            .ContinueWith(
+                                t => { _ = t.Exception; },
+                                System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
+                    }
+                }
+            }
+            catch { /* not fatal; runtime default is fine */ }
+
+            // WebGPU bridge setup (VR.1c pattern). Shares the ILGPU WebGPU device so the
+            // ChunkMesh.QuadBuffer GPUBuffers produced by WorldService.GenerateChunksAsync
+            // are bindable in VertexPullPipeline without cross-device copy.
+            SetupWebGpuBridge(_xrLayer.FramebufferWidth, _xrLayer.FramebufferHeight);
 
             _session.OnEnd += OnSessionEnd;
             _sessionActive = true;
             _frameCount = 0;
 
-            // Populate the real-terrain block list. First session only - subsequent
-            // Enter/Exit cycles keep the same terrain in place.
-            if (!_terrainLoaded)
+            // Generate the initial world chunks on GPU. First session only - subsequent
+            // Enter/Exit cycles keep the same GPU-resident terrain in place.
+            if (!_terrainLoadedOnGpu)
             {
                 try { await LoadTerrainChunkAsync(); }
                 catch (Exception terrEx)
@@ -329,6 +441,68 @@ void main() {
             _starting = false;
             StateHasChanged();
         }
+    }
+
+    void SetupWebGpuBridge(int fbW, int fbH)
+    {
+        if (Engine?.Accelerator is not WebGPUAccelerator webGpuAccel)
+            throw new InvalidOperationException("VR bridge requires a WebGPU ILGPU accelerator (VoxelEngineService not using WebGPU backend)");
+
+        var nativeAccel = webGpuAccel.NativeAccelerator;
+        _gpuDevice = nativeAccel.NativeDevice
+            ?? throw new InvalidOperationException("WebGPU native device is null");
+        _gpuQueue = nativeAccel.Queue
+            ?? throw new InvalidOperationException("WebGPU queue is null");
+
+        // Ask WebGPU for the browser's preferred canvas format (typically bgra8unorm on desktop,
+        // rgba8unorm on mobile). Must match for the GPUCanvasContext Configure call below.
+        using (var navigator = JS.Get<Navigator>("navigator"))
+        using (var gpu = navigator.Gpu)
+        {
+            if (gpu != null) _gpuCanvasFormat = gpu.GetPreferredCanvasFormat();
+        }
+
+        // Wide stereo canvas: left eye into left half [0, fbW), right eye into right half [fbW, 2*fbW).
+        _eyeW = fbW;
+        _eyeH = fbH;
+        _offscreenW = fbW * 2;
+        _offscreenH = fbH;
+
+        _offscreen = new OffscreenCanvas(_offscreenW, _offscreenH);
+        _offscreenCtx = _offscreen.GetWebGPUContext()
+            ?? throw new InvalidOperationException("OffscreenCanvas.getContext('webgpu') returned null");
+        _offscreenCtx.Configure(new GPUCanvasConfiguration
+        {
+            Device = _gpuDevice,
+            Format = _gpuCanvasFormat,
+            // Opaque: terrain render always outputs alpha=1; avoids any unnecessary premultiply
+            // work on the composite. Also matches what VertexPullPipeline's frag shader emits.
+            AlphaMode = "opaque",
+        });
+
+        _depthTexture = _gpuDevice.CreateTexture(new GPUTextureDescriptor
+        {
+            Size = new[] { _offscreenW, _offscreenH },
+            Format = "depth32float",
+            Usage = GPUTextureUsage.RenderAttachment,
+        });
+        _depthView = _depthTexture.CreateView();
+
+        // Block-type colors for the terrain render pipeline.
+        var blockColors = new Vector4[256];
+        blockColors[(int)BlockType.Air]    = new Vector4(0f,    0f,    0f,    0f);
+        blockColors[(int)BlockType.Dirt]   = new Vector4(0.45f, 0.30f, 0.15f, 1f);
+        blockColors[(int)BlockType.Grass]  = new Vector4(0.30f, 0.60f, 0.20f, 1f);
+        blockColors[(int)BlockType.Stone]  = new Vector4(0.50f, 0.50f, 0.50f, 1f);
+        blockColors[(int)BlockType.Sand]   = new Vector4(0.85f, 0.80f, 0.60f, 1f);
+        blockColors[(int)BlockType.Water]  = new Vector4(0.20f, 0.30f, 0.80f, 0.6f);
+        blockColors[(int)BlockType.Wood]   = new Vector4(0.55f, 0.35f, 0.15f, 1f);
+        blockColors[(int)BlockType.Leaves] = new Vector4(0.20f, 0.45f, 0.10f, 0.8f);
+
+        _voxelPipeline = new VertexPullPipeline();
+        _voxelPipeline.Init(_gpuDevice, _gpuQueue, _gpuCanvasFormat, blockColors);
+        // 2x MaxVisibleSections because we fan left-eye + right-eye uniforms into adjacent slots.
+        _voxelPipeline.InitDynamic(MaxVisibleSections * 2);
     }
 
     void SetupGl()
@@ -398,6 +572,25 @@ void main() {
 
         // Restore main VAO as the default bound state.
         _gl.BindVertexArray(_vao);
+
+        // --- Present layer: samples the wide OffscreenCanvas into each XR eye viewport ---
+        _presentProgram = LinkProgram(PresentVertSrc, PresentFragSrc);
+        _uPresentUvXOffset = _gl.GetUniformLocation(_presentProgram, "u_uvXOffset");
+        using (var presentTexLoc = _gl.GetUniformLocation(_presentProgram, "u_tex"))
+        {
+            _gl.UseProgram(_presentProgram);
+            if (presentTexLoc != null) _gl.Uniform1i(presentTexLoc, 0);
+        }
+
+        _presentTex = _gl.CreateTexture();
+        _gl.BindTexture(GL.TEXTURE_2D, _presentTex);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GL.LINEAR);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GL.LINEAR);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE);
+        _gl.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
+
+        // Restore main program as default bound state.
+        _gl.UseProgram(_program);
     }
 
     WebGLProgram LinkProgram(string vertSrc, string fragSrc)
@@ -473,28 +666,22 @@ void main() {
             using var pose = frame.GetViewerPose(_refSpace);
             if (pose == null) return;
 
-            // Use the raw-JSRef bindFramebuffer call that VR.1c uses (known good).
-            using var fb = _xrLayer.Framebuffer;
-            _gl.JSRef!.CallVoid("bindFramebuffer", GL.FRAMEBUFFER, fb);
+            // Per-frame dt for locomotion integration.
+            double dtSec = _lastFrameTimeMs > 0 ? (time - _lastFrameTimeMs) / 1000.0 : 0;
+            if (dtSec < 0 || dtSec > 0.1) dtSec = 0;   // clamp after hiccups / first frame
+            _lastFrameTimeMs = time;
 
-            // Per-frame state reset. Paranoia; belts and suspenders.
-            _gl.Disable(GL.CULL_FACE);
-            _gl.Enable(GL.DEPTH_TEST);
-            _gl.DepthFunc(GL.LEQUAL);
-            _gl.DepthMask(true);
+            // Drain the WorldService's ready queue once per frame so streamed chunks land
+            // in World.Sections where RenderTerrainToOffscreen picks them up. Then re-kick
+            // UpdateDesiredChunks using the HMD's actual XR-space position so chunks stream
+            // around the player as they walk or locomote.
+            if (World != null && World.IsInitialized)
+            {
+                World.ProcessReadyChunks();
+                World.UpdateDesiredChunks(GetHmdWorldPos(pose), VrDrawRadius);
+            }
 
-            int fbW = _xrLayer.FramebufferWidth;
-            int fbH = _xrLayer.FramebufferHeight;
-            _gl.Viewport(0, 0, fbW, fbH);
-
-            // Dark night-sky background.
-            _gl.ClearColor(0.04f, 0.05f, 0.09f, 1f);
-            _gl.ClearDepth(1f);
-            _gl.Clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
-
-            _gl.UseProgram(_program);
-            _gl.BindVertexArray(_vao);
-
+            // Common controller/cube work. Done once per frame regardless of eye.
             float t = (float)(time / 1000.0);
             var identityModel = Identity();
             var modelMatrices = new float[_cubes.Length][];
@@ -504,43 +691,133 @@ void main() {
                 modelMatrices[i] = Compose(c.Pos, c.Axis, t * c.Speed, c.Scale);
             }
 
-            // Single pass over inputSources per frame: read pose matrices and
-            // trigger once per controller, then derive all render lists from
-            // the cached snapshots. Cuts per-frame JSInterop roughly in half.
             var snaps = SnapshotControllers(frame);
             var controllerModels = BuildControllerModelsFromSnaps(snaps);
             var controllerRays = BuildControllerRaysFromSnaps(snaps);
             var floorHits = BuildFloorHitsFromSnaps(snaps);
-
-            // Edge-detect trigger presses -> drop a cube at the hit point.
             HandleTriggerSpawnsFromSnaps(snaps);
 
-            // Reupload per-instance attribute buffer if the spawn/terrain list changed.
-            if (_instanceDirty && (_spawned.Count + _terrainBlocks.Count) > 0 && _instanceBuffer != null)
-            {
+            // Integrate right-hand thumbstick -> world-axis locomotion. Offset applied via
+            // getOffsetReferenceSpace so the HMD pose AND controller poses all naturally
+            // move together in one native-side transform. No view-matrix patch needed.
+            ApplyLocomotionFromSnaps(snaps, (float)dtSec);
+
+            if (_instanceDirty && _spawned.Count > 0 && _instanceBuffer != null)
                 UploadInstanceBuffer();
-            }
 
-            int viewCount = 0;
-            int drawCount = 0;
-            string? frame0Debug = null;
+            // Capture per-eye GL proj/view objects once. Used for both the WebGPU terrain
+            // render (via MVP math) and the WebGL2 overlay draws (via UniformMatrix4fv).
+            //
+            // ReversedEyeVp[eye] is a .NET Matrix4x4 with row-vector convention, where the
+            // stored bytes reinterpret as column-major = eye's reversed-Z VP matrix.
+            // (WebXR ProjectionMatrix uses standard-Z; VertexPullPipeline expects reversed-Z
+            // (depthCompare=greater, clearDepth=0). Post-multiply by ZFlip converts.)
+            var viewsList = new List<XRView>();
+            foreach (var v in pose.Views) viewsList.Add(v);
+            int viewCount = viewsList.Count;
 
-            foreach (var view in pose.Views)
+            var eyeProjJs = new Float32Array[viewCount];
+            var eyeViewJs = new Float32Array[viewCount];
+            var eyeViewports = new XRViewport[viewCount];
+            var eyeVpReversed = new Matrix4x4[viewCount];
+
+            try
             {
-                using (view)
+                for (int eye = 0; eye < viewCount; eye++)
                 {
-                    using var vp = _xrLayer.GetViewport(view);
+                    var view = viewsList[eye];
+                    eyeProjJs[eye] = view.ProjectionMatrix;
+                    var xform = view.Transform;
+                    using (xform)
+                    {
+                        var xformInv = xform.Inverse;
+                        using (xformInv)
+                        {
+                            eyeViewJs[eye] = xformInv.Matrix;
+                        }
+                    }
+                    eyeViewports[eye] = _xrLayer.GetViewport(view);
+
+                    float[] projArr = eyeProjJs[eye].ToArray();
+                    float[] viewArr = eyeViewJs[eye].ToArray();
+                    // Row-vector convention: v_world * V * P * ZFlip = v_clip_reversed.
+                    eyeVpReversed[eye] = VrMatrixHelpers.BuildReversedZViewProj(projArr, viewArr);
+                }
+
+                // ------------------------------------------------------------------
+                // 1. WebGPU terrain render into the wide OffscreenCanvas (both eyes).
+                // ------------------------------------------------------------------
+                if (viewCount >= 2)
+                    RenderTerrainToOffscreen(eyeVpReversed[0], eyeVpReversed[1]);
+                else if (viewCount == 1)
+                    RenderTerrainToOffscreen(eyeVpReversed[0], eyeVpReversed[0]);
+
+                // ------------------------------------------------------------------
+                // 2. Bind XR framebuffer + upload OffscreenCanvas once per frame.
+                // ------------------------------------------------------------------
+                using var fb = _xrLayer.Framebuffer;
+                _gl.BindFramebuffer(GL.FRAMEBUFFER, fb);
+
+                _gl.Disable(GL.CULL_FACE);
+                _gl.Enable(GL.DEPTH_TEST);
+                _gl.DepthFunc(GL.LEQUAL);
+                _gl.DepthMask(true);
+
+                int xrFbW = _xrLayer.FramebufferWidth;
+                int xrFbH = _xrLayer.FramebufferHeight;
+                _gl.Viewport(0, 0, xrFbW, xrFbH);
+                _gl.ClearColor(0.04f, 0.05f, 0.09f, 1f);
+                _gl.ClearDepth(1f);
+                _gl.Clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
+
+                // Upload the wide OffscreenCanvas as our present texture. One call per frame
+                // covers both eyes. This is the Chromium GPU-GPU bridge: NOT transferToImageBitmap.
+                if (_offscreen != null && _presentTex != null)
+                {
+                    _gl.ActiveTexture(GL.TEXTURE0);
+                    _gl.BindTexture(GL.TEXTURE_2D, _presentTex);
+                    _gl.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, GL.RGBA, GL.UNSIGNED_BYTE, _offscreen);
+                }
+
+                // ------------------------------------------------------------------
+                // 3. Per-eye: present terrain + draw WebGL2 overlays.
+                // ------------------------------------------------------------------
+                int drawCount = 0;
+                string? frame0Debug = null;
+
+                for (int eye = 0; eye < viewCount; eye++)
+                {
+                    var vp = eyeViewports[eye];
                     _gl.Viewport(vp.X, vp.Y, vp.Width, vp.Height);
 
-                    using var proj = view.ProjectionMatrix;
-                    using var xform = view.Transform;
-                    using var xformInv = xform.Inverse;
-                    using var viewMat = xformInv.Matrix;
+                    // --- Terrain present: fullscreen triangle, samples correct canvas half ---
+                    // No depth write/test - overlays below will still render on top.
+                    if (_presentProgram != null && _presentTex != null && _uPresentUvXOffset != null)
+                    {
+                        _gl.Disable(GL.DEPTH_TEST);
+                        _gl.DepthMask(false);
+                        _gl.UseProgram(_presentProgram);
+                        _gl.BindVertexArray(_vao);  // any VAO; present shader only uses gl_VertexID
+                        _gl.ActiveTexture(GL.TEXTURE0);
+                        _gl.BindTexture(GL.TEXTURE_2D, _presentTex);
+                        _gl.Uniform1f(_uPresentUvXOffset, eye == 0 ? 0f : 0.5f);
+                        _gl.DrawArrays(GL.TRIANGLES, 0, 3);
+                        drawCount++;
+                        _gl.Enable(GL.DEPTH_TEST);
+                        _gl.DepthMask(true);
+                    }
+
+                    // --- WebGL2 overlay draws (floor grid, cubes, controllers, rays, hits) ---
+                    _gl.UseProgram(_program);
+                    _gl.BindVertexArray(_vao);
+
+                    var proj = eyeProjJs[eye];
+                    var viewMat = eyeViewJs[eye];
 
                     _gl.UniformMatrix4fv(_uProjection!, false, proj);
                     _gl.UniformMatrix4fv(_uView!, false, viewMat);
 
-                    // Floor - with grid overlay, no tint, rectangular.
+                    // Floor - grid overlay.
                     _gl.Uniform1f(_uGridAmount!, 1f);
                     _gl.Uniform1f(_uShape!, 0f);
                     _gl.Uniform3f(_uTint!, 1f, 1f, 1f);
@@ -548,9 +825,8 @@ void main() {
                     _gl.DrawElements(GL.TRIANGLES, FloorIndexCount, GL.UNSIGNED_SHORT, FloorIndexOffsetBytes);
                     drawCount++;
 
-                    // Solid cubes - no grid, no tint (raw rainbow colors).
+                    // 3 rotating cubes.
                     _gl.Uniform1f(_uGridAmount!, 0f);
-                    _gl.Uniform1f(_uShape!, 0f);
                     _gl.Uniform3f(_uTint!, 1f, 1f, 1f);
                     for (int i = 0; i < _cubes.Length; i++)
                     {
@@ -559,7 +835,7 @@ void main() {
                         drawCount++;
                     }
 
-                    // Controller cubes - no grid, handedness tint.
+                    // Controller cubes.
                     foreach (var cm in controllerModels)
                     {
                         _gl.Uniform3f(_uTint!, cm.Tint.X, cm.Tint.Y, cm.Tint.Z);
@@ -568,11 +844,7 @@ void main() {
                         drawCount++;
                     }
 
-                    // Persistent cubes dropped by previous trigger presses:
-                    // rendered via instancing, deferred until after everything else
-                    // so we don't thrash the program/VAO inside this inner loop.
-
-                    // Controller rays - thin 2m beams. Same cube geometry, stretched.
+                    // Controller rays.
                     foreach (var ray in controllerRays)
                     {
                         _gl.Uniform3f(_uTint!, ray.Tint.X, ray.Tint.Y, ray.Tint.Z);
@@ -581,8 +853,7 @@ void main() {
                         drawCount++;
                     }
 
-                    // Floor hit markers - circular discs at ray/floor intersections
-                    // (u_shape=1 makes the fragment shader mask to a circle).
+                    // Floor hit markers - circular discs.
                     _gl.Uniform1f(_uShape!, 1f);
                     foreach (var hit in floorHits)
                     {
@@ -593,7 +864,7 @@ void main() {
                     }
                     _gl.Uniform1f(_uShape!, 0f);
 
-                    // Spawned cubes: single instanced draw for all of them.
+                    // Trigger-drop instanced cubes (user drops, not terrain).
                     if (_instanceUploadedCount > 0 && _instProgram != null && _instVao != null)
                     {
                         _gl.UseProgram(_instProgram);
@@ -602,19 +873,14 @@ void main() {
                         _gl.UniformMatrix4fv(_uInstView!, false, viewMat);
                         _gl.DrawElementsInstanced(GL.TRIANGLES, CubeIndexCount, GL.UNSIGNED_SHORT, CubeIndexOffsetBytes, _instanceUploadedCount);
                         drawCount++;
-                        // Restore main program + VAO so the next eye's pass starts clean.
                         _gl.UseProgram(_program);
                         _gl.BindVertexArray(_vao);
                     }
 
-                    if (_frameCount == 0 && viewCount == 0)
+                    if (_frameCount == 0 && eye == 0)
                     {
-                        // Capture frame-0 diagnostic snapshot. Stringify the matrix components
-                        // rather than marshalling the float[] through BlazorJS - JSON.NET refuses
-                        // NaN/Inf and would throw SpecialNumberValuesNotSupported.
-                        float[] projArr, viewArr;
-                        try { projArr = proj.ToArray(); } catch { projArr = System.Array.Empty<float>(); }
-                        try { viewArr = viewMat.ToArray(); } catch { viewArr = System.Array.Empty<float>(); }
+                        float[] projArr = proj.ToArray();
+                        float[] viewArr = viewMat.ToArray();
                         string projStr = projArr.Length == 16
                             ? $"({projArr[0]:F2},{projArr[5]:F2},{projArr[10]:F2},{projArr[14]:F2})"
                             : "(unreadable)";
@@ -622,31 +888,210 @@ void main() {
                             ? $"({viewArr[12]:F2},{viewArr[13]:F2},{viewArr[14]:F2})"
                             : "(unreadable)";
                         frame0Debug = $"vp=({vp.X},{vp.Y},{vp.Width},{vp.Height}) " +
-                                      $"proj[0,5,10,14]={projStr} view[12,13,14]={viewStr}";
-                        JS.CallVoid("console.log", "[VR.2 frame 0] " + frame0Debug);
+                                      $"proj[0,5,10,14]={projStr} view[12,13,14]={viewStr} " +
+                                      $"terrainSections={_visibleCount}";
+                        JS.CallVoid("console.log", "[VR frame 0] " + frame0Debug);
                     }
-                    viewCount++;
+                }
+
+                uint err = _gl.GetError();
+                if (err != 0)
+                {
+                    _lastGlError = $"0x{err:X} at frame {_frameCount}";
+                    JS.CallVoid("console.warn", $"[VR frame {_frameCount}] gl.getError = 0x{err:X}");
+                }
+                if (frame0Debug != null) _debugLine = frame0Debug;
+
+                _viewsPerFrame = viewCount;
+                _drawsPerFrame = drawCount;
+                _frameCount++;
+                if (_frameCount % 30 == 0) InvokeAsync(StateHasChanged);
+            }
+            finally
+            {
+                for (int i = 0; i < viewCount; i++)
+                {
+                    eyeProjJs[i]?.Dispose();
+                    eyeViewJs[i]?.Dispose();
+                    eyeViewports[i]?.Dispose();
+                    viewsList[i]?.Dispose();
                 }
             }
-
-            uint err = _gl.GetError();
-            if (err != 0)
-            {
-                _lastGlError = $"0x{err:X} at frame {_frameCount}";
-                JS.CallVoid("console.warn", $"[VR.2 frame {_frameCount}] gl.getError = 0x{err:X}");
-            }
-            if (frame0Debug != null) _debugLine = frame0Debug;
-
-            _viewsPerFrame = viewCount;
-            _drawsPerFrame = drawCount;
-            _frameCount++;
-            if (_frameCount % 30 == 0) InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
             _errorMessage = $"Frame {_frameCount}: {ex.GetType().Name}: {ex.Message}";
             InvokeAsync(StateHasChanged);
         }
+    }
+
+    // Integrates stick input into _locomotionPos + _locomotionYaw and derives a fresh
+    // offset reference space from _baseRefSpace. After this call, _refSpace reflects the
+    // player's locomoted position AND rotation; all subsequent pose queries (head +
+    // controllers) naturally shift together.
+    //
+    // Right stick: translate. Forward = -stickY in the current-yaw-rotated frame;
+    // right = +stickX in the rotated right. Pushing forward always walks you in the
+    // direction you're facing, not world-Z.
+    //
+    // Left stick X: snap-turn yaw in ±30° steps with release-to-rearm debounce. This
+    // is the comfort standard for VR (smooth yaw is common but makes some users sick).
+    void ApplyLocomotionFromSnaps(List<ControllerSnapshot> snaps, float dtSec)
+    {
+        if (_baseRefSpace == null || dtSec <= 0) return;
+
+        float rX = 0f, rY = 0f;     // right stick (translate)
+        float lX = 0f;              // left stick X (snap-turn)
+        foreach (var s in snaps)
+        {
+            if (s.Handedness == "right") { rX = s.ThumbstickX; rY = s.ThumbstickY; }
+            else if (s.Handedness == "left") { lX = s.ThumbstickX; }
+        }
+
+        // Dead-zone 10% of range. Prevents resting-drift on cheap sticks.
+        const float DeadZone = 0.1f;
+        if (MathF.Abs(rX) < DeadZone) rX = 0;
+        if (MathF.Abs(rY) < DeadZone) rY = 0;
+
+        // --- Left stick X: snap-turn debounce ---
+        VrMatrixHelpers.TryApplySnapTurn(ref _snapArmed, ref _locomotionYaw, lX);
+
+        // --- Right stick: translate along rotated forward/right ---
+        const float MoveSpeed = 3.0f;   // m/s
+        _locomotionPos += VrMatrixHelpers.ComputeLocomotionDelta(rX, rY, _locomotionYaw, MoveSpeed, dtSec);
+
+        // Re-derive the offset reference space ONLY when position OR yaw differs from
+        // what _refSpace currently reflects. Avoids per-frame JSInterop alloc when
+        // the player is standing still.
+        if (_locomotionPos == _locomotionPosApplied && _locomotionYaw == _locomotionYawApplied)
+            return;
+
+        try
+        {
+            // XRRigidTransform position includes w=1 per spec. Orientation is a unit quaternion.
+            var qYaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, _locomotionYaw);
+            using var offsetXform = new XRRigidTransform(
+                new { x = _locomotionPos.X, y = _locomotionPos.Y, z = _locomotionPos.Z, w = 1.0 },
+                new { x = qYaw.X,            y = qYaw.Y,            z = qYaw.Z,            w = qYaw.W });
+            var newSpace = _baseRefSpace.GetOffsetReferenceSpace(offsetXform);
+
+            if (_refSpace != null && !object.ReferenceEquals(_refSpace, _baseRefSpace))
+                _refSpace.Dispose();
+            _refSpace = newSpace;
+            _locomotionPosApplied = _locomotionPos;
+            _locomotionYawApplied = _locomotionYaw;
+        }
+        catch (Exception ex)
+        {
+            // BlazorJS wrapper may not marshal the anonymous position/orientation objects, or
+            // the runtime may reject the transform. If this repeats, flag as a SpawnDev.BlazorJS
+            // gap (first WebXR consumer - Captain confirmed possible bug surface 2026-04-23).
+            JS.CallVoid("console.warn", $"[VR locomotion] GetOffsetReferenceSpace failed: {ex.Message}");
+        }
+    }
+
+    // Reads the HMD's position in the XR local-floor reference space from the viewer
+    // pose. Used to drive WorldService.UpdateDesiredChunks so chunk streaming tracks
+    // the player as locomotion ships. Head-only motion stays within one chunk per
+    // SizeXZ=16, so this is near-zero-cost before locomotion; once thumbstick-driven
+    // locomotion lands it naturally scales.
+    static Vector3 GetHmdWorldPos(XRViewerPose pose)
+    {
+        try
+        {
+            using var xform = pose.Transform;
+            using var pos = xform.Position;
+            return new Vector3((float)pos.X, (float)pos.Y, (float)pos.Z);
+        }
+        catch
+        {
+            return Vector3.Zero;
+        }
+    }
+
+    // Matrix helpers extracted to SpawnDev.VoxelEngine/Rendering/VrMatrixHelpers.cs so
+    // tests at the library level can verify the GL-column-major <-> .NET-row-vector +
+    // standard-Z -> reversed-Z conversion across all 6 ILGPU backends without needing
+    // a live WebXR session. AubsCraft VR + SpawnScene VR will consume the same helpers
+    // when their VR paths land.
+
+    /// <summary>
+    /// WebGPU render pass: fill the wide OffscreenCanvas with per-eye terrain scenes.
+    /// Left eye into viewport [0, eyeW), right eye into [eyeW, 2*eyeW). Single pass,
+    /// single submit. Sections come straight from WorldService.Sections (GPU-resident).
+    /// </summary>
+    void RenderTerrainToOffscreen(Matrix4x4 vpLeft, Matrix4x4 vpRight)
+    {
+        if (_voxelPipeline == null || _offscreenCtx == null || _depthView == null
+            || _gpuDevice == null || _gpuQueue == null || World == null)
+        {
+            return;
+        }
+
+        var fogColor = new Vector3(0.04f, 0.05f, 0.09f);
+        const float fogDensity = 0.006f;
+        var ambientColor = new Vector3(0.25f, 0.26f, 0.30f);
+        var cameraPos = Vector3.Zero; // shader uses for fog distance; approximate at eye origin
+
+        const int SectionHeight = 16;
+
+        // Shift terrain down so the surface sits near the viewer's floor (y=0 in XR local-floor
+        // space). TerrainGenerator produces surface heights at BaseHeight+/-HeightScale = 24+/-14,
+        // so subtract 24 to put surface at y ~= 0. Without this, the viewer (at IWE's default
+        // y ~= 1.45) spawns buried INSIDE the terrain column and sees blocks as a ceiling above.
+        // Prototype-level offset; real world streaming (Phase 2c) uses player position instead.
+        const float TerrainYOffset = -24f;
+
+        // Fan per-section uniforms into slots [0, 2, 4, ...] = left eye and [1, 3, 5, ...] = right eye.
+        // Single Flush covers both eyes. Draws then pick slot = 2*i or 2*i+1 per pass.
+        int sectionCount = 0;
+        foreach (var ((cx, sy, cz), sectionMesh) in World.Sections)
+        {
+            if (!sectionMesh.HasMesh) continue;
+            if (sectionCount >= MaxVisibleSections) break;
+
+            var sectionOffset = new Vector3(
+                cx * ChunkData.SizeXZ,
+                sy * SectionHeight + TerrainYOffset,
+                cz * ChunkData.SizeXZ);
+
+            _voxelPipeline.WriteDynamicUniforms(sectionCount * 2,     vpLeft,  sectionOffset, 1.0f,
+                fogColor, fogDensity, ambientColor, 0, cameraPos);
+            _voxelPipeline.WriteDynamicUniforms(sectionCount * 2 + 1, vpRight, sectionOffset, 1.0f,
+                fogColor, fogDensity, ambientColor, 0, cameraPos);
+            _visibleQuadBuffers[sectionCount] = sectionMesh.QuadBuffer!;
+            _visibleQuadCounts[sectionCount] = sectionMesh.QuadCount;
+            sectionCount++;
+        }
+        _visibleCount = sectionCount;
+
+        using var encoder = _gpuDevice.CreateCommandEncoder();
+        using var colorTex = _offscreenCtx.GetCurrentTexture();
+        using var colorView = colorTex.CreateView();
+
+        using var pass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView,
+            clearColor: true, clearColorValue: fogColor);
+
+        if (sectionCount > 0)
+        {
+            _voxelPipeline.FlushDynamicUniforms(sectionCount * 2);
+
+            // Left eye viewport
+            pass.SetViewport(0, 0, _eyeW, _eyeH, 0, 1);
+            for (int i = 0; i < sectionCount; i++)
+                _voxelPipeline.DrawSectionDynamic(pass, _visibleQuadBuffers[i], _visibleQuadCounts[i], i * 2);
+
+            // Right eye viewport
+            pass.SetViewport(_eyeW, 0, _eyeW, _eyeH, 0, 1);
+            for (int i = 0; i < sectionCount; i++)
+                _voxelPipeline.DrawSectionDynamic(pass, _visibleQuadBuffers[i], _visibleQuadCounts[i], i * 2 + 1);
+        }
+        // Even with zero sections we still begin+end the pass so the canvas has a defined
+        // clear color for this frame rather than stale content from the previous frame.
+
+        pass.End();
+        using var cmd = encoder.Finish();
+        _gpuQueue.Submit(new[] { cmd });
     }
 
     const float RayLength = 2.0f;    // 2m beam
@@ -661,13 +1106,14 @@ void main() {
         string Handedness,
         float[]? GripMatrix,
         float[]? RayMatrix,
-        float Trigger);
+        float Trigger,
+        float ThumbstickX,
+        float ThumbstickY);
 
     // Little cubes placed by trigger press. Persisted across frames.
+    // (Terrain is GPU-resident in WorldService.Sections — not in a CPU list anymore.)
     readonly record struct SpawnedCube(float[] Matrix, Vector3 Tint);
     readonly List<SpawnedCube> _spawned = new();
-    readonly List<SpawnedCube> _terrainBlocks = new();   // static Lost Spawns chunk blocks
-    bool _terrainLoaded;
 
     // Edge-detection state: last-frame trigger-held flag per controller handedness.
     readonly Dictionary<string, bool> _triggerHeld = new();
@@ -693,6 +1139,8 @@ void main() {
             float[]? rayMat  = TryReadSpacePose(frame, src.TargetRaySpace);
 
             float trigger = 0f;
+            float stickX = 0f;
+            float stickY = 0f;
             using (var gp = src.Gamepad)
             {
                 if (gp != null)
@@ -706,10 +1154,24 @@ void main() {
                         }
                         for (int bi = 0; bi < btns.Length; bi++) btns[bi]?.Dispose();
                     }
+
+                    // WebXR Gamepad module mapping (spec): axes[0..1] = touchpad, axes[2..3] = thumbstick.
+                    // Y axis is forward-negative on Quest / Oculus (stick up = -1), so we don't flip here -
+                    // callers add or subtract based on the desired semantic.
+                    try
+                    {
+                        var axes = gp.Axes;
+                        if (axes != null && axes.Length >= 4)
+                        {
+                            stickX = (float)axes[2];
+                            stickY = (float)axes[3];
+                        }
+                    }
+                    catch { }
                 }
             }
 
-            snaps.Add(new ControllerSnapshot(hand, gripMat, rayMat, trigger));
+            snaps.Add(new ControllerSnapshot(hand, gripMat, rayMat, trigger, stickX, stickY));
         }
         return snaps;
     }
@@ -789,7 +1251,7 @@ void main() {
         foreach (var s in snaps)
         {
             if (s.RayMatrix == null) continue;
-            if (!RayFloorHit(s.RayMatrix, FloorHalf, out float hx, out float hz)) continue;
+            if (!VrMatrixHelpers.RayFloorHit(s.RayMatrix, FloorHalf, out float hx, out float hz)) continue;
 
             float radius = 0.10f + 0.10f * s.Trigger;
             var markerMat = new float[]
@@ -818,7 +1280,7 @@ void main() {
             if (!held || wasHeld) continue;
 
             if (s.RayMatrix == null) continue;
-            if (!RayFloorHit(s.RayMatrix, FloorHalf, out float hx, out float hz)) continue;
+            if (!VrMatrixHelpers.RayFloorHit(s.RayMatrix, FloorHalf, out float hx, out float hz)) continue;
 
             float yaw = _spawned.Count * 0.37f;
             float cy = MathF.Cos(yaw), sy = MathF.Sin(yaw);
@@ -841,117 +1303,107 @@ void main() {
             _spawned.Add(new SpawnedCube(mm, tint));
             if (_spawned.Count > MaxSpawnedCubes) _spawned.RemoveAt(0);
             _instanceDirty = true;
-        }
-    }
 
-    static bool RayFloorHit(float[] m, float floorHalf, out float hx, out float hz)
-    {
-        hx = 0; hz = 0;
-        float ox = m[12], oy = m[13], oz = m[14];
-        float dx = -m[8], dy = -m[9], dz = -m[10];
-        if (dy >= -1e-5f) return false;
-        float t = -oy / dy;
-        if (t <= 0f || t > 100f) return false;
-        hx = ox + t * dx;
-        hz = oz + t * dz;
-        return MathF.Abs(hx) <= floorHalf && MathF.Abs(hz) <= floorHalf;
+            // Short haptic buzz on the hand that triggered so it feels tactile.
+            PulseHapticForHandedness(s.Handedness);
+        }
     }
 
     /// <summary>
-    /// Generate a 16x16 heightmap chunk via the real ILGPU heightmap kernel in
-    /// VoxelEngineService, then fan the returned heights out into static instanced
-    /// blocks in _terrainBlocks. Block type (dirt/grass/stone) is picked per-column
-    /// the same way Lost Spawns' TerrainGenerator does it.
+    /// Fire-and-forget haptic pulse on the controller matching the given handedness.
+    /// Cheap enough to do per-spawn (not per-frame); walks session.InputSources to find
+    /// the matching gamepad and its VibrationActuator, then calls PlayEffect.
+    /// Swallows errors - haptic is polish, not correctness.
     /// </summary>
-    async Task LoadTerrainChunkAsync()
+    void PulseHapticForHandedness(string hand)
     {
-        if (_terrainLoaded) return;
-        if (Engine == null || !Engine.IsInitialized) return;
-        if (World == null || !World.IsInitialized) return;
-
-        const int SizeXZ = 16;       // 16x16 blocks in the chunk
-        const float CubeSize = 0.9f; // 90cm cubes with a small seam so grid is readable
-        // Place the chunk centered 12m ahead of the user with the base 2m below eye.
-        const float ChunkOriginX = -SizeXZ / 2f;
-        const float ChunkOriginY = -2f;
-        const float ChunkOriginZ = -20f;
-
-        // Real heightmap via ILGPU kernel (chunk 0,0). Returns int[256] (SizeXZ * SizeXZ).
-        int[] heights;
-        try { heights = await Engine.GenerateHeightmapAsync(0, 0); }
-        catch { _terrainLoaded = true; return; }
-        if (heights == null || heights.Length < SizeXZ * SizeXZ)
+        if (_session == null) return;
+        try
         {
-            _terrainLoaded = true;
-            return;
-        }
-
-        // Convert heights to columns of blocks. Top block is grass, next 3 are dirt,
-        // everything deeper is stone. Clamp column height so we don't blow the pool.
-        const int MaxColumnHeight = 8;
-        for (int z = 0; z < SizeXZ; z++)
-        {
-            for (int x = 0; x < SizeXZ; x++)
+            using var sources = _session.InputSources;
+            if (sources == null) return;
+            int count = sources.Length;
+            for (int i = 0; i < count; i++)
             {
-                int surfaceAbs = heights[x + z * SizeXZ];
-                // Normalize: terrain kernel emits absolute block height (~64 for Deer Isle).
-                // We want a local 1..MaxColumnHeight scale for this demo chunk.
-                int col = Math.Max(1, Math.Min(MaxColumnHeight, (surfaceAbs - 60) + 4));
-                for (int y = 0; y < col; y++)
-                {
-                    // Classify block by depth-from-top.
-                    bool isTop = (y == col - 1);
-                    int depthFromTop = col - 1 - y;
-                    Vector3 tint = isTop
-                        ? new Vector3(0.30f, 0.60f, 0.20f)      // grass green
-                        : depthFromTop < 4
-                            ? new Vector3(0.45f, 0.30f, 0.15f)  // dirt brown
-                            : new Vector3(0.50f, 0.50f, 0.50f); // stone gray
+                using var src = sources.GetItem(i);
+                if (src == null) continue;
+                if (src.Handedness != hand) continue;
 
-                    float wx = ChunkOriginX + x + 0.5f;
-                    float wy = ChunkOriginY + y + 0.5f;
-                    float wz = ChunkOriginZ + z + 0.5f;
+                using var gp = src.Gamepad;
+                if (gp == null) break;
 
-                    // Translation * uniform-scale matrix (column-major).
-                    var mm = new float[]
+                using var actuator = gp.VibrationActuator;
+                if (actuator == null) break;
+                // Fire-and-forget but observe any fault so TaskScheduler doesn't raise
+                // UnobservedTaskException. PlayEffect's promise lives independently of the
+                // actuator JSRef once dispatched, so disposing the using above is safe.
+                _ = actuator.PlayEffect("dual-rumble", new HapticEffectParams
                     {
-                        CubeSize, 0,        0,        0,
-                        0,        CubeSize, 0,        0,
-                        0,        0,        CubeSize, 0,
-                        wx,       wy,       wz,       1,
-                    };
-                    _terrainBlocks.Add(new SpawnedCube(mm, tint));
-                }
+                        Duration = 50,
+                        StartDelay = 0,
+                        StrongMagnitude = 0.4,
+                        WeakMagnitude = 0.25,
+                    })
+                    .ContinueWith(
+                        t => { _ = t.Exception; },
+                        System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
+                break;
             }
         }
+        catch { /* haptic is polish; ignore */ }
+    }
 
-        _terrainLoaded = true;
-        _instanceDirty = true;
-        JS.CallVoid("console.log", $"[VR] Terrain loaded: {_terrainBlocks.Count} blocks from ILGPU heightmap.");
+    /// <summary>
+    /// Kick off streaming terrain load. Uses `WorldService.UpdateDesiredChunks` (same
+    /// pattern as the desktop game's `RenderService`): fire-and-forget GPU dispatches
+    /// up to MaxConcurrentGpu parallel. OnXrFrame calls `ProcessReadyChunks` each frame
+    /// to drain finished sections into the rendered dict. VR session starts instantly;
+    /// terrain appears progressively. Zero CPU readback.
+    /// </summary>
+    const int VrDrawRadius = 2;  // ~13 columns; progressive load
+
+    Task LoadTerrainChunkAsync()
+    {
+        if (_terrainLoadedOnGpu) return Task.CompletedTask;
+        if (Engine == null || !Engine.IsInitialized) return Task.CompletedTask;
+        if (World == null || !World.IsInitialized) return Task.CompletedTask;
+
+        try
+        {
+            // Queue initial chunks around world origin. Per-frame re-kick in OnXrFrame uses
+            // the live HMD position, so once the viewer enters VR the streaming naturally
+            // follows their actual XR-space location.
+            World.UpdateDesiredChunks(Vector3.Zero, VrDrawRadius);
+            _terrainLoadedOnGpu = true;
+            JS.CallVoid("console.log",
+                $"[VR] Terrain streaming started: radius={VrDrawRadius}, pending={World.PendingCount}.");
+        }
+        catch (Exception ex)
+        {
+            _terrainLoadedOnGpu = true;
+            _errorMessage = $"Terrain kickoff failed: {ex.GetType().Name}: {ex.Message}";
+            JS.CallVoid("console.error", $"[VR] Terrain kickoff failed: {ex}");
+        }
+        return Task.CompletedTask;
     }
 
     void UploadInstanceBuffer()
     {
         if (_gl == null || _instanceBuffer == null) return;
-        int terrainN = _terrainBlocks.Count;
-        int spawnN = _spawned.Count;
-        int n = terrainN + spawnN;
+        int n = _spawned.Count;
         if (n == 0) { _instanceUploadedCount = 0; _instanceDirty = false; return; }
 
         var data = new float[n * InstanceStrideFloats];
-        int writeIdx = 0;
-        void WriteOne(SpawnedCube sc)
+        for (int i = 0; i < n; i++)
         {
-            System.Array.Copy(sc.Matrix, 0, data, writeIdx * InstanceStrideFloats, 16);
-            int off = writeIdx * InstanceStrideFloats + 16;
+            var sc = _spawned[i];
+            System.Array.Copy(sc.Matrix, 0, data, i * InstanceStrideFloats, 16);
+            int off = i * InstanceStrideFloats + 16;
             data[off + 0] = sc.Tint.X;
             data[off + 1] = sc.Tint.Y;
             data[off + 2] = sc.Tint.Z;
             data[off + 3] = 1f;
-            writeIdx++;
         }
-        for (int i = 0; i < terrainN; i++) WriteOne(_terrainBlocks[i]);
-        for (int i = 0; i < spawnN; i++)   WriteOne(_spawned[i]);
 
         _gl.BindBuffer(GL.ARRAY_BUFFER, _instanceBuffer);
         using (var f32 = new Float32Array(data))
@@ -1038,10 +1490,21 @@ void main() {
             try { _session.OnEnd -= OnSessionEnd; } catch { }
         }
         _xrLayer?.Dispose(); _xrLayer = null;
-        _refSpace?.Dispose(); _refSpace = null;
+        // _refSpace may be the base, or a derived offset. Only dispose once; _baseRefSpace
+        // is owned independently and disposed next.
+        if (_refSpace != null && !object.ReferenceEquals(_refSpace, _baseRefSpace))
+            _refSpace.Dispose();
+        _refSpace = null;
+        _baseRefSpace?.Dispose(); _baseRefSpace = null;
         _session?.Dispose(); _session = null;
         _sessionActive = false;
         _refSpaceTypeLabel = null;
+        _locomotionPos = Vector3.Zero;
+        _locomotionPosApplied = Vector3.Zero;
+        _locomotionYaw = 0f;
+        _locomotionYawApplied = 0f;
+        _snapArmed = true;
+        _lastFrameTimeMs = 0;
 
         _uProjection?.Dispose(); _uProjection = null;
         _uView?.Dispose(); _uView = null;
@@ -1051,20 +1514,34 @@ void main() {
         _uTint?.Dispose(); _uTint = null;
         _uInstProjection?.Dispose(); _uInstProjection = null;
         _uInstView?.Dispose(); _uInstView = null;
+        _uPresentUvXOffset?.Dispose(); _uPresentUvXOffset = null;
         _vao?.Dispose(); _vao = null;
         _instVao?.Dispose(); _instVao = null;
         _vbo?.Dispose(); _vbo = null;
         _ibo?.Dispose(); _ibo = null;
         _instanceBuffer?.Dispose(); _instanceBuffer = null;
+        _presentTex?.Dispose(); _presentTex = null;
         _program?.Dispose(); _program = null;
         _instProgram?.Dispose(); _instProgram = null;
+        _presentProgram?.Dispose(); _presentProgram = null;
         _gl?.Dispose(); _gl = null;
         _canvas?.Dispose(); _canvas = null;
+
+        // WebGPU bridge. NOTE: _gpuDevice + _gpuQueue are owned by the ILGPU accelerator
+        // (VoxelEngineService); do NOT dispose them here - they survive VR exit.
+        _voxelPipeline?.Dispose(); _voxelPipeline = null;
+        _depthView?.Dispose(); _depthView = null;
+        _depthTexture?.Destroy(); _depthTexture?.Dispose(); _depthTexture = null;
+        _offscreenCtx?.Dispose(); _offscreenCtx = null;
+        _offscreen?.Dispose(); _offscreen = null;
+        _gpuDevice = null;
+        _gpuQueue = null;
 
         _spawned.Clear();
         _triggerHeld.Clear();
         _instanceUploadedCount = 0;
         _instanceDirty = false;
+        _visibleCount = 0;
 
         await Task.CompletedTask;
     }
