@@ -358,6 +358,32 @@ public class WorldService
         return _generator?.GetHeight(worldX, worldZ) ?? 30;
     }
 
+    /// <summary>
+    /// Read the BlockType at a world-space integer voxel position. Returns Air
+    /// for out-of-bounds or unloaded chunks (so the player can traverse terrain
+    /// beyond the cached footprint without being blocked by nothing).
+    /// </summary>
+    public BlockType GetBlockAt(int worldX, int worldY, int worldZ)
+    {
+        if (worldY < 0 || worldY >= ChunkData.Height) return BlockType.Air;
+
+        int cx = (int)MathF.Floor(worldX / (float)ChunkData.SizeXZ);
+        int cz = (int)MathF.Floor(worldZ / (float)ChunkData.SizeXZ);
+        if (!_blocksCache.TryGetValue((cx, cz), out var col)) return BlockType.Air;
+
+        int lx = worldX - cx * ChunkData.SizeXZ;
+        int lz = worldZ - cz * ChunkData.SizeXZ;
+        int idx = lx + lz * ChunkData.SizeXZ + worldY * ChunkData.SizeXZ * ChunkData.SizeXZ;
+        return (BlockType)col[idx];
+    }
+
+    /// <summary>True if the block at the given world voxel is non-air and non-water.</summary>
+    public bool IsSolidAt(int worldX, int worldY, int worldZ)
+    {
+        var t = GetBlockAt(worldX, worldY, worldZ);
+        return t != BlockType.Air && t != BlockType.Water;
+    }
+
     private static readonly VoxelEngineConfig _raycastConfig = new()
     {
         VoxelSize = 1.0f,

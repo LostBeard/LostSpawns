@@ -155,6 +155,19 @@
     private const float BlockActionStaminaCost = 0.04f;
     private DateTime _lastBlockActionTime = DateTime.MinValue;
 
+    private bool IsInsideSolidBlock(System.Numerics.Vector3 camPos)
+    {
+        // Player occupies a single-block AABB from feet (camPos.Y - EyeHeight) up
+        // to head (camPos.Y). Sample the two extremes - a taller capsule would
+        // check the middle too, but our EyeHeight (1.8) keeps head + feet within
+        // two adjacent voxels so this catches anything in between.
+        int ix = (int)MathF.Floor(camPos.X);
+        int iz = (int)MathF.Floor(camPos.Z);
+        int feetY = (int)MathF.Floor(camPos.Y - EyeHeight + 0.1f);
+        int headY = (int)MathF.Floor(camPos.Y - 0.1f);
+        return World.IsSolidAt(ix, feetY, iz) || World.IsSolidAt(ix, headY, iz);
+    }
+
     private void ApplyGravityAndJump(float dt)
     {
         // Apply gravity to vertical velocity every tick. Ground check then
@@ -451,7 +464,26 @@
 
         // Camera sees the sprint gate too so we can't sprint-speed when stamina is
         // empty even if Shift is still held.
+        // Save horizontal position, let camera move, then revert if we slid into a
+        // wall. Simple axis-aligned collision: check the voxel at the camera's
+        // feet and at head height; either being solid means the player is inside
+        // a block and we roll back the horizontal move this frame.
+        var preMove = Renderer.Camera.Position;
         Renderer.Camera.ProcessKeyboard(Input.KeysDown, deltaTime, allowSprint: sprinting);
+        var postMove = Renderer.Camera.Position;
+        if (IsInsideSolidBlock(postMove))
+        {
+            Renderer.Camera.Position = new System.Numerics.Vector3(preMove.X, postMove.Y, preMove.Z);
+            // Re-check each axis independently so the player slides along walls
+            // instead of stopping dead when hitting a corner.
+            var tryX = new System.Numerics.Vector3(postMove.X, postMove.Y, preMove.Z);
+            if (!IsInsideSolidBlock(tryX)) Renderer.Camera.Position = tryX;
+            else
+            {
+                var tryZ = new System.Numerics.Vector3(preMove.X, postMove.Y, postMove.Z);
+                if (!IsInsideSolidBlock(tryZ)) Renderer.Camera.Position = tryZ;
+            }
+        }
 
         var (dx, dy) = Input.ConsumeMouseDelta();
         if (dx != 0 || dy != 0)
