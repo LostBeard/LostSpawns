@@ -124,6 +124,7 @@
         Ground.OnPickedUp += HandleGroundPickup;
         Stats.OnLevelUp += HandleLevelUpSound;
         Wildlife.OnEntitySpawned += HandleEntitySpawned;
+        Inventory.OnItemConsumed += HandleItemConsumedSound;
 
         Renderer.OnUpdate = OnGameUpdate;
 
@@ -642,6 +643,11 @@
         // silently so the world doesn't chirp every 45 seconds.
         if (e.Kind == LostSpawns.Services.EntityKind.Wolf)
             Audio.PlayWolfHowl();
+    }
+
+    private void HandleItemConsumedSound(string name, string verb, LostSpawns.Services.ItemEffect effect)
+    {
+        Audio.PlayConsume();
     }
 
     private void HandleFeedFire()
@@ -1185,6 +1191,7 @@
         Ground.OnPickedUp -= HandleGroundPickup;
         Stats.OnLevelUp -= HandleLevelUpSound;
         Wildlife.OnEntitySpawned -= HandleEntitySpawned;
+        Inventory.OnItemConsumed -= HandleItemConsumedSound;
 
         Renderer.StopRenderLoop();
         Hud.Dispose();

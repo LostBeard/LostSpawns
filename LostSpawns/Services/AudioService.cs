@@ -111,6 +111,32 @@ public class AudioService : IDisposable
         PlayBeep(altPhase ? 130f : 110f, 0.04f, 0.06f, "sine");
     }
 
+    /// <summary>Short rising chime for consuming food / water / medical.</summary>
+    public void PlayConsume()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "sine";
+            double t = _ctx.CurrentTime;
+            osc.Frequency.SetValueAtTime(400f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(560f, t + 0.18);
+            gain.Gain.SetValueAtTime(0f, t);
+            gain.Gain.LinearRampToValueAtTime(0.15f, t + 0.02);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.22);
+            osc.Connect(gain);
+            gain.Connect(_ctx.Destination);
+            osc.Start();
+            osc.Stop((float)(t + 0.22));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayConsume failed: {ex.Message}");
+        }
+    }
+
     /// <summary>Brief crackle/pop for a campfire ember. Random pitch per call.</summary>
     public void PlayFireCrackle()
     {
