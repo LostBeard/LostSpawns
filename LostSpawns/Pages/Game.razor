@@ -15,6 +15,7 @@
 @inject CampfireService Fires
 @inject GroundItemService Ground
 @inject AudioService Audio
+@inject CraftingService Crafter
 @inject InventoryService Inventory
 @inject SaveService Save
 @inject SpawnDev.BlazorJS.BlazorJSRuntime JS
@@ -124,6 +125,7 @@
         Ground.OnPickedUp += HandleGroundPickup;
         Stats.OnLevelUp += HandleLevelUpSound;
         Wildlife.OnEntitySpawned += HandleEntitySpawned;
+        Crafter.OnCrafted += HandleCraftedSound;
         Inventory.OnItemConsumed += HandleItemConsumedSound;
         Inventory.OnItemPickedUp += HandleItemPickedUpSound;
         Weather.OnLightningStrike += HandleLightningSound;
@@ -646,6 +648,13 @@
     private void HandleItemPickedUpSound(LostSpawns.Services.InventoryItem item)
     {
         Audio.PlayPickup();
+    }
+
+    private void HandleCraftedSound(LostSpawns.Services.CraftingRecipe recipe)
+    {
+        // Craft success chime - same rising-sine shape as level-up but shorter
+        // so the player registers "made something" without feeling gated.
+        Audio.PlayBeep(560f, 0.15f, 0.18f, "triangle");
     }
 
     private void HandleLevelUpSound(int newLevel) => Audio.PlayLevelUp();
@@ -1208,6 +1217,7 @@
         Ground.OnPickedUp -= HandleGroundPickup;
         Stats.OnLevelUp -= HandleLevelUpSound;
         Wildlife.OnEntitySpawned -= HandleEntitySpawned;
+        Crafter.OnCrafted -= HandleCraftedSound;
         Inventory.OnItemConsumed -= HandleItemConsumedSound;
         Inventory.OnItemPickedUp -= HandleItemPickedUpSound;
         Weather.OnLightningStrike -= HandleLightningSound;
