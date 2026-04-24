@@ -50,6 +50,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on F key press. Feed-fire / secondary interact (reserved for future contextual actions).</summary>
     public event Action? OnFeedFirePressed;
 
+    /// <summary>Fired on Z key press. Sleep / rest action (context-sensitive).</summary>
+    public event Action? OnSleepPressed;
+
     /// <summary>Fired on left mouse-down while pointer is locked (in-game). Break-block action.</summary>
     public event Action? OnLeftClickPressed;
 
@@ -144,6 +147,10 @@ public class InputService : IAsyncDisposable
         // Feed fire on F - context-sensitive, handler checks proximity.
         if (!e.Repeat && (e.Key == "f" || e.Key == "F"))
             OnFeedFirePressed?.Invoke();
+
+        // Sleep / skip-to-dawn on Z - context-sensitive, handler checks fire.
+        if (!e.Repeat && (e.Key == "z" || e.Key == "Z"))
+            OnSleepPressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
         if (!e.Repeat && e.Key == "F9")

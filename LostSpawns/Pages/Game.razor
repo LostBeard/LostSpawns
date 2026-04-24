@@ -106,6 +106,7 @@
         Input.OnInventoryTogglePressed += HandleInventoryToggle;
         Input.OnCraftingTogglePressed += HandleCraftingToggle;
         Input.OnFeedFirePressed += HandleFeedFire;
+        Input.OnSleepPressed += HandleSleep;
         Input.OnInteractPressed += HandleInteract;
         Input.OnLeftClickPressed += HandleInteract;       // L-click = break, same as E
         Input.OnRightClickPressed += HandlePlaceBlock;    // R-click = place active hotbar material
@@ -571,6 +572,31 @@
             Hud.NotifyWarning(reason);
     }
 
+    private void HandleSleep()
+    {
+        if (Hud.IsAnyMenuOpen) return;
+        var fire = Fires.FindNearest(Renderer.Camera.Position);
+        if (fire is null) { Hud.NotifyWarning("Need a campfire to sleep"); return; }
+        if (fire.Fuel <= 0.05f) { Hud.NotifyWarning("Fire is out"); return; }
+
+        // Advance time to early dawn. If we're already past dawn this
+        // rolls the clock forward a full cycle which is fine - the player
+        // gets a fresh day regardless.
+        const float Dawn = 0.05f;
+        Time.SetDayFraction(Dawn);
+
+        // Passing hours decay: drop hunger / thirst by ~1/6 of max (8 hours
+        // at ~2%/hour). Matches the gameplay tick's rough rate.
+        Stats.Hunger = MathF.Max(0, Stats.Hunger - 0.15f);
+        Stats.Thirst = MathF.Max(0, Stats.Thirst - 0.15f);
+
+        // Rest restores stamina fully and gives a small HP bump.
+        Stats.Stamina = 1f;
+        Stats.Heal(0.15f);
+
+        Hud.NotifySuccess("Slept through the night");
+    }
+
     private static LostSpawns.Services.InventoryItem? DropForBlockType(LostSpawns.Models.BlockType t) => t switch
     {
         LostSpawns.Models.BlockType.Wood   => new("material.wood",   "Wood",   1, LostSpawns.Services.ItemCategory.Material),
@@ -922,6 +948,7 @@
         Input.OnInventoryTogglePressed -= HandleInventoryToggle;
         Input.OnCraftingTogglePressed -= HandleCraftingToggle;
         Input.OnFeedFirePressed -= HandleFeedFire;
+        Input.OnSleepPressed -= HandleSleep;
         Input.OnInteractPressed -= HandleInteract;
         Input.OnLeftClickPressed -= HandleInteract;
         Input.OnRightClickPressed -= HandlePlaceBlock;
