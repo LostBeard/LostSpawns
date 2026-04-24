@@ -14,6 +14,19 @@ public enum EntityKind
 }
 
 /// <summary>
+/// How an entity is currently behaving. Idle means normal wander; Flee
+/// pushes it directly away from LastAlertSource; Charge drives it directly
+/// toward it. Both override the random wander vector until AlertTimer runs
+/// out and the entity returns to idle wandering.
+/// </summary>
+public enum AlertMode
+{
+    Idle,
+    Flee,
+    Charge,
+}
+
+/// <summary>
 /// Single mutable entity instance. Mutable for cheap tick updates - we're
 /// iterating a small list every frame and creating new records would produce
 /// garbage pressure. Position is world-space voxel coordinates.
@@ -26,6 +39,9 @@ public sealed class WanderingEntity
     public Vector3 Velocity;
     public float Health = 1f;
     public float WanderRetargetIn; // seconds until next random-direction pick
+    public AlertMode Alert;
+    public float AlertTimer;       // seconds remaining in current alert state
+    public Vector3 LastAlertSource; // player pos at time of last hit
 }
 
 /// <summary>
@@ -90,11 +106,42 @@ public class EntityService
     {
         foreach (var e in Entities)
         {
-            e.WanderRetargetIn -= dt;
-            if (e.WanderRetargetIn <= 0)
+            if (e.Alert != AlertMode.Idle)
             {
-                PickRandomDirection(e);
-                e.WanderRetargetIn = WanderRetargetSeconds * (0.6f + (float)_rng.NextDouble() * 0.8f);
+                // Alert states override the wander vector until their timer
+                // expires. Flee = away from attacker, Charge = toward attacker.
+                e.AlertTimer -= dt;
+                if (e.AlertTimer <= 0)
+                {
+                    e.Alert = AlertMode.Idle;
+                    PickRandomDirection(e);
+                    e.WanderRetargetIn = WanderRetargetSeconds;
+                }
+                else
+                {
+                    var toward = new Vector3(
+                        e.LastAlertSource.X - e.Position.X,
+                        0,
+                        e.LastAlertSource.Z - e.Position.Z);
+                    float len = toward.Length();
+                    if (len > 1e-3f)
+                    {
+                        var dir = toward / len;
+                        float speed = AlertSpeedForKind(e.Kind);
+                        // Flee flips the sign so the entity runs the other way.
+                        if (e.Alert == AlertMode.Flee) dir = -dir;
+                        e.Velocity = dir * speed;
+                    }
+                }
+            }
+            else
+            {
+                e.WanderRetargetIn -= dt;
+                if (e.WanderRetargetIn <= 0)
+                {
+                    PickRandomDirection(e);
+                    e.WanderRetargetIn = WanderRetargetSeconds * (0.6f + (float)_rng.NextDouble() * 0.8f);
+                }
             }
 
             // Advance position along the (flat) wander vector.
@@ -107,6 +154,19 @@ public class EntityService
             e.Position = new Vector3(e.Position.X, groundY, e.Position.Z);
         }
     }
+
+    /// <summary>
+    /// How fast an entity moves during an alert state (flee / charge). Boars
+    /// charge faster than rabbits flee because crowd-pleaser physics - a
+    /// wounded boar should feel genuinely scary.
+    /// </summary>
+    private static float AlertSpeedForKind(EntityKind k) => k switch
+    {
+        EntityKind.Boar   => 3.0f,
+        EntityKind.Rabbit => 2.8f,
+        EntityKind.Crow   => 2.4f,
+        _                 => 2.0f,
+    };
 
     private void PickRandomDirection(WanderingEntity e)
     {
@@ -172,11 +232,13 @@ public class EntityService
     }
 
     /// <summary>
-    /// Apply damage to an entity. Fires OnEntityHit, then OnEntityKilled +
-    /// removes from the active list if health hits zero. Returns true when
-    /// the hit was fatal (caller uses the flag to drop loot once).
+    /// Apply damage to an entity from a specific attacker position. Fires
+    /// OnEntityHit, then OnEntityKilled + removes from the active list if
+    /// health hits zero. On non-fatal hits the entity enters the alert state
+    /// appropriate to its kind (rabbit/crow flee, boar charges) for a few
+    /// seconds so combat feels reactive. Returns true when the hit was fatal.
     /// </summary>
-    public bool ApplyDamage(WanderingEntity e, float amount)
+    public bool ApplyDamage(WanderingEntity e, float amount, Vector3 attackerPos)
     {
         if (amount <= 0) return false;
         e.Health = Math.Max(0f, e.Health - amount);
@@ -188,6 +250,13 @@ public class EntityService
             OnEntityKilled?.Invoke(e);
             return true;
         }
+
+        // Non-fatal: enter alert state so the player sees a reaction. Flee
+        // duration is intentionally long enough that a single axe swing
+        // actually moves the rabbit out of immediate swing range.
+        e.LastAlertSource = attackerPos;
+        e.Alert = e.Kind == EntityKind.Boar ? AlertMode.Charge : AlertMode.Flee;
+        e.AlertTimer = 3.0f;
         return false;
     }
 }

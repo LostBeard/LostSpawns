@@ -409,7 +409,7 @@
         if (target is not null)
         {
             float dmg = DamageForEquippedTool();
-            Wildlife.ApplyDamage(target, dmg);
+            Wildlife.ApplyDamage(target, dmg, origin);
             ConsumeBlockActionCost();
             return;
         }
