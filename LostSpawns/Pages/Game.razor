@@ -12,6 +12,7 @@
 @inject WorldTimeService Time
 @inject WeatherService Weather
 @inject InventoryService Inventory
+@inject SaveService Save
 @inject SpawnDev.BlazorJS.BlazorJSRuntime JS
 @inject NavigationManager Nav
 @implements IAsyncDisposable
@@ -137,8 +138,28 @@
         // Queue remaining chunks — GPU kernel generates heightmaps async
         World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
 
+        // Restore save if one exists - applies stats / inventory / time / clock
+        // and teleports the camera to the saved position. Blocks lost on reload
+        // until world-diff persistence lands.
+        var restored = Save.TryLoad();
+        if (restored.HasValue)
+        {
+            Renderer.Camera.Position = restored.Value.Position;
+            Renderer.Camera.Yaw = restored.Value.Yaw;
+            Renderer.Camera.Pitch = restored.Value.Pitch;
+            _verticalVelocity = 0;
+            _peakFallSpeed = 0;
+            _grounded = false;
+            Hud.NotifySuccess("Save restored");
+        }
+
         Hud.HideLoadingScreen();
     }
+
+    // Save-to-localStorage autosave timer. Runs inside OnGameUpdate so time is
+    // paused when the player is - no snapshot during death screen / inventory /
+    // settings. Reset to 0 here; incremented each gameplay frame.
+    private float _saveTimer;
 
     private int _initialLoadExpectedColumns = 49; // radius 4 circle fallback
 
@@ -580,6 +601,15 @@
         // system will eventually scale this, but for now rain always bites.
         float ambient = Time.TargetTemperature - Weather.RainIntensity * 0.1f;
         Stats.Tick(deltaTime, ambient, sprinting);
+
+        // Auto-save every SaveService.AutoSaveIntervalSeconds seconds of active
+        // play. Never fires while in a menu (we're gated above by IsAnyMenuOpen).
+        _saveTimer += deltaTime;
+        if (_saveTimer >= SaveService.AutoSaveIntervalSeconds)
+        {
+            _saveTimer = 0;
+            Save.SaveNow(Renderer.Camera.Position, Renderer.Camera.Yaw, Renderer.Camera.Pitch);
+        }
 
         // Camera sees the sprint gate too so we can't sprint-speed when stamina is
         // empty even if Shift is still held.

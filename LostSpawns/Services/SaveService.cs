@@ -1,0 +1,206 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using SpawnDev.BlazorJS;
+using SpawnDev.BlazorJS.JSObjects;
+
+namespace LostSpawns.Services;
+
+/// <summary>
+/// Persists non-world game state (player stats, inventory, position, clock,
+/// weather) to localStorage between sessions. Writes a versioned JSON blob;
+/// future schema changes bump SaveVersion and older saves fall through to a
+/// fresh-game start instead of crashing.
+///
+/// World state (placed + broken blocks) is NOT saved yet - chopping down a
+/// tree, reloading, and finding the tree intact is the known MVP gap. A diff
+/// layer goes in once we have persistence infrastructure that can handle the
+/// volume.
+///
+/// Game.razor auto-saves every AutoSaveIntervalSeconds during active play
+/// (same gameplay gate as the survival tick) and calls TryLoad once after
+/// the initial chunk generation returns.
+/// </summary>
+public class SaveService
+{
+    public const int SaveVersion = 1;
+    public const string SaveKey = "lost.save";
+    public const float AutoSaveIntervalSeconds = 10f;
+
+    private readonly BlazorJSRuntime _js;
+    private readonly PlayerStatsService _stats;
+    private readonly InventoryService _inventory;
+    private readonly WorldTimeService _worldTime;
+
+    private static readonly JsonSerializerOptions _json = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    public SaveService(BlazorJSRuntime js, PlayerStatsService stats, InventoryService inventory, WorldTimeService worldTime)
+    {
+        _js = js;
+        _stats = stats;
+        _inventory = inventory;
+        _worldTime = worldTime;
+    }
+
+    /// <summary>
+    /// Snapshot the full state to localStorage. Silent-fails on serialization or
+    /// storage error so a transient hiccup doesn't crash the gameplay loop.
+    /// </summary>
+    public void SaveNow(System.Numerics.Vector3 cameraPos, float yaw, float pitch)
+    {
+        try
+        {
+            var state = new SaveState
+            {
+                Version = SaveVersion,
+                PosX = cameraPos.X,
+                PosY = cameraPos.Y,
+                PosZ = cameraPos.Z,
+                Yaw = yaw,
+                Pitch = pitch,
+                Health = _stats.Health,
+                Stamina = _stats.Stamina,
+                Hunger = _stats.Hunger,
+                Thirst = _stats.Thirst,
+                Temperature = _stats.Temperature,
+                Hotbar = ToDtoArray(_inventory.Hotbar),
+                Backpack = ToDtoArray(_inventory.Backpack),
+                ActiveHotbarIndex = _inventory.ActiveHotbarIndex,
+                DayFraction = _worldTime.DayFraction,
+            };
+            string json = JsonSerializer.Serialize(state, _json);
+            using var storage = _js.Get<Storage>("localStorage");
+            storage.SetItem(SaveKey, json);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Save] serialize failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Load and apply saved state if present and schema version matches.
+    /// Returns (posX, posY, posZ, yaw, pitch) when a save was applied so the
+    /// caller can teleport the camera; returns null otherwise. Stats + inventory
+    /// + world time are mutated in-place via their services.
+    /// </summary>
+    public (System.Numerics.Vector3 Position, float Yaw, float Pitch)? TryLoad()
+    {
+        try
+        {
+            using var storage = _js.Get<Storage>("localStorage");
+            var raw = storage.GetItem(SaveKey);
+            if (string.IsNullOrEmpty(raw)) return null;
+
+            var state = JsonSerializer.Deserialize<SaveState>(raw, _json);
+            if (state is null || state.Version != SaveVersion) return null;
+
+            // Apply stats directly (setters clamp to [0,1]).
+            _stats.Health = state.Health;
+            _stats.Stamina = state.Stamina;
+            _stats.Hunger = state.Hunger;
+            _stats.Thirst = state.Thirst;
+            _stats.Temperature = state.Temperature;
+
+            // Apply inventory slot by slot. Nulls stay null.
+            if (state.Hotbar != null)
+            {
+                for (int i = 0; i < Math.Min(state.Hotbar.Length, InventoryService.HotbarSize); i++)
+                    _inventory.SetHotbar(i, FromDto(state.Hotbar[i]));
+            }
+            if (state.Backpack != null)
+            {
+                for (int i = 0; i < Math.Min(state.Backpack.Length, InventoryService.BackpackSize); i++)
+                    _inventory.SetBackpack(i, FromDto(state.Backpack[i]));
+            }
+            _inventory.ActiveHotbarIndex = state.ActiveHotbarIndex;
+
+            // WorldTime has no settable DayFraction; we nudge it by ticking so the
+            // rest of the exposed derived values (PhaseName, Colors) follow. A
+            // fresh setter would be cleaner; for now fast-forward from 0.
+            // Simpler: just overwrite via reflection? No - add a setter. See
+            // note in WorldTimeService.
+            _worldTime.SetDayFraction(state.DayFraction);
+
+            var pos = new System.Numerics.Vector3(state.PosX, state.PosY, state.PosZ);
+            return (pos, state.Yaw, state.Pitch);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Save] deserialize failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Wipe the save. Used by "New Game" flows once that UI exists.</summary>
+    public void Clear()
+    {
+        try
+        {
+            using var storage = _js.Get<Storage>("localStorage");
+            storage.RemoveItem(SaveKey);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Save] clear failed: {ex.Message}");
+        }
+    }
+
+    private static InventoryItemDto?[] ToDtoArray(IReadOnlyList<InventoryItem?> items)
+    {
+        var result = new InventoryItemDto?[items.Count];
+        for (int i = 0; i < items.Count; i++)
+        {
+            var it = items[i];
+            result[i] = it is null ? null : new InventoryItemDto
+            {
+                Id = it.Id,
+                Name = it.Name,
+                Count = it.Count,
+                Category = (int)it.Category,
+            };
+        }
+        return result;
+    }
+
+    private static InventoryItem? FromDto(InventoryItemDto? dto)
+    {
+        if (dto is null) return null;
+        return new InventoryItem(
+            dto.Id ?? "",
+            dto.Name ?? "",
+            dto.Count,
+            (ItemCategory)dto.Category);
+    }
+
+    public sealed class SaveState
+    {
+        public int Version { get; set; }
+        public float PosX { get; set; }
+        public float PosY { get; set; }
+        public float PosZ { get; set; }
+        public float Yaw { get; set; }
+        public float Pitch { get; set; }
+        public float Health { get; set; }
+        public float Stamina { get; set; }
+        public float Hunger { get; set; }
+        public float Thirst { get; set; }
+        public float Temperature { get; set; }
+        public InventoryItemDto?[]? Hotbar { get; set; }
+        public InventoryItemDto?[]? Backpack { get; set; }
+        public int ActiveHotbarIndex { get; set; }
+        public float DayFraction { get; set; }
+    }
+
+    public sealed class InventoryItemDto
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+        public int Count { get; set; }
+        public int Category { get; set; }
+    }
+}

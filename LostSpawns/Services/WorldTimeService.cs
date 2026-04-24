@@ -30,6 +30,17 @@ public class WorldTimeService
         if (DayFraction < 0) DayFraction += 1f;
     }
 
+    /// <summary>
+    /// Jump the clock to a specific fraction. Used by save/load to restore
+    /// time-of-day across sessions. Clamps to [0,1).
+    /// </summary>
+    public void SetDayFraction(float fraction)
+    {
+        float f = fraction % 1f;
+        if (f < 0) f += 1f;
+        DayFraction = f;
+    }
+
     /// <summary>Sky + fog clear color for the current fraction.</summary>
     public Vector3 FogColor => Sample(_keyframes, DayFraction, static k => k.Fog);
 
