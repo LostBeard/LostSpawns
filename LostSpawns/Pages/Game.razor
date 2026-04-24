@@ -410,6 +410,17 @@
     private void HandleDebugDamage() => Stats.TakeDamage(0.1f);
     private void HandleDebugHeal()   => Stats.Heal(0.1f);
 
+    /// <summary>
+    /// One-shot camera flinch used by every successful swing. Just bumps
+    /// Pitch up a few degrees; the player's own mouse look naturally
+    /// recovers the view, so no separate decay channel or timer is needed.
+    /// Feels like the tool weight kicked the camera back.
+    /// </summary>
+    private void ApplyCameraKick()
+    {
+        Renderer.Camera.Pitch = Math.Clamp(Renderer.Camera.Pitch + 2.5f, -89f, 89f);
+    }
+
     private void HandleInteract()
     {
         // Interaction is locked behind active gameplay - pause / inventory / loading
@@ -431,6 +442,7 @@
             float dmg = DamageForEquippedTool();
             Wildlife.ApplyDamage(target, dmg, origin);
             ConsumeBlockActionCost();
+            ApplyCameraKick();
             return;
         }
 
@@ -456,6 +468,7 @@
         // Successful swing charges the cooldown + stamina cost. Missed swings (air,
         // out of range, wrong tool) don't cost anything so the player can re-aim.
         ConsumeBlockActionCost();
+        ApplyCameraKick();
 
         var drop = DropForBlockType(brokenType);
         if (drop is null)
