@@ -123,6 +123,7 @@
         Fires.OnCooked += HandleCooked;
         Ground.OnPickedUp += HandleGroundPickup;
         Stats.OnLevelUp += HandleLevelUpSound;
+        Wildlife.OnEntitySpawned += HandleEntitySpawned;
 
         Renderer.OnUpdate = OnGameUpdate;
 
@@ -627,6 +628,15 @@
     }
 
     private void HandleLevelUpSound(int newLevel) => Audio.PlayLevelUp();
+
+    private void HandleEntitySpawned(LostSpawns.Services.WanderingEntity e)
+    {
+        // Wolf arrival is meant to feel ominous - the howl announces them
+        // before the red eyes are close enough to spot. Other kinds spawn
+        // silently so the world doesn't chirp every 45 seconds.
+        if (e.Kind == LostSpawns.Services.EntityKind.Wolf)
+            Audio.PlayWolfHowl();
+    }
 
     private void HandleFeedFire()
     {
@@ -1150,6 +1160,7 @@
         Fires.OnCooked -= HandleCooked;
         Ground.OnPickedUp -= HandleGroundPickup;
         Stats.OnLevelUp -= HandleLevelUpSound;
+        Wildlife.OnEntitySpawned -= HandleEntitySpawned;
 
         Renderer.StopRenderLoop();
         Hud.Dispose();

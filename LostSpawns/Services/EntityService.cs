@@ -100,6 +100,9 @@ public class EntityService
         Spawn(EntityKind.Crow,   near + new Vector3(2, 0, 11), world);
     }
 
+    /// <summary>Fires when an entity is added to the world via Spawn.</summary>
+    public event Action<WanderingEntity>? OnEntitySpawned;
+
     public WanderingEntity Spawn(EntityKind kind, Vector3 pos, WorldService world)
     {
         int ground = world.GetHeightAt(pos.X, pos.Z);
@@ -115,6 +118,7 @@ public class EntityService
         };
         PickRandomDirection(e);
         Entities.Add(e);
+        OnEntitySpawned?.Invoke(e);
         return e;
     }
 

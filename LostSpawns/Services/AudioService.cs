@@ -111,6 +111,37 @@ public class AudioService : IDisposable
         PlayBeep(altPhase ? 130f : 110f, 0.04f, 0.06f, "sine");
     }
 
+    /// <summary>
+    /// Long descending sawtooth for a wolf howl - plays when a wolf spawns
+    /// at night so the player hears them arrive before they see them.
+    /// </summary>
+    public void PlayWolfHowl()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "sawtooth";
+            double t = _ctx.CurrentTime;
+            // Slow pitch sweep 300 -> 180 Hz over 0.8s gives the howl its
+            // bending tail; gain ramps in fast then fades for the full beat.
+            osc.Frequency.SetValueAtTime(300f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(180f, t + 0.8);
+            gain.Gain.SetValueAtTime(0, t);
+            gain.Gain.LinearRampToValueAtTime(0.18f, t + 0.08);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 1.2);
+            osc.Connect(gain);
+            gain.Connect(_ctx.Destination);
+            osc.Start();
+            osc.Stop((float)(t + 1.2));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayWolfHowl failed: {ex.Message}");
+        }
+    }
+
     public void Dispose()
     {
         try { _ctx?.Close(); } catch { }
