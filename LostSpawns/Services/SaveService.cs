@@ -32,6 +32,7 @@ public class SaveService
     private readonly WorldTimeService _worldTime;
     private readonly WorldService _world;
     private readonly CampfireService _fires;
+    private readonly GroundItemService _ground;
 
     private static readonly JsonSerializerOptions _json = new()
     {
@@ -40,7 +41,7 @@ public class SaveService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public SaveService(BlazorJSRuntime js, PlayerStatsService stats, InventoryService inventory, WorldTimeService worldTime, WorldService world, CampfireService fires)
+    public SaveService(BlazorJSRuntime js, PlayerStatsService stats, InventoryService inventory, WorldTimeService worldTime, WorldService world, CampfireService fires, GroundItemService ground)
     {
         _js = js;
         _stats = stats;
@@ -48,6 +49,7 @@ public class SaveService
         _worldTime = worldTime;
         _world = world;
         _fires = fires;
+        _ground = ground;
     }
 
     /// <summary>
@@ -84,6 +86,20 @@ public class SaveService
                     Radius = f.Radius,
                     Intensity = f.Intensity,
                     Fuel = f.Fuel,
+                }).ToArray(),
+                GroundItems = _ground.Items.Select(g => new GroundItemDto
+                {
+                    X = g.Position.X,
+                    Y = g.Position.Y,
+                    Z = g.Position.Z,
+                    Item = new InventoryItemDto
+                    {
+                        Id = g.Payload.Id,
+                        Name = g.Payload.Name,
+                        Count = g.Payload.Count,
+                        Category = (int)g.Payload.Category,
+                        UsesRemaining = g.Payload.UsesRemaining,
+                    },
                 }).ToArray(),
             };
             string json = JsonSerializer.Serialize(state, _json);
@@ -166,6 +182,20 @@ public class SaveService
                 }
             }
 
+            // Restore ground loot so an interrupted cleanup resumes where the
+            // player left it - walking to the bag from last session still
+            // collects what was dropped.
+            if (state.GroundItems != null)
+            {
+                _ground.Items.Clear();
+                foreach (var dto in state.GroundItems)
+                {
+                    var payload = FromDto(dto.Item);
+                    if (payload is null) continue;
+                    _ground.Drop(new System.Numerics.Vector3(dto.X, dto.Y, dto.Z), payload);
+                }
+            }
+
             var pos = new System.Numerics.Vector3(state.PosX, state.PosY, state.PosZ);
             return (pos, state.Yaw, state.Pitch);
         }
@@ -239,6 +269,7 @@ public class SaveService
         /// <summary>Sparse block edits per chunk. Key = "cx,cz"; inner dict = byte-index -> new block byte.</summary>
         public Dictionary<string, Dictionary<int, byte>>? WorldEdits { get; set; }
         public CampfireDto[]? Campfires { get; set; }
+        public GroundItemDto[]? GroundItems { get; set; }
     }
 
     public sealed class InventoryItemDto
@@ -258,5 +289,13 @@ public class SaveService
         public float Radius { get; set; }
         public float Intensity { get; set; }
         public float Fuel { get; set; }
+    }
+
+    public sealed class GroundItemDto
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
+        public InventoryItemDto? Item { get; set; }
     }
 }
