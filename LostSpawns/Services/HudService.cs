@@ -1993,6 +1993,21 @@ public class HudService : IDisposable
                     // Two tiny ears poking up from the head.
                     _ui.Renderer.DrawRect(x + size * 0.30f, y, size * 0.10f, size * 0.10f, color);
                     _ui.Renderer.DrawRect(x + size * 0.60f, y, size * 0.10f, size * 0.10f, color);
+                    // Glowing amber eyes that pulse on charge. Even in
+                    // daytime so the player sees an aggro'd bear approach
+                    // through tree cover. Stays hidden during hit flash.
+                    if (e.Alert == AlertMode.Charge && e.HitFlashTimer <= 0)
+                    {
+                        float eyePulse = 0.6f + 0.4f * MathF.Sin(
+                            (float)Environment.TickCount * 0.010f + e.Id);
+                        int eyeAlpha = (int)(230 * eyePulse);
+                        var eyeColor = System.Drawing.Color.FromArgb(eyeAlpha, 255, 180, 30);
+                        float eyeSize = MathF.Max(2f, size * 0.07f);
+                        _ui.Renderer.DrawRect(
+                            x + size * 0.36f, y + size * 0.12f, eyeSize, eyeSize, eyeColor);
+                        _ui.Renderer.DrawRect(
+                            x + size * 0.56f, y + size * 0.12f, eyeSize, eyeSize, eyeColor);
+                    }
                     break;
                 case EntityKind.Wolf:
                     // Body + head (upper-left block) + tail (upper-right thin).
