@@ -1644,6 +1644,12 @@ public class HudService : IDisposable
             // Dark bottom shadow so the bag reads as sitting on ground not floating.
             _ui.Renderer.DrawRect(x, y + size, size, 2f,
                 System.Drawing.Color.FromArgb(180, 10, 10, 15));
+            // Vertical "marker rod" sticking up above the loot so it's
+            // visible through tall grass / over hills. Same color tint as
+            // the bag, half-alpha so it reads as a flag not a wall.
+            _ui.Renderer.DrawRect(
+                x + size * 0.5f - 1f, y - size * 0.7f, 2f, size * 0.7f,
+                System.Drawing.Color.FromArgb(150, tint.R, tint.G, tint.B));
         }
     }
 
