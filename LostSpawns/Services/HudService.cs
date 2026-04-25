@@ -2318,6 +2318,27 @@ public class HudService : IDisposable
             ScreenOverlay?.ClearPersistent("goldenhour");
         }
 
+        // Moonlight tint during deep night (0.68-0.92 day fraction). Pale
+        // blue overlay peaks at midnight. Sky darkening makes silhouettes
+        // read properly at night. Also suppressed during heavy rain so
+        // storm gloom doesn't double up.
+        float moonAlpha = 0f;
+        if (frac >= 0.68f && frac <= 0.92f)
+        {
+            float t = (frac - 0.68f) / 0.24f;
+            moonAlpha = MathF.Sin(t * MathF.PI) * 0.8f;
+        }
+        if (moonAlpha > 0.02f && stormRain < 0.3f)
+        {
+            int alpha = (int)Math.Clamp(moonAlpha * 35f, 0, 35);
+            ScreenOverlay?.SetPersistent("moonlight",
+                System.Drawing.Color.FromArgb(alpha, 80, 100, 160));
+        }
+        else
+        {
+            ScreenOverlay?.ClearPersistent("moonlight");
+        }
+
         // Update screen overlay effects
         ScreenOverlay.Update(deltaTime);
 
