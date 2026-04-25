@@ -2292,6 +2292,32 @@ public class HudService : IDisposable
             ScreenOverlay?.ClearPersistent("stormgloom");
         }
 
+        // Golden-hour tint at dawn and dusk. Peaks at the exact twilight
+        // fraction and fades out through the edge. Suppressed during heavy
+        // rain so storm gloom reads cleanly.
+        float frac = _worldTime.DayFraction;
+        float goldenAlpha = 0f;
+        if (frac >= 0.02f && frac <= 0.14f)
+        {
+            float t = (frac - 0.02f) / 0.12f; // 0..1 across dawn
+            goldenAlpha = MathF.Sin(t * MathF.PI) * 0.7f;
+        }
+        else if (frac >= 0.52f && frac <= 0.64f)
+        {
+            float t = (frac - 0.52f) / 0.12f; // 0..1 across dusk
+            goldenAlpha = MathF.Sin(t * MathF.PI) * 0.7f;
+        }
+        if (goldenAlpha > 0.02f && stormRain < 0.3f)
+        {
+            int alpha = (int)Math.Clamp(goldenAlpha * 50f, 0, 50);
+            ScreenOverlay?.SetPersistent("goldenhour",
+                System.Drawing.Color.FromArgb(alpha, 255, 180, 100));
+        }
+        else
+        {
+            ScreenOverlay?.ClearPersistent("goldenhour");
+        }
+
         // Update screen overlay effects
         ScreenOverlay.Update(deltaTime);
 
