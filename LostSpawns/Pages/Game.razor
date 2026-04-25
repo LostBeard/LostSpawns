@@ -1079,6 +1079,10 @@
         int dayBonus = 5 * day;
         Stats.AwardXp(dayBonus);
         Hud.Notify($"Day {day} - survived (+{dayBonus} XP)");
+        // Storm escalation: each day past day 3 leans the next storm
+        // heavier and shortens dry phases. Caps at 1.0 (Day 13+).
+        // Maps Day 4 -> 0.1, Day 8 -> 0.5, Day 13 -> 1.0.
+        Weather.StormBias = MathF.Min(1f, Math.Max(0, (day - 3)) * 0.1f);
         // Milestone toasts at survival landmarks for psychological reward.
         // Each one fires once (OnDayAdvanced is per-day so no latch needed).
         switch (day)

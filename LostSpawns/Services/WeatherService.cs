@@ -38,6 +38,14 @@ public class WeatherService
     /// <summary>Rain intensity above which lightning can trigger.</summary>
     public float LightningThreshold { get; set; } = 0.55f;
 
+    /// <summary>
+    /// Day-driven bias applied to the next rain phase. 0 = no bias, 1 = full
+    /// storm bias. Game.razor maps DayNumber to this so later days have
+    /// more frequent + more intense storms. Read by ScheduleNextPhase when
+    /// the next rain phase starts; mid-storm changes don't apply.
+    /// </summary>
+    public float StormBias { get; set; } = 0f;
+
     public WeatherService()
     {
         // Seed from system clock so sessions vary, but a consumer could pass
@@ -93,10 +101,18 @@ public class WeatherService
         }
 
         // Randomize target intensity across rain phases so not every storm is
-        // identical - a light drizzle one round, a downpour the next.
-        TargetIntensity = _rainPhase ? (0.4f + (float)_rng.NextDouble() * 0.6f) : 0f;
+        // identical - a light drizzle one round, a downpour the next. StormBias
+        // shifts the floor of the rain range up so late-game days lean heavier.
+        // 0.0 bias: 0.4 - 1.0 baseline; 1.0 bias: 0.7 - 1.0 (always heavy).
+        float biasShift = MathF.Min(StormBias, 1f) * 0.3f;
+        TargetIntensity = _rainPhase
+            ? (0.4f + biasShift + (float)_rng.NextDouble() * (0.6f - biasShift))
+            : 0f;
 
         float jitter = 0.7f + (float)_rng.NextDouble() * 0.6f; // 0.7 - 1.3x
+        // Storm bias also shortens dry phases - rain phases keep their length,
+        // clear phases get cut so it rains more often as days advance.
+        if (!_rainPhase) jitter *= MathF.Max(0.3f, 1f - StormBias * 0.5f);
         _phaseTimeLeft = PhaseSeconds * jitter;
     }
 }
