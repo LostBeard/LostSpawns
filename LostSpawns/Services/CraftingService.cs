@@ -71,6 +71,16 @@ public class CraftingService
                 "Bow",
                 new[] { ("material.wood", 2), ("material.rope", 1) },
                 new InventoryItem("tool.bow", "Bow", 1, ItemCategory.Tool, UsesRemaining: 50)),
+            new CraftingRecipe(
+                "Stone Axe",
+                new[] { ("material.wood", 2), ("material.stone", 3) },
+                new InventoryItem("tool.stone_axe", "Stone Axe", 1, ItemCategory.Tool, UsesRemaining: 200),
+                RequiredLevel: 3),
+            new CraftingRecipe(
+                "Stone Pick",
+                new[] { ("material.wood", 1), ("material.stone", 4) },
+                new InventoryItem("tool.stone_pick", "Stone Pick", 1, ItemCategory.Tool, UsesRemaining: 200),
+                RequiredLevel: 3),
         };
 
         // Register effects for any new outputs the crafting system introduces.

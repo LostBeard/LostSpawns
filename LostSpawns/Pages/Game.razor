@@ -506,7 +506,7 @@
         // Peek at the target block before breaking - tool requirement check.
         var targetType = (LostSpawns.Models.BlockType)hit.BlockType;
         var requiredTool = RequiredToolForBlockType(targetType);
-        if (requiredTool != null && Inventory.ActiveItem?.Id != requiredTool)
+        if (requiredTool != null && !IsToolInFamily(Inventory.ActiveItem?.Id, requiredTool))
         {
             // Phrase the toast from the tool's Id. "tool.axe" -> "Axe".
             string toolName = requiredTool.StartsWith("tool.")
@@ -537,6 +537,23 @@
         bool added = Inventory.TryAdd(drop);
         if (added) Hud.NotifySuccess($"+1 {drop.Name}");
         else Hud.NotifyWarning($"Inventory full - {drop.Name} dropped");
+    }
+
+    /// <summary>
+    /// True if the active item belongs to the same tool family as the required
+    /// item - covers tier upgrades (stone_axe satisfies axe). Null active
+    /// never satisfies; exact match is the cheapest path.
+    /// </summary>
+    private static bool IsToolInFamily(string? activeId, string requiredId)
+    {
+        if (activeId == null) return false;
+        if (activeId == requiredId) return true;
+        return (requiredId, activeId) switch
+        {
+            ("tool.axe",  "tool.stone_axe")  => true,
+            ("tool.pick", "tool.stone_pick") => true,
+            _ => false,
+        };
     }
 
     /// <summary>
@@ -591,9 +608,11 @@
         var id = Inventory.ActiveItem?.Id;
         return id switch
         {
-            "tool.axe"  => 0.55f,
-            "tool.pick" => 0.40f,
-            _           => 0.20f, // bare hands / any other item
+            "tool.stone_axe"  => 0.85f,
+            "tool.stone_pick" => 0.65f,
+            "tool.axe"        => 0.55f,
+            "tool.pick"       => 0.40f,
+            _                 => 0.20f, // bare hands / any other item
         };
     }
 
