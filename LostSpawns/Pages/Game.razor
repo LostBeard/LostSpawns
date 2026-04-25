@@ -992,6 +992,7 @@
 
     private readonly Random _hitShakeRng = new();
     private readonly Random _dustTrailRng = new();
+    private bool _newRecordPinged;
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
     {
         // Cause attribution drives the death-screen subtitle. Entity kinds
@@ -1793,6 +1794,9 @@
         // Death breaks the kill chain - no carrying combos across lives.
         _killStreak = 0;
         _killStreakExpiry = DateTime.MinValue;
+        // Re-arm the new-record ding for the next life. Once-per-life
+        // gate prevents spam if the player crosses then dies then resp's.
+        _newRecordPinged = false;
 
         // Teleport camera back to the heightmap spawn point and re-arm gravity so
         // it settles cleanly on the terrain. Reset pitch so the death-collapse
@@ -1903,6 +1907,19 @@
             dangerIntensity += ent.Kind == LostSpawns.Services.EntityKind.Bear ? 2f : 1f;
         }
         Audio.UpdateDangerDrone(MathF.Min(dangerIntensity / 3f, 1f));
+
+        // New-record celebration: fires once per life when CurrentLife
+        // first exceeds the previous LongestLife. Two-beep ding + toast.
+        // Skip if there's no previous record (first run shouldn't ding).
+        if (!_newRecordPinged
+            && Stats.LongestLifeSeconds > 1f
+            && Stats.CurrentLifeSeconds > Stats.LongestLifeSeconds)
+        {
+            _newRecordPinged = true;
+            Audio.PlayBeep(880, 0.10f, 0.18f);
+            Audio.PlayBeep(1320, 0.14f, 0.18f);
+            Hud.NotifySuccess("New best run!");
+        }
         // Heavy chargers (Bear, Boar) kick up dust trails as they run.
         // Random chance per frame per entity keeps the look organic
         // without flooding the particle buffer. ~25% per frame at 60fps
