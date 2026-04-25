@@ -1018,6 +1018,9 @@
             // Small HP bump alongside the thirst restore - hydration actively
             // helps recovery, not just staves off dehydration damage.
             Stats.Heal(0.03f);
+            // Cool effect: matches the consume.water Warmth field so drinking
+            // from a lake and drinking from a bottle feel the same.
+            Stats.Temperature = Stats.Temperature - 0.03f;
             Hud.NotifySuccess("Drank water");
             return;
         }
