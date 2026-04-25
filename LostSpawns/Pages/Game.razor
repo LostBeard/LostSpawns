@@ -531,7 +531,12 @@
         ApplyCameraKick();
         DegradeActiveToolWithFeedback();
         Stats.AwardXp(1);
-        Audio.PlayHit();
+        // Tool-specific hit sound: wood-chop for axe-breakable blocks,
+        // stone-mine for pick-breakable, generic thud for anything else.
+        var req = RequiredToolForBlockType(brokenType);
+        if (req == "tool.axe")        Audio.PlayChop();
+        else if (req == "tool.pick")  Audio.PlayMine();
+        else                          Audio.PlayHit();
 
         var drop = DropForBlockType(brokenType);
         if (drop is null)

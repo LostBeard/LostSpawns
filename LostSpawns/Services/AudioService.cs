@@ -124,6 +124,18 @@ public class AudioService : IDisposable
         PlayBeep(180f, 0.10f, 0.22f, "square");
     }
 
+    /// <summary>Wood-chop sound - warmer mid-pitch square for axe hits.</summary>
+    public void PlayChop()
+    {
+        PlayBeep(240f, 0.10f, 0.20f, "triangle");
+    }
+
+    /// <summary>Stone-mine sound - sharp high-pitch square for pick hits.</summary>
+    public void PlayMine()
+    {
+        PlayBeep(360f, 0.09f, 0.20f, "square");
+    }
+
     /// <summary>Single dull kick - used on the low-HP heartbeat pulse.</summary>
     public void PlayHeartbeat()
     {
