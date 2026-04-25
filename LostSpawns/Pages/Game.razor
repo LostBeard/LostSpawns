@@ -934,7 +934,12 @@
 
     private void HandleDayAdvanced(int day)
     {
-        Hud.Notify($"Day {day}");
+        // Day-advance reward: each survived night grants 5 XP per day
+        // number reached, so sticking around past day 7 keeps progression
+        // ticking even after the kill-spike plateaus.
+        int dayBonus = 5 * day;
+        Stats.AwardXp(dayBonus);
+        Hud.Notify($"Day {day} - survived (+{dayBonus} XP)");
         if (day >= 7) Stats.TryAwardAchievement("Survivor");
         // Celebratory dawn flash: warm golden wash fades over 1.2s to mark
         // "you survived another night". Softer than the damage flash so it
