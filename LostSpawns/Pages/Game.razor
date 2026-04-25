@@ -1044,7 +1044,7 @@
         if (e.Kind == LostSpawns.Services.EntityKind.Wolf) Stats.ApplyBleed(6f);
         else if (e.Kind == LostSpawns.Services.EntityKind.Boar) Stats.ApplyBleed(3f);
         if (!wasBleeding && Stats.BleedSecondsRemaining > 0)
-            Hud.NotifyWarning("Bleeding! Apply a bandage");
+            Hud.NotifyWarning("Bleeding! Press H to bandage");
     }
 
     private void HandleCooked(string cookedName)
@@ -1488,7 +1488,7 @@
         // handy after a wolf fight if they want to time-skip.
         if (Stats.BleedSecondsRemaining > 0)
         {
-            Hud.NotifyWarning("Can't sleep while bleeding - apply a bandage");
+            Hud.NotifyWarning("Can't sleep while bleeding - press H to bandage");
             return;
         }
         // Starving / dehydrated bodies can't actually sleep - your body
