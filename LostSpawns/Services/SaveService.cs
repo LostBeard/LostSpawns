@@ -59,6 +59,9 @@ public class SaveService
     /// <summary>Fires after a successful SaveNow write so HUD can show a brief "Saved" toast.</summary>
     public event Action? OnSaved;
 
+    /// <summary>UTC timestamp of the most recent successful save (default = DateTime.MinValue before any save).</summary>
+    public DateTime LastSaveTime { get; private set; }
+
     public void SaveNow(System.Numerics.Vector3 cameraPos, float yaw, float pitch)
     {
         try
@@ -134,6 +137,7 @@ public class SaveService
             string json = JsonSerializer.Serialize(state, _json);
             using var storage = _js.Get<Storage>("localStorage");
             storage.SetItem(SaveKey, json);
+            LastSaveTime = DateTime.UtcNow;
             OnSaved?.Invoke();
         }
         catch (Exception ex)

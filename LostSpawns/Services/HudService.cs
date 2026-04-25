@@ -180,6 +180,11 @@ public class HudService : IDisposable
 
     public bool IsInitialized { get; private set; }
 
+    /// <summary>UTC timestamp of the most recent successful save. Game.razor
+    /// pushes this each frame from SaveService.LastSaveTime so the debug
+    /// HUD can display "saved Xs ago". DateTime.MinValue means no save yet.</summary>
+    public DateTime LastSaveTime { get; set; } = DateTime.MinValue;
+
     /// <summary>True while the pause menu is on top of the screen stack.</summary>
     public bool IsPaused => _ui.Screens.ActiveScreen == "pause";
 
@@ -2158,10 +2163,14 @@ public class HudService : IDisposable
                           + (_stats.FirstAidAwarded ? 1 : 0)
                           + (_stats.PackHunterAwarded ? 1 : 0)
                           + (_stats.CompletionistAwarded ? 1 : 0);
+            // Save age: "saved 4s ago" or "never" before first write.
+            string savedAge = LastSaveTime == DateTime.MinValue
+                ? "never"
+                : $"{(int)(DateTime.UtcNow - LastSaveTime).TotalSeconds}s ago";
             _debugLabel.Text =
                 $"{(int)_fpsSmoothed} fps    " +
                 $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}    " +
-                $"Day {_worldTime.DayNumber}  Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  Achv {achvCount}/15  T {time}  {phase}{rain}";
+                $"Day {_worldTime.DayNumber}  Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  Achv {achvCount}/15  T {time}  {phase}{rain}  saved {savedAge}";
         }
 
         // Update compass bearing from camera yaw

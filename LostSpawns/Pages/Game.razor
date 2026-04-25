@@ -828,7 +828,13 @@
         Hud.NotifyWarning("Fire is burning low - feed it Wood");
     }
 
-    private void HandleSaved() => Hud.Notify("Saved");
+    private void HandleSaved()
+    {
+        Hud.Notify("Saved");
+        // Mirror the SaveService timestamp so the debug HUD can display
+        // "saved Xs ago" without taking a DI dependency on SaveService.
+        Hud.LastSaveTime = Save.LastSaveTime;
+    }
 
     private void HandleDayAdvanced(int day)
     {
