@@ -901,6 +901,15 @@
         Stats.RecordKill();
         Stats.RecordKindKill(e.Kind.ToString());
         Stats.RecordCurrentLifeKill();
+        // Bear kills get a big celebratory camera kick + extra gold motes -
+        // they're the apex predator and dropping one is a milestone moment.
+        if (e.Kind == LostSpawns.Services.EntityKind.Bear)
+        {
+            ApplyCameraKick(5.0f);
+            Hud.ShowGoldBurst(new System.Numerics.Vector3(
+                e.Position.X, e.Position.Y + 0.5f, e.Position.Z), 14);
+            Hud.NotifyAchievement("Bear felled");
+        }
         // Big-beast kill confirmation audio for wolves + boars (the threats).
         // Other kinds stay on the default PlayHit since they're unremarkable
         // kills that don't need a "fanfare".
