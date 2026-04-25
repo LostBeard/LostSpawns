@@ -89,6 +89,7 @@ public class PlayerStatsService
             "First Cook"  => Fire(ref _firstCook),
             "First Wolf"  => Fire(ref _firstWolf),
             "First Sleep" => Fire(ref _firstSleep),
+            "Veteran"     => Fire(ref _veteran),
             _             => false,
         };
         if (!fired) return false;
@@ -103,6 +104,9 @@ public class PlayerStatsService
     private bool _firstCook;
     private bool _firstWolf;
     private bool _firstSleep;
+    private bool _veteran;
+
+    public bool VeteranAwarded => _veteran;
 
     /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
     public void RecordKill()
@@ -125,12 +129,13 @@ public class PlayerStatsService
     }
 
     /// <summary>Seed the other achievement flags from save. Bypasses OnAchievement so reloads don't spam.</summary>
-    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep)
+    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false)
     {
         _firstFire = fire;
         _firstCook = cook;
         _firstWolf = wolf;
         _firstSleep = sleep;
+        _veteran = veteran;
         OnStatsChanged?.Invoke();
     }
 
@@ -158,6 +163,7 @@ public class PlayerStatsService
         int after = Level;
         OnStatsChanged?.Invoke();
         if (after > before) OnLevelUp?.Invoke(after);
+        if (after >= 5 && before < 5) TryAwardAchievement("Veteran");
     }
 
     /// <summary>Fires once per level-up. Arg = the new level reached.</summary>

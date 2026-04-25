@@ -662,11 +662,12 @@ public class HudService : IDisposable
                       + (_stats.FirstFireAwarded ? 1 : 0)
                       + (_stats.FirstCookAwarded ? 1 : 0)
                       + (_stats.FirstWolfAwarded ? 1 : 0)
-                      + (_stats.FirstSleepAwarded ? 1 : 0);
+                      + (_stats.FirstSleepAwarded ? 1 : 0)
+                      + (_stats.VeteranAwarded ? 1 : 0);
             _deathStats.Text =
                 $"Lv {_stats.Level}  XP {_stats.Experience}  T {time}\n" +
                 $"Kills: {_stats.Kills}   R:{_stats.RabbitKills}  B:{_stats.BoarKills}  C:{_stats.CrowKills}  W:{_stats.WolfKills}\n" +
-                $"Achievements: {achvs} / 5";
+                $"Achievements: {achvs} / 6";
         }
 
         _ui.Screens.Push("death");
