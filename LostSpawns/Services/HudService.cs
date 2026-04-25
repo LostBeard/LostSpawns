@@ -262,6 +262,16 @@ public class HudService : IDisposable
     /// <summary>UTC expiry of the current combo window; HUD hides the badge once now > this.</summary>
     public DateTime ComboExpiry { get; set; } = DateTime.MinValue;
 
+    /// <summary>
+    /// Terraform brush preview state. Game.razor pushes a non-null center
+    /// while terraform mode is active and the camera is aimed at terrain;
+    /// HudService draws a dotted sphere at that point. Null = no preview.
+    /// </summary>
+    public Vector3? TerraformPreviewCenter { get; set; }
+
+    /// <summary>Brush radius for the preview sphere. Matches Game.razor's TerraformRadius.</summary>
+    public float TerraformPreviewRadius { get; set; }
+
     /// <summary>Toggle the debug HUD line (FPS + coords + level). Hot key F3.</summary>
     public void ToggleDebug()
     {
@@ -1988,6 +1998,74 @@ public class HudService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Holographic dotted-sphere preview for terraform aim. Three great-
+    /// circle rings (XY, XZ, YZ planes) of 24 samples each, projected via
+    /// the camera's VP matrix and rendered as 2x2 cyan dots. Cheap (72
+    /// matrix transforms + 72 DrawRect calls) and reads cleanly against
+    /// any background since the dot pattern stays consistent at distance.
+    /// </summary>
+    private void DrawTerraformPreview(int viewportWidth, int viewportHeight)
+    {
+        if (_renderer == null) return;
+        if (TerraformPreviewCenter is null) return;
+        if (TerraformPreviewRadius <= 0) return;
+
+        var center = TerraformPreviewCenter.Value;
+        float radius = TerraformPreviewRadius;
+        float aspect = (float)viewportWidth / viewportHeight;
+        var vp = _renderer.Camera.GetVpMatrix(aspect);
+
+        // Pulse the dot color slightly so the preview reads as "active" -
+        // looks alive vs a flat overlay. ~1Hz pulse, gentle alpha range.
+        float t = (float)(DateTime.UtcNow.Ticks % TimeSpan.TicksPerSecond) / TimeSpan.TicksPerSecond;
+        float pulse = 0.7f + 0.3f * MathF.Sin(t * MathF.PI * 2f);
+        int alpha = (int)(220 * pulse);
+        var dotColor = System.Drawing.Color.FromArgb(alpha, 80, 220, 240);
+
+        const int Samples = 24;
+        // Three ring planes: XY (Z held), XZ (Y held), YZ (X held). Each
+        // ring is parameterized by t in [0, 2pi).
+        for (int p = 0; p < 3; p++)
+        for (int s = 0; s < Samples; s++)
+        {
+            float a = s / (float)Samples * MathF.PI * 2f;
+            float c = MathF.Cos(a) * radius;
+            float si = MathF.Sin(a) * radius;
+            var local = p switch
+            {
+                0 => new Vector3(c, si, 0f),
+                1 => new Vector3(c, 0f, si),
+                _ => new Vector3(0f, c, si),
+            };
+            var world = center + local;
+            var clip = System.Numerics.Vector4.Transform(
+                new System.Numerics.Vector4(world.X, world.Y, world.Z, 1f), vp);
+            if (clip.W <= 0.001f) continue;
+            float ndcX = clip.X / clip.W;
+            float ndcY = clip.Y / clip.W;
+            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
+            if (screenX < -10 || screenX > viewportWidth + 10) continue;
+            if (screenY < -10 || screenY > viewportHeight + 10) continue;
+            _ui.Renderer.DrawRect(screenX - 1.5f, screenY - 1.5f, 3f, 3f, dotColor);
+        }
+
+        // Center crosshair dot - tells you exactly where the sphere is
+        // anchored. Slightly brighter than ring dots.
+        var clipC = System.Numerics.Vector4.Transform(
+            new System.Numerics.Vector4(center.X, center.Y, center.Z, 1f), vp);
+        if (clipC.W > 0.001f)
+        {
+            float ndcCx = clipC.X / clipC.W;
+            float ndcCy = clipC.Y / clipC.W;
+            float scx = (ndcCx * 0.5f + 0.5f) * viewportWidth;
+            float scy = (1f - (ndcCy * 0.5f + 0.5f)) * viewportHeight;
+            _ui.Renderer.DrawRect(scx - 2f, scy - 2f, 4f, 4f,
+                System.Drawing.Color.FromArgb(255, 180, 240, 255));
+        }
+    }
+
     private void DrawGoldMotes(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null) return;
@@ -3250,6 +3328,7 @@ public class HudService : IDisposable
             DrawBloodSplatters(viewportWidth, viewportHeight);
             DrawDustPuffs(viewportWidth, viewportHeight);
             DrawGoldMotes(viewportWidth, viewportHeight);
+            DrawTerraformPreview(viewportWidth, viewportHeight);
 
             // Floating damage numbers rise above the hit point - rendered
             // last so they sit on top of all world geometry.

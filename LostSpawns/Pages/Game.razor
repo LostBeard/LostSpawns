@@ -2433,6 +2433,32 @@
         // bears don't care about the fire the way wolves do.
         Wildlife.BearAggroRange = sneaking ? 7.5f : 15f;
         Hud.IsSneaking = sneaking;
+
+        // Terraform brush preview: while B-mode is on, raycast for the
+        // surface under the crosshair and tell HudService to draw the
+        // dotted-sphere indicator there. Cleared (null) any frame the
+        // ray misses or the mode is off, so the preview disappears
+        // cleanly when the player looks at sky.
+        if (_terraformMode && !Hud.IsAnyMenuOpen)
+        {
+            var phit = World.Raycast(
+                Renderer.Camera.Position, Renderer.Camera.Front, maxDistance: 8f);
+            if (phit.DidHit)
+            {
+                Hud.TerraformPreviewCenter = new System.Numerics.Vector3(
+                    phit.BlockX + 0.5f, phit.BlockY + 0.5f, phit.BlockZ + 0.5f);
+                Hud.TerraformPreviewRadius = TerraformRadius;
+            }
+            else
+            {
+                Hud.TerraformPreviewCenter = null;
+            }
+        }
+        else
+        {
+            Hud.TerraformPreviewCenter = null;
+        }
+
         Wildlife.Tick(deltaTime, World, Renderer.Camera.Position, Time.IsNight);
 
         // Day/night transition latch. On falling edge (night->day) reset the
