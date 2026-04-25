@@ -2084,6 +2084,11 @@
         bool sneaking = Input.KeysDown.Contains("ControlLeft") || Input.KeysDown.Contains("ControlRight");
         if (sneaking) aggro *= 0.5f;
         Wildlife.WolfAggroRange = aggro;
+        // Bears use their own range (15 default). Sneak halves it the same
+        // way wolves get halved, so a creeping player can slip past a bear
+        // at ~7.5 blocks. Campfire warmth has no bearing on bear sense -
+        // bears don't care about the fire the way wolves do.
+        Wildlife.BearAggroRange = sneaking ? 7.5f : 15f;
         Hud.IsSneaking = sneaking;
         Wildlife.Tick(deltaTime, World, Renderer.Camera.Position, Time.IsNight);
 

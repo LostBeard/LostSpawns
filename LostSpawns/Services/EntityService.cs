@@ -180,6 +180,9 @@ public class EntityService
     /// <summary>How close a wolf has to be to the player before it auto-aggros.</summary>
     public float WolfAggroRange { get; set; } = 10f;
 
+    /// <summary>How close a bear has to be to the player before it auto-aggros. Wider than wolves baseline.</summary>
+    public float BearAggroRange { get; set; } = 15f;
+
     /// <summary>Advance every entity. Call from the active-play branch only.</summary>
     public void Tick(float dt, WorldService world, Vector3 playerPos, bool isNight = false)
     {
@@ -220,14 +223,16 @@ public class EntityService
                     AlertPackmates(e, playerPos);
                 }
             }
-            // Bears auto-aggro at longer range than wolves (15 vs 10) and
-            // do so day OR night. Their slow speed is the only thing that
-            // makes them survivable - sneak (CTRL) past or commit hard.
+            // Bears auto-aggro at longer range than wolves (default 15 vs
+            // 10) and do so day OR night. Their slow speed is the only thing
+            // that makes them survivable - sneak (CTRL) halves the range
+            // (Game.razor mutates BearAggroRange directly), so the player can
+            // creep past at ~7.5 blocks instead of 15.
             if (e.Kind == EntityKind.Bear && e.Alert == AlertMode.Idle)
             {
                 float dx = playerPos.X - e.Position.X;
                 float dz = playerPos.Z - e.Position.Z;
-                if (dx * dx + dz * dz <= 15f * 15f)
+                if (dx * dx + dz * dz <= BearAggroRange * BearAggroRange)
                 {
                     e.Alert = AlertMode.Charge;
                     e.AlertTimer = 8f;
