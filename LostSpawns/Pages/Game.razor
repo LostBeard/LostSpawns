@@ -353,9 +353,14 @@
                     Stats.TakeDamage(dmg);
                 }
                 // Landing audio - gain scales with peak fall speed so big
-                // drops thud harder than hops. Only plays on actual landings,
-                // not each frame we're grounded.
-                if (justLanded) Audio.PlayLand(_peakFallSpeed / 20f);
+                // drops thud harder than hops. Water landings get a splash
+                // instead of a thud; only plays on actual landings, not each
+                // frame we're grounded.
+                if (justLanded)
+                {
+                    if (inWater) Audio.PlaySplash();
+                    else Audio.PlayLand(_peakFallSpeed / 20f);
+                }
                 _peakFallSpeed = 0;
             }
             else
