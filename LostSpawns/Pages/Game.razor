@@ -1076,8 +1076,11 @@
         Audio.PlayLevelUp();
         // Level-up celebratory overlay: green flash announces the new tier
         // without blocking the screen. Matches the dawn-flash pattern so
-        // victory moments all feel the same.
+        // victory moments all feel the same. Also fully restores stamina
+        // + heals 20% HP - the "second wind" buff for hitting a milestone.
         Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(110, 100, 220, 120), 0.8f);
+        Stats.Stamina = 1f;
+        Stats.Heal(0.20f);
         Hud.NotifyAchievement($"Level {newLevel}");
         // Unlock toasts: surface recipes that just became craftable at this
         // level. Scans CraftingService for RequiredLevel == newLevel so
