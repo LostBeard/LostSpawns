@@ -19,7 +19,26 @@ public class AudioService : IDisposable
 {
     private readonly BlazorJSRuntime _js;
     private AudioContext? _ctx;
+    private GainNode? _master;
     private bool _resumed;
+
+    /// <summary>
+    /// Master volume [0, 1] applied to every sound via a shared GainNode.
+    /// Setting this mutes / fades ALL audio in one call. Defaults to 1 so
+    /// the previous call-sites see no change until a settings UI wires
+    /// this up.
+    /// </summary>
+    public float MasterVolume
+    {
+        get => _masterVolume;
+        set
+        {
+            _masterVolume = Math.Clamp(value, 0f, 1f);
+            if (_master is not null && _ctx is not null)
+                _master.Gain.LinearRampToValueAtTime(_masterVolume, _ctx.CurrentTime + 0.05);
+        }
+    }
+    private float _masterVolume = 1f;
 
     public AudioService(BlazorJSRuntime js)
     {
@@ -35,7 +54,13 @@ public class AudioService : IDisposable
     {
         try
         {
-            if (_ctx is null) _ctx = new AudioContext();
+            if (_ctx is null)
+            {
+                _ctx = new AudioContext();
+                _master = _ctx.CreateGain();
+                _master.Gain.SetValueAtTime(_masterVolume, _ctx.CurrentTime);
+                _master.Connect(_ctx.Destination);
+            }
             if (!_resumed)
             {
                 _ = _ctx.Resume();
@@ -47,6 +72,9 @@ public class AudioService : IDisposable
             Console.WriteLine($"[Audio] EnsureActive failed: {ex.Message}");
         }
     }
+
+    /// <summary>Destination node every sound should connect into (master gain), falling back to context destination pre-init.</summary>
+    private AudioNode Destination => (AudioNode?)_master ?? _ctx!.Destination;
 
     /// <summary>
     /// Play a brief tone. freq in Hz, duration in seconds, volume [0, 1].
@@ -66,7 +94,7 @@ public class AudioService : IDisposable
             gain.Gain.LinearRampToValueAtTime(volume, _ctx.CurrentTime + 0.005);
             gain.Gain.ExponentialRampToValueAtTime(0.0001f, _ctx.CurrentTime + duration);
             osc.Connect(gain);
-            gain.Connect(_ctx.Destination);
+            gain.Connect(Destination);
             osc.Start();
             osc.Stop((float)(_ctx.CurrentTime + duration));
         }
@@ -112,7 +140,7 @@ public class AudioService : IDisposable
             gain.Gain.LinearRampToValueAtTime(0.22f, t + 0.02);
             gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.18);
             osc.Connect(gain);
-            gain.Connect(_ctx.Destination);
+            gain.Connect(Destination);
             osc.Start();
             osc.Stop((float)(t + 0.18));
         }
@@ -140,7 +168,7 @@ public class AudioService : IDisposable
             gain.Gain.LinearRampToValueAtTime(0.25f, t + 0.05);
             gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 2.2);
             osc.Connect(gain);
-            gain.Connect(_ctx.Destination);
+            gain.Connect(Destination);
             osc.Start();
             osc.Stop((float)(t + 2.2));
         }
@@ -166,7 +194,7 @@ public class AudioService : IDisposable
             gain.Gain.LinearRampToValueAtTime(0.10f, t + 0.01);
             gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.1);
             osc.Connect(gain);
-            gain.Connect(_ctx.Destination);
+            gain.Connect(Destination);
             osc.Start();
             osc.Stop((float)(t + 0.1));
         }
@@ -200,7 +228,7 @@ public class AudioService : IDisposable
             gain.Gain.LinearRampToValueAtTime(0.15f, t + 0.01);
             gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.11);
             osc.Connect(gain);
-            gain.Connect(_ctx.Destination);
+            gain.Connect(Destination);
             osc.Start();
             osc.Stop((float)(t + 0.11));
         }
@@ -226,7 +254,7 @@ public class AudioService : IDisposable
             gain.Gain.LinearRampToValueAtTime(0.18f, t + 0.01);
             gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.3);
             osc.Connect(gain);
-            gain.Connect(_ctx.Destination);
+            gain.Connect(Destination);
             osc.Start();
             osc.Stop((float)(t + 0.3));
         }
@@ -253,7 +281,7 @@ public class AudioService : IDisposable
             gain.Gain.LinearRampToValueAtTime(0.08f, t + 0.02);
             gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.14);
             osc.Connect(gain);
-            gain.Connect(_ctx.Destination);
+            gain.Connect(Destination);
             osc.Start();
             osc.Stop((float)(t + 0.14));
         }
@@ -285,7 +313,7 @@ public class AudioService : IDisposable
             gain.Gain.LinearRampToValueAtTime(0.12f, t + 0.02);
             gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.22);
             osc.Connect(gain);
-            gain.Connect(_ctx.Destination);
+            gain.Connect(Destination);
             osc.Start();
             osc.Stop((float)(t + 0.22));
         }
@@ -324,7 +352,7 @@ public class AudioService : IDisposable
             gain.Gain.LinearRampToValueAtTime(0.35f, t + 0.05);
             gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 1.8);
             osc.Connect(gain);
-            gain.Connect(_ctx.Destination);
+            gain.Connect(Destination);
             osc.Start();
             osc.Stop((float)(t + 1.8));
         }
@@ -350,7 +378,7 @@ public class AudioService : IDisposable
             gain.Gain.LinearRampToValueAtTime(0.15f, t + 0.02);
             gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.22);
             osc.Connect(gain);
-            gain.Connect(_ctx.Destination);
+            gain.Connect(Destination);
             osc.Start();
             osc.Stop((float)(t + 0.22));
         }
@@ -397,7 +425,7 @@ public class AudioService : IDisposable
             gain.Gain.LinearRampToValueAtTime(0.18f, t + 0.08);
             gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 1.2);
             osc.Connect(gain);
-            gain.Connect(_ctx.Destination);
+            gain.Connect(Destination);
             osc.Start();
             osc.Stop((float)(t + 1.2));
         }
@@ -469,8 +497,10 @@ public class AudioService : IDisposable
         try { _rainOsc?.Stop(); } catch { }
         _rainOsc?.Dispose();
         _rainGain?.Dispose();
+        _master?.Dispose();
         try { _ctx?.Close(); } catch { }
         _ctx?.Dispose();
         _ctx = null;
+        _master = null;
     }
 }

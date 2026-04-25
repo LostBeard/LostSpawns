@@ -1365,8 +1365,11 @@
     {
         // Canvas click is a user-gesture so it's the right moment to wake up
         // the AudioContext (browsers refuse to start audio without one). Safe
-        // to call repeatedly; EnsureActive is idempotent.
+        // to call repeatedly; EnsureActive is idempotent. Pull volume from
+        // the persisted setting every init so saved preferences apply
+        // immediately.
         Audio.EnsureActive();
+        Audio.MasterVolume = Settings.MasterVolume;
 
         if (Input.IsPointerLocked) return;
         try

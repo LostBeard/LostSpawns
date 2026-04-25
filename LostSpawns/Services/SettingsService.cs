@@ -15,6 +15,9 @@ public class SettingsService
     public float FieldOfView { get; private set; } = 70f;    // degrees
     public bool Vsync { get; private set; } = true;
 
+    // Audio
+    public float MasterVolume { get; private set; } = 1f;    // [0, 1]
+
     // Player
     public string PlayerName { get; private set; } = "Survivor";
 
@@ -30,6 +33,7 @@ public class SettingsService
         DrawDistance = Math.Clamp(storedDraw, 4, 32);
         FieldOfView = GetFloat("lost.settings.fov", 70f);
         Vsync = GetBool("lost.settings.vsync", true);
+        MasterVolume = Math.Clamp(GetFloat("lost.settings.volume", 1f), 0f, 1f);
         PlayerName = GetString("lost.settings.playerName", "Survivor");
     }
 
@@ -45,6 +49,12 @@ public class SettingsService
     {
         PlayerName = name;
         Set("lost.settings.playerName", name);
+    }
+
+    public void SaveVolume(float volume)
+    {
+        MasterVolume = Math.Clamp(volume, 0f, 1f);
+        Set("lost.settings.volume", MasterVolume.ToString("F2"));
     }
 
     private string GetString(string key, string def)
