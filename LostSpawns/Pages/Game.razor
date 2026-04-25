@@ -2075,6 +2075,11 @@
             if (_distantHowlTimer <= 0f)
             {
                 Audio.PlayWolfHowl();
+                // Brief desaturated-blue flash on the distant howl so the
+                // tension lands visually too. Short fade keeps it ambient
+                // rather than a damage tell.
+                Hud.ScreenOverlay.Flash(
+                    System.Drawing.Color.FromArgb(50, 60, 100, 180), 1.4f);
                 _distantHowlTimer = 15f + (float)_howlRng.NextDouble() * 30f;
             }
 
