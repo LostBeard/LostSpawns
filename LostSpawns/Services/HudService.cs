@@ -1327,6 +1327,20 @@ public class HudService : IDisposable
                     ? System.Drawing.Color.FromArgb(230, 240, 180, 60)
                     : System.Drawing.Color.FromArgb(230, 140, 230, 90);
             _ui.Renderer.DrawRect(barX, barY, barW * fuelRatio, barH, fuelColor);
+
+            // Cook progress: thin orange bar below the fuel bar, only
+            // visible for the closest active fire (where cook progress
+            // actually ticks). Shows "X% to cooked" at a glance.
+            var nearestFire = _fires.FindNearest(_renderer.Camera.Position);
+            if (nearestFire == f && _fires.CookProgressRatio > 0.01f)
+            {
+                float cookBarY = barY + barH + 1f;
+                float cookRatio = Math.Clamp(_fires.CookProgressRatio, 0f, 1f);
+                _ui.Renderer.DrawRect(barX, cookBarY, barW, 3f,
+                    System.Drawing.Color.FromArgb(140, 20, 20, 20));
+                _ui.Renderer.DrawRect(barX, cookBarY, barW * cookRatio, 3f,
+                    System.Drawing.Color.FromArgb(230, 240, 130, 40));
+            }
         }
     }
 

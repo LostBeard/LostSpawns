@@ -52,6 +52,9 @@ public class CampfireService
     /// <summary>Current cook-timer progress, only advanced while the player is in range of any fire.</summary>
     private float _cookProgress;
 
+    /// <summary>Exposes the current cook progress ratio [0,1] for HUD rendering. Returns 0 when not in range or no raw meat present.</summary>
+    public float CookProgressRatio => _cookProgress / MathF.Max(0.001f, CookSeconds);
+
     /// <summary>Fired each time one raw item is converted to its cooked variant.</summary>
     public event Action<string>? OnCooked; // payload = cooked item display name
 
