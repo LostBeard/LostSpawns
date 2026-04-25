@@ -759,11 +759,20 @@
             e.Position.X, e.Position.Y + 0.8f, e.Position.Z));
     }
 
+    private readonly Random _hitShakeRng = new();
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
     {
         Stats.TakeDamage(damage);
         Hud.NotifyDamage($"{e.Kind} hit you!");
         Audio.PlayDamage();
+        // Hit shake: small random yaw + pitch nudge scaled by damage. Reads
+        // as the bite "jarring" the player. Mouse-look snaps back on the
+        // next frame so the shake is a one-frame impact not lingering input
+        // lag. Clamped below Camera's own ranges to stay sane.
+        float yawShake = (float)(_hitShakeRng.NextDouble() - 0.5) * 6f * damage * 10f;
+        float pitchShake = (float)(_hitShakeRng.NextDouble() - 0.5) * 4f * damage * 10f;
+        Renderer.Camera.Yaw += yawShake;
+        Renderer.Camera.Pitch = Math.Clamp(Renderer.Camera.Pitch + pitchShake, -89f, 89f);
         // Wolves have toothy bite -> bleed DoT. 6s base lets the player escape
         // and bandage in time without trivializing the encounter. Boar tusks
         // bleed a smaller window because gore-then-flee is the boar pattern.
