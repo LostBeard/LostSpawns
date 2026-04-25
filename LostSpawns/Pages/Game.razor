@@ -833,6 +833,12 @@
     {
         Hud.Notify($"Day {day}");
         if (day >= 7) Stats.TryAwardAchievement("Survivor");
+        // Celebratory dawn flash: warm golden wash fades over 1.2s to mark
+        // "you survived another night". Softer than the damage flash so it
+        // reads as reward not shock.
+        Hud.ScreenOverlay.Flash(
+            System.Drawing.Color.FromArgb(120, 255, 210, 140), 1.2f);
+        Audio.PlayBirdChirp();
     }
 
     private void HandleGroundPickup(LostSpawns.Services.InventoryItem payload)
