@@ -657,9 +657,16 @@ public class HudService : IDisposable
         {
             int s = (int)_stats.PlayTimeSeconds;
             string time = $"{s / 3600:D2}:{(s % 3600) / 60:D2}:{s % 60:D2}";
+            // Count achievement bools to show progress out of 5.
+            int achvs = (_stats.FirstKillAwarded ? 1 : 0)
+                      + (_stats.FirstFireAwarded ? 1 : 0)
+                      + (_stats.FirstCookAwarded ? 1 : 0)
+                      + (_stats.FirstWolfAwarded ? 1 : 0)
+                      + (_stats.FirstSleepAwarded ? 1 : 0);
             _deathStats.Text =
                 $"Lv {_stats.Level}  XP {_stats.Experience}  T {time}\n" +
-                $"Kills: {_stats.Kills}   R:{_stats.RabbitKills}  B:{_stats.BoarKills}  C:{_stats.CrowKills}  W:{_stats.WolfKills}";
+                $"Kills: {_stats.Kills}   R:{_stats.RabbitKills}  B:{_stats.BoarKills}  C:{_stats.CrowKills}  W:{_stats.WolfKills}\n" +
+                $"Achievements: {achvs} / 5";
         }
 
         _ui.Screens.Push("death");
@@ -689,7 +696,7 @@ public class HudService : IDisposable
         var panel = new UIPanel
         {
             Width = 360,
-            Height = 300,
+            Height = 330,
             CornerRadius = 10,
         };
 
@@ -725,7 +732,7 @@ public class HudService : IDisposable
             Text = "",
             FontSize = FontSize.Body,
             Width = 360,
-            Height = 56,
+            Height = 80,
             X = 0,
             Y = 110,
             Align = TextAlign.Center,
@@ -739,7 +746,7 @@ public class HudService : IDisposable
             Width = 220,
             Height = 48,
             X = 70,
-            Y = 220,
+            Y = 250,
         };
         respawn.OnClick = () => OnRespawnClicked?.Invoke();
         panel.AddChild(respawn);
