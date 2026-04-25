@@ -2667,10 +2667,13 @@ public class HudService : IDisposable
         // markers can't accumulate.
         foreach (var g in _ground.Items)
         {
+            // Use the item's own name as label so the player can distinguish
+            // mushrooms / berries / meat / pelts on the minimap without
+            // walking up to each pile to read the pickup toast.
             Minimap.AddMarker(new MapMarker
             {
                 Id = $"loot.{g.Id}",
-                Label = "Loot",
+                Label = g.Payload.Name,
                 WorldPosition = new Vector2(g.Position.X, g.Position.Z),
                 Type = MapMarkerType.POI,
             });
