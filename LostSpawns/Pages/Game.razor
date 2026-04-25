@@ -928,6 +928,7 @@
         {
             Wildlife.ApplyDamage(target, 0.7f, origin);
             Audio.PlayHit();
+            Hud.ShowImpactMark(target.Position);
             // Bow durability decays per hit, not per shot.
             Inventory.DegradeActiveTool();
         }

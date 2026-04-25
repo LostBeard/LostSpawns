@@ -55,6 +55,25 @@ public class HudService : IDisposable
     private readonly float[] _starY = new float[StarCount];
     private readonly float[] _starSize = new float[StarCount];
     private bool _starsSeeded;
+
+    // One-shot impact markers (e.g. arrow hit point). World-space position +
+    // spawn timestamp; projected each frame and faded out. Up to 4 concurrent.
+    private const int ImpactMax = 4;
+    private readonly System.Numerics.Vector3[] _impactPos = new System.Numerics.Vector3[ImpactMax];
+    private readonly DateTime[] _impactSpawned = new DateTime[ImpactMax];
+    private int _impactIdx;
+
+    /// <summary>
+    /// Spawn an impact marker at a world-space position. Renders a brief
+    /// white cross that fades over ~350ms. Used by bow hits so the player
+    /// sees where the arrow landed without needing projectile physics.
+    /// </summary>
+    public void ShowImpactMark(System.Numerics.Vector3 worldPos)
+    {
+        _impactPos[_impactIdx] = worldPos;
+        _impactSpawned[_impactIdx] = DateTime.UtcNow;
+        _impactIdx = (_impactIdx + 1) % ImpactMax;
+    }
     private bool _rainSeeded;
     private readonly Random _rainRng = new();
     private RenderService? _renderer;
@@ -1164,6 +1183,41 @@ public class HudService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Render impact markers. White crosses that expand and fade over ~350ms
+    /// using wall-clock time so the animation runs independently of the main
+    /// update tick. Past-lifetime slots skip projection + draw.
+    /// </summary>
+    private void DrawImpactMarks(int viewportWidth, int viewportHeight)
+    {
+        if (_renderer == null) return;
+        float aspect = (float)viewportWidth / viewportHeight;
+        var vp = _renderer.Camera.GetVpMatrix(aspect);
+        var now = DateTime.UtcNow;
+        for (int i = 0; i < ImpactMax; i++)
+        {
+            if (_impactSpawned[i] == default) continue;
+            float age = (float)(now - _impactSpawned[i]).TotalSeconds;
+            if (age >= 0.35f) continue;
+
+            var worldPos = new System.Numerics.Vector4(
+                _impactPos[i].X, _impactPos[i].Y + 0.8f, _impactPos[i].Z, 1f);
+            var clip = System.Numerics.Vector4.Transform(worldPos, vp);
+            if (clip.W <= 0.001f) continue;
+            float ndcX = clip.X / clip.W;
+            float ndcY = clip.Y / clip.W;
+            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
+
+            float life = age / 0.35f;
+            int alpha = (int)(255 * (1f - life));
+            float size = 10f + life * 20f;
+            var color = System.Drawing.Color.FromArgb(alpha, 255, 255, 255);
+            _ui.Renderer.DrawRect(screenX - size * 0.5f, screenY - 1f, size, 2f, color);
+            _ui.Renderer.DrawRect(screenX - 1f, screenY - size * 0.5f, 2f, size, color);
+        }
+    }
+
     private void DrawEntityBillboards(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null || _entities.Entities.Count == 0) return;
@@ -1770,6 +1824,10 @@ public class HudService : IDisposable
             // Entity billboards: 2D colored squares at each entity's projected
             // screen position. Renders on top of terrain, below rain + flashes.
             DrawEntityBillboards(viewportWidth, viewportHeight);
+
+            // Arrow impact marks render on top of the entity layer so the
+            // white cross is always visible even mid-billboard.
+            DrawImpactMarks(viewportWidth, viewportHeight);
 
             // Durability bar above the active hotbar slot for tools that can
             // break. Small but always-visible so the player isn't surprised.
