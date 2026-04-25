@@ -19,10 +19,11 @@
 		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.3" PrivateAssets="all" />
 	</ItemGroup>
 
-	<!-- SpawnDev.GameUI - GPU-rendered game UI overlay -->
+	<!-- SpawnDev libraries from nuget.org (was ProjectReference; flipped on 2026-04-25 -->
+	<!-- so GitHub Actions / GitHub Pages can build the project without local sources). -->
 	<ItemGroup>
-		<ProjectReference Include="..\..\..\SpawnDev.GameUI\SpawnDev.GameUI\SpawnDev.GameUI\SpawnDev.GameUI.csproj" />
-		<ProjectReference Include="..\..\..\SpawnDev.VoxelEngine\SpawnDev.VoxelEngine\SpawnDev.VoxelEngine\SpawnDev.VoxelEngine.csproj" />
+		<PackageReference Include="SpawnDev.GameUI" Version="0.1.0-rc.1" />
+		<PackageReference Include="SpawnDev.VoxelEngine" Version="0.1.0-rc.1" />
 	</ItemGroup>
 
 	<ItemGroup>
