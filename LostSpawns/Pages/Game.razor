@@ -883,9 +883,13 @@
         }
         // Blood splatter particles at the chest anchor (matches damage
         // number + billboard offsets). Purely cosmetic - reads as a "solid
-        // hit landed" cue.
-        Hud.ShowBloodSplatter(new System.Numerics.Vector3(
-            e.Position.X, e.Position.Y + 0.8f, e.Position.Z));
+        // hit landed" cue. Crows get an extra splatter at their position
+        // for the feather-flying-everywhere read since they're feathery.
+        var hitPos = new System.Numerics.Vector3(
+            e.Position.X, e.Position.Y + 0.8f, e.Position.Z);
+        Hud.ShowBloodSplatter(hitPos);
+        if (e.Kind == LostSpawns.Services.EntityKind.Crow)
+            Hud.ShowBloodSplatter(hitPos);
     }
 
     private readonly Random _hitShakeRng = new();
