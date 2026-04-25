@@ -1173,6 +1173,9 @@
         Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(240, 0, 0, 0), 1.2f);
         Hud.NotifySuccess("Slept through the night");
         Stats.TryAwardAchievement("First Sleep");
+        // Well-rested XP: rewards players who actually camp the night out
+        // rather than sprinting through darkness.
+        Stats.AwardXp(10);
     }
 
     private static LostSpawns.Services.InventoryItem? DropForBlockType(LostSpawns.Models.BlockType t) => t switch
