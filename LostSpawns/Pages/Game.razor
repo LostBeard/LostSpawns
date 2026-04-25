@@ -238,6 +238,9 @@
     // player recovers past the low-HP threshold.
     private float _heartbeatTimer;
 
+    /// <summary>Seconds remaining on the post-respawn HP-regen grace window.</summary>
+    private float _resurrectGraceTimer;
+
     // Document handle for visibility-change auto-pause. Disposed in
     // DisposeAsync alongside the rest of the JS interop teardown.
     private SpawnDev.BlazorJS.JSObjects.Document? _doc;
@@ -1144,6 +1147,11 @@
         Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(230, 0, 0, 0), 0.8f);
         Stats.ResetToDefaults();
         Hud.HideDeathScreen();
+        // 30-second resurrection grace: HP regen multiplier doubles so the
+        // player can outpace any minor damage their first minute back. Decays
+        // in OnGameUpdate via _resurrectGraceTimer.
+        _resurrectGraceTimer = 30f;
+        Hud.NotifySuccess("Resurrection grace - faster healing for 30s");
 
         // Teleport camera back to the heightmap spawn point and re-arm gravity so
         // it settles cleanly on the terrain.
@@ -1289,8 +1297,16 @@
             0.05f, 0.85f);
         // Camping = faster recovery. Multiplier scales with warmth so a
         // barely-in-range fire helps less than one the player is practically
-        // sitting in, but still beats out-in-the-cold.
-        Stats.HealthRegenMultiplier = warmthBonus > 0 ? 1f + warmthBonus * 3f : 1f;
+        // sitting in, but still beats out-in-the-cold. Resurrection grace
+        // window stacks on top so a player who just respawned heals fast
+        // even before they make it to a fire.
+        float regenMul = warmthBonus > 0 ? 1f + warmthBonus * 3f : 1f;
+        if (_resurrectGraceTimer > 0)
+        {
+            _resurrectGraceTimer -= deltaTime;
+            regenMul += 1.0f;
+        }
+        Stats.HealthRegenMultiplier = regenMul;
 
         // Stamina regen pauses while a hostile is within 6 blocks and
         // charging - can't catch your breath with a wolf running you down.
