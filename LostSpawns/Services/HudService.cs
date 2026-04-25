@@ -273,6 +273,34 @@ public class HudService : IDisposable
     /// <summary>Brush radius for the preview sphere. Matches Game.razor's TerraformRadius.</summary>
     public float TerraformPreviewRadius { get; set; }
 
+    // Terraform confirmation pulse - bright ring at the brush radius that
+    // flashes on a successful carve/build and fades over ~300ms. The mesh
+    // regen runs async so geometry visibly catches up a frame or two after
+    // the click. The pulse confirms "yes, your input was registered" so the
+    // carve doesn't read as laggy. Ring buffer holds up to 6 in flight in
+    // case of a paint-stroke.
+    private const int ConfirmMax = 6;
+    private readonly System.Numerics.Vector3[] _confirmCenter = new System.Numerics.Vector3[ConfirmMax];
+    private readonly float[] _confirmRadius = new float[ConfirmMax];
+    private readonly bool[] _confirmCarve = new bool[ConfirmMax];
+    private readonly DateTime[] _confirmSpawned = new DateTime[ConfirmMax];
+    private int _confirmIdx;
+
+    /// <summary>
+    /// Push a terraform-confirmation pulse. Carve = orange, Build = green.
+    /// Fades over ~300ms - long enough for the player to register the
+    /// flash, short enough that the mesh regen has caught up by then so
+    /// the visual delay disappears as a perception issue.
+    /// </summary>
+    public void ShowTerraformConfirm(System.Numerics.Vector3 center, float radius, bool isCarve)
+    {
+        _confirmCenter[_confirmIdx] = center;
+        _confirmRadius[_confirmIdx] = radius;
+        _confirmCarve[_confirmIdx] = isCarve;
+        _confirmSpawned[_confirmIdx] = DateTime.UtcNow;
+        _confirmIdx = (_confirmIdx + 1) % ConfirmMax;
+    }
+
     /// <summary>Toggle the debug HUD line (FPS + coords + level). Hot key F3.</summary>
     public void ToggleDebug()
     {
@@ -2082,6 +2110,61 @@ public class HudService : IDisposable
         }
     }
 
+    private void DrawTerraformConfirms(int viewportWidth, int viewportHeight)
+    {
+        if (_renderer == null) return;
+        float aspect = (float)viewportWidth / viewportHeight;
+        var vp = _renderer.Camera.GetVpMatrix(aspect);
+        var now = DateTime.UtcNow;
+        const float Lifetime = 0.3f; // 300ms - bridges the perceptual gap to mesh regen
+        const int Samples = 32;
+
+        for (int i = 0; i < ConfirmMax; i++)
+        {
+            if (_confirmSpawned[i] == default) continue;
+            float age = (float)(now - _confirmSpawned[i]).TotalSeconds;
+            if (age >= Lifetime) continue;
+
+            float u = age / Lifetime;
+            // Ring expands ~10% past the brush radius then fades. The
+            // expansion sells the "energy released" feel + makes the
+            // confirmation legible from any angle.
+            float radius = _confirmRadius[i] * (1f + u * 0.1f);
+            int alpha = (int)(220f * (1f - u));
+            var color = _confirmCarve[i]
+                ? System.Drawing.Color.FromArgb(alpha, 255, 165, 60)   // carve: orange
+                : System.Drawing.Color.FromArgb(alpha, 90, 230, 130);  // build: green
+            var center = _confirmCenter[i];
+
+            // Three great-circle rings - same projection trick as the
+            // preview, but solid bright dots for max visibility.
+            for (int p = 0; p < 3; p++)
+            for (int s = 0; s < Samples; s++)
+            {
+                float a = s / (float)Samples * MathF.PI * 2f;
+                float c = MathF.Cos(a) * radius;
+                float si = MathF.Sin(a) * radius;
+                var local = p switch
+                {
+                    0 => new Vector3(c, si, 0f),
+                    1 => new Vector3(c, 0f, si),
+                    _ => new Vector3(0f, c, si),
+                };
+                var world = center + local;
+                var clip = System.Numerics.Vector4.Transform(
+                    new System.Numerics.Vector4(world.X, world.Y, world.Z, 1f), vp);
+                if (clip.W <= 0.001f) continue;
+                float ndcX = clip.X / clip.W;
+                float ndcY = clip.Y / clip.W;
+                float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+                float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
+                if (screenX < -10 || screenX > viewportWidth + 10) continue;
+                if (screenY < -10 || screenY > viewportHeight + 10) continue;
+                _ui.Renderer.DrawRect(screenX - 2f, screenY - 2f, 4f, 4f, color);
+            }
+        }
+    }
+
     private void DrawGoldMotes(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null) return;
@@ -3357,6 +3440,7 @@ public class HudService : IDisposable
             DrawDustPuffs(viewportWidth, viewportHeight);
             DrawGoldMotes(viewportWidth, viewportHeight);
             DrawTerraformPreview(viewportWidth, viewportHeight);
+            DrawTerraformConfirms(viewportWidth, viewportHeight);
 
             // Floating damage numbers rise above the hit point - rendered
             // last so they sit on top of all world geometry.

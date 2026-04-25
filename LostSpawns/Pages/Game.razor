@@ -723,6 +723,12 @@
         // a few specks while a full sphere kicks up a cloud.
         Hud.ShowDustPuff(center, Math.Clamp(totalCells / 2, 4, 24));
 
+        // Bright ring pulse at the brush boundary - bridges the perceptual
+        // gap between click and the moment the mesh re-pipeline catches up.
+        // Without this, the carve reads as laggy on big spheres because the
+        // dust puff fades before the geometry visibly updates.
+        Hud.ShowTerraformConfirm(center, _terraformRadius, isCarve: carve);
+
         // Carve drops material into inventory: 1 unit per ~6 cells removed
         // (sphere of radius 2.5 ~ 65 cells -> ~10 drops). Aggregate by type
         // so a mixed dirt/stone carve credits both. Drops route through
