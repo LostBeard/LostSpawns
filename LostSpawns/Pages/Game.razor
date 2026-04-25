@@ -126,6 +126,7 @@
         Wildlife.OnContactAttack += HandleEntityContactAttack;
         Fires.OnCooked += HandleCooked;
         Fires.OnLowFuel += HandleLowFuel;
+        Save.OnSaved += HandleSaved;
         Ground.OnPickedUp += HandleGroundPickup;
         Stats.OnLevelUp += HandleLevelUpSound;
         Stats.OnHealed += HandleHealSound;
@@ -693,6 +694,8 @@
     {
         Hud.NotifyWarning("Fire is burning low - feed it Wood");
     }
+
+    private void HandleSaved() => Hud.Notify("Saved");
 
     private void HandleGroundPickup(LostSpawns.Services.InventoryItem payload)
     {
@@ -1446,6 +1449,7 @@
         Wildlife.OnContactAttack -= HandleEntityContactAttack;
         Fires.OnCooked -= HandleCooked;
         Fires.OnLowFuel -= HandleLowFuel;
+        Save.OnSaved -= HandleSaved;
         Ground.OnPickedUp -= HandleGroundPickup;
         Stats.OnLevelUp -= HandleLevelUpSound;
         Stats.OnHealed -= HandleHealSound;

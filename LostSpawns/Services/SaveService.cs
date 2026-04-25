@@ -56,6 +56,9 @@ public class SaveService
     /// Snapshot the full state to localStorage. Silent-fails on serialization or
     /// storage error so a transient hiccup doesn't crash the gameplay loop.
     /// </summary>
+    /// <summary>Fires after a successful SaveNow write so HUD can show a brief "Saved" toast.</summary>
+    public event Action? OnSaved;
+
     public void SaveNow(System.Numerics.Vector3 cameraPos, float yaw, float pitch)
     {
         try
@@ -117,6 +120,7 @@ public class SaveService
             string json = JsonSerializer.Serialize(state, _json);
             using var storage = _js.Get<Storage>("localStorage");
             storage.SetItem(SaveKey, json);
+            OnSaved?.Invoke();
         }
         catch (Exception ex)
         {
