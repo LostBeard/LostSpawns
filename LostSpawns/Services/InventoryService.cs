@@ -98,7 +98,7 @@ public class InventoryService
     /// </summary>
     public Dictionary<string, ItemEffect> Effects { get; } = new()
     {
-        ["consume.water"]    = new(Thirst: 0.30f, DisplayVerb: "Drank"),
+        ["consume.water"]    = new(Thirst: 0.30f, Warmth: -0.03f, DisplayVerb: "Drank"),
         ["consume.beans"]    = new(Hunger: 0.30f, DisplayVerb: "Ate"),
         ["med.bandage"]      = new(Health: 0.30f, DisplayVerb: "Applied"),
         ["med.painkiller"]   = new(Health: 0.20f, Stamina: 0.15f, DisplayVerb: "Took"),
@@ -240,7 +240,7 @@ public class InventoryService
         if (effect.Hunger  > 0) _stats.Hunger  = _stats.Hunger  + effect.Hunger;
         if (effect.Thirst  > 0) _stats.Thirst  = _stats.Thirst  + effect.Thirst;
         if (effect.Stamina > 0) _stats.Stamina = _stats.Stamina + effect.Stamina;
-        if (effect.Warmth  > 0) _stats.Temperature = _stats.Temperature + effect.Warmth;
+        if (effect.Warmth != 0) _stats.Temperature = _stats.Temperature + effect.Warmth;
 
         // Decrement count; clear slot when exhausted.
         if (item.Count > 1)
