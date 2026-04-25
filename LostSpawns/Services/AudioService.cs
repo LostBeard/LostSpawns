@@ -496,6 +496,36 @@ public class AudioService : IDisposable
     }
 
     /// <summary>
+    /// Short breathy gasp - a quick low triangle swell that reads as "out
+    /// of breath". Plays when the player's stamina crosses below the low
+    /// threshold and periodically while sprinting exhausted.
+    /// </summary>
+    public void PlayGasp()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            double t = _ctx.CurrentTime;
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "triangle";
+            osc.Frequency.SetValueAtTime(140f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(95f, t + 0.25);
+            gain.Gain.SetValueAtTime(0, t);
+            gain.Gain.LinearRampToValueAtTime(0.10f, t + 0.05);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.30);
+            osc.Connect(gain);
+            gain.Connect(Destination);
+            osc.Start();
+            osc.Stop((float)(t + 0.30));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayGasp failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Crow caw - two quick rising square blips, classic cartoon crow cry.
     /// Plays when a crow takes damage and flees.
     /// </summary>

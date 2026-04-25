@@ -241,6 +241,11 @@
     // player recovers past the low-HP threshold.
     private float _heartbeatTimer;
 
+    // Low-stamina gasp cadence + prev-frame latch so the first-cross gasp
+    // fires immediately, then repeats on a slow cadence while still low.
+    private float _gaspTimer;
+    private bool _wasStaminaLow;
+
     /// <summary>Seconds remaining on the post-respawn HP-regen grace window.</summary>
     private float _resurrectGraceTimer;
 
@@ -1329,6 +1334,35 @@
         else
         {
             _heartbeatTimer = 0f;
+        }
+
+        // Out-of-breath gasp. Fires once immediately on the crossing into
+        // low stamina (<15%) and repeats every ~2.5s while still below.
+        // Clears the latch as soon as the player's past 25% so they don't
+        // retrigger on tiny bounces.
+        bool staminaLow = Stats.Stamina < 0.15f && !Stats.IsDead;
+        if (staminaLow)
+        {
+            if (!_wasStaminaLow)
+            {
+                Audio.PlayGasp();
+                _gaspTimer = 2.5f;
+                _wasStaminaLow = true;
+            }
+            else
+            {
+                _gaspTimer -= deltaTime;
+                if (_gaspTimer <= 0f)
+                {
+                    Audio.PlayGasp();
+                    _gaspTimer = 2.5f;
+                }
+            }
+        }
+        else if (Stats.Stamina > 0.25f)
+        {
+            _wasStaminaLow = false;
+            _gaspTimer = 0f;
         }
 
         // Cricket chirps at night - jittered ~1-3s interval so the ambient
