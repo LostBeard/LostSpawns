@@ -225,6 +225,11 @@
     // Heartbeat cadence - pulses accelerate as HP drops, silences when the
     // player recovers past the low-HP threshold.
     private float _heartbeatTimer;
+
+    // Cricket chirps - random-jittered cadence while it's dark so the world
+    // doesn't sound completely silent at night.
+    private float _cricketTimer;
+    private readonly Random _cricketRng = new();
     private float _peakFallSpeed; // max |negative velocity| seen this airborne segment
     private const float Gravity = 20f;         // units/sec^2
     private const float JumpImpulse = 7f;      // units/sec; peak ~1.2 blocks
@@ -1115,6 +1120,23 @@
         else
         {
             _heartbeatTimer = 0f;
+        }
+
+        // Cricket chirps at night - jittered ~1-3s interval so the ambient
+        // doesn't sound like a clock. Only chirps when it's dark so the day
+        // phase stays silent of insects.
+        if (Time.IsNight)
+        {
+            _cricketTimer -= deltaTime;
+            if (_cricketTimer <= 0f)
+            {
+                Audio.PlayCricket();
+                _cricketTimer = 1.0f + (float)_cricketRng.NextDouble() * 2.0f;
+            }
+        }
+        else
+        {
+            _cricketTimer = 0f;
         }
 
         // Fire crackle: fires when the player is in a campfire's warmth

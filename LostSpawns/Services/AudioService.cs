@@ -360,6 +360,14 @@ public class AudioService : IDisposable
         }
     }
 
+    /// <summary>Short high-pitched chirp - used for night-ambient crickets.</summary>
+    public void PlayCricket()
+    {
+        var rng = new Random();
+        float f = 4000f + (float)rng.NextDouble() * 1200f;
+        PlayBeep(f, 0.04f, 0.025f, "square");
+    }
+
     /// <summary>Brief crackle/pop for a campfire ember. Random pitch per call.</summary>
     public void PlayFireCrackle()
     {
