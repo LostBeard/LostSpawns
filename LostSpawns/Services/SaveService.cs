@@ -86,6 +86,7 @@ public class SaveService
                 CrowKills = _stats.CrowKills,
                 WolfKills = _stats.WolfKills,
                 DeerKills = _stats.DeerKills,
+                BearKills = _stats.BearKills,
                 FirstKillAwarded = _stats.FirstKillAwarded,
                 FirstFireAwarded = _stats.FirstFireAwarded,
                 FirstCookAwarded = _stats.FirstCookAwarded,
@@ -183,7 +184,7 @@ public class SaveService
             _stats.SeedKillsFromSave(state.Kills, state.FirstKillAwarded);
             _stats.SeedKindKillsFromSave(
                 state.RabbitKills, state.BoarKills, state.CrowKills, state.WolfKills,
-                state.DeerKills);
+                state.DeerKills, state.BearKills);
             _stats.SeedAchievementsFromSave(
                 state.FirstFireAwarded, state.FirstCookAwarded,
                 state.FirstWolfAwarded, state.FirstSleepAwarded,
@@ -332,6 +333,7 @@ public class SaveService
         public int CrowKills { get; set; }
         public int WolfKills { get; set; }
         public int DeerKills { get; set; }
+        public int BearKills { get; set; }
         public bool FirstKillAwarded { get; set; }
         public bool FirstFireAwarded { get; set; }
         public bool FirstCookAwarded { get; set; }
