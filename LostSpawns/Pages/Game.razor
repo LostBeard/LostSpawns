@@ -1699,10 +1699,21 @@
 
         if (target is not null)
         {
-            bool killed = Wildlife.ApplyDamage(target, 0.7f, origin);
+            // Sneak shot: 2x damage on an unaware target. Bow is the
+            // precision weapon, so a clean ambush arrow should be
+            // devastating - drops most prey in one shot, halves a wolf
+            // or boar's HP from full.
+            bool sneakingNow = Input.KeysDown.Contains("ControlLeft") || Input.KeysDown.Contains("ControlRight");
+            float arrowDmg = 0.7f;
+            if (sneakingNow && target.Alert == LostSpawns.Services.AlertMode.Idle)
+            {
+                arrowDmg *= 2f;
+                Hud.NotifySuccess("Sneak shot!");
+            }
+            bool killed = Wildlife.ApplyDamage(target, arrowDmg, origin);
             Audio.PlayHit();
             Hud.ShowImpactMark(target.Position);
-            Hud.ShowDamageNumber(target.Position, 0.7f);
+            Hud.ShowDamageNumber(target.Position, arrowDmg);
             // Per-shot DegradeActiveToolWithFeedback already fired above so
             // the bow wears whether you hit or miss. No duplicate degrade
             // here - real archery the string stresses on every release.
