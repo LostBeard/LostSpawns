@@ -85,19 +85,29 @@ public class PlayerStatsService
         }
         bool fired = name switch
         {
-            "First Fire"  => Fire(ref _firstFire),
-            "First Cook"  => Fire(ref _firstCook),
-            "First Wolf"  => Fire(ref _firstWolf),
-            "First Sleep" => Fire(ref _firstSleep),
-            "Veteran"     => Fire(ref _veteran),
-            "Centurion"   => Fire(ref _centurion),
-            "Survivor"    => Fire(ref _survivor),
-            "Bowman"      => Fire(ref _bowman),
-            _             => false,
+            "First Fire"    => Fire(ref _firstFire),
+            "First Cook"    => Fire(ref _firstCook),
+            "First Wolf"    => Fire(ref _firstWolf),
+            "First Sleep"   => Fire(ref _firstSleep),
+            "Veteran"       => Fire(ref _veteran),
+            "Centurion"     => Fire(ref _centurion),
+            "Survivor"      => Fire(ref _survivor),
+            "Bowman"        => Fire(ref _bowman),
+            "Completionist" => Fire(ref _completionist),
+            _               => false,
         };
         if (!fired) return false;
         OnAchievement?.Invoke(name);
         OnStatsChanged?.Invoke();
+        // After any award, check if all the others are now done and fire
+        // the meta-achievement once. The recursion guard via the Completionist
+        // flag itself stops infinite loops.
+        if (!_completionist
+            && FirstKillAwarded && _firstFire && _firstCook && _firstWolf
+            && _firstSleep && _veteran && _centurion && _survivor && _bowman)
+        {
+            TryAwardAchievement("Completionist");
+        }
         return true;
     }
 
@@ -111,11 +121,13 @@ public class PlayerStatsService
     private bool _centurion;
     private bool _survivor;
     private bool _bowman;
+    private bool _completionist;
 
     public bool VeteranAwarded => _veteran;
     public bool CenturionAwarded => _centurion;
     public bool SurvivorAwarded => _survivor;
     public bool BowmanAwarded => _bowman;
+    public bool CompletionistAwarded => _completionist;
 
     /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
     public void RecordKill()
@@ -139,7 +151,7 @@ public class PlayerStatsService
     }
 
     /// <summary>Seed the other achievement flags from save. Bypasses OnAchievement so reloads don't spam.</summary>
-    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false)
+    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false)
     {
         _firstFire = fire;
         _firstCook = cook;
@@ -149,6 +161,7 @@ public class PlayerStatsService
         _centurion = centurion;
         _survivor = survivor;
         _bowman = bowman;
+        _completionist = completionist;
         OnStatsChanged?.Invoke();
     }
 
