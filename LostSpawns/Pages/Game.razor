@@ -116,6 +116,7 @@
         Input.OnDropPressed += HandleDropActive;
         Input.OnQuickEatPressed += HandleQuickEat;
         Input.OnQuickDrinkPressed += HandleQuickDrink;
+        Input.OnQuickHealPressed += HandleQuickHeal;
         Input.OnAchievementsTogglePressed += () => Hud.ToggleAchievements();
         Input.OnQuickSavePressed += HandleQuickSave;
 
@@ -1220,6 +1221,13 @@
             if (t <= 0f)
             {
                 Audio.PlayThunder();
+                // Camera shake on the thunder boom - lightning that's close
+                // enough to land within ~0.6s feels tactile, distant rumbles
+                // barely register. Random small yaw/pitch nudge mirrors the
+                // hit-shake pattern. Mouse-look re-centers on next input frame.
+                float shake = (float)(_hitShakeRng.NextDouble() - 0.5) * 1.5f;
+                Renderer.Camera.Yaw += shake;
+                Renderer.Camera.Pitch = Math.Clamp(Renderer.Camera.Pitch + shake * 0.7f, -89f, 89f);
                 _thunderQueue.RemoveAt(i);
             }
             else
@@ -1310,6 +1318,27 @@
             }
         }
         Hud.NotifyWarning("No water to drink");
+    }
+
+    private void HandleQuickHeal()
+    {
+        if (Hud.IsAnyMenuOpen) return;
+        if (Hud.IsLoading || Hud.IsDead) return;
+        // Single id today (med.bandage) - both Bandage and Field Bandage
+        // craft into the same item. If the consumable list grows (med.salve,
+        // etc) extend this priority array the same way HandleQuickEat does.
+        const string bandageId = "med.bandage";
+        for (int i = 0; i < LostSpawns.Services.InventoryService.HotbarSize; i++)
+        {
+            if (Inventory.Hotbar[i]?.Id == bandageId
+                && Inventory.TryUseSlot(fromHotbar: true, index: i)) return;
+        }
+        for (int i = 0; i < LostSpawns.Services.InventoryService.BackpackSize; i++)
+        {
+            if (Inventory.Backpack[i]?.Id == bandageId
+                && Inventory.TryUseSlot(fromHotbar: false, index: i)) return;
+        }
+        Hud.NotifyWarning("No bandage to use");
     }
 
     private void HandleQuickEat()
@@ -2388,6 +2417,7 @@
         Input.OnDropPressed -= HandleDropActive;
         Input.OnQuickEatPressed -= HandleQuickEat;
         Input.OnQuickDrinkPressed -= HandleQuickDrink;
+        Input.OnQuickHealPressed -= HandleQuickHeal;
         if (_doc is not null) _doc.OnVisibilityChange -= HandleVisibilityChange;
         _doc?.Dispose();
         _doc = null;

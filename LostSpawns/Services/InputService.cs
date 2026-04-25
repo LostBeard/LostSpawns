@@ -59,6 +59,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on T key press. Quick-drink the first water in inventory.</summary>
     public event Action? OnQuickDrinkPressed;
 
+    /// <summary>Fired on H key press. Quick-bandage the first medical item in inventory.</summary>
+    public event Action? OnQuickHealPressed;
+
     /// <summary>Fired on F3 key press. Debug HUD toggle.</summary>
     public event Action? OnDebugTogglePressed;
 
@@ -208,6 +211,12 @@ public class InputService : IAsyncDisposable
         // Quick-drink first water in inventory on T.
         if (!e.Repeat && (e.Key == "t" || e.Key == "T"))
             OnQuickDrinkPressed?.Invoke();
+
+        // Quick-bandage on H. Pulls the first medical item (bandage) and
+        // uses it. Parallel to G (eat) / T (drink) - emergency triage during
+        // a fight without opening the inventory screen.
+        if (!e.Repeat && (e.Key == "h" || e.Key == "H"))
+            OnQuickHealPressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
         if (!e.Repeat && e.Key == "F9")
