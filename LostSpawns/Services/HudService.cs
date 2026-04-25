@@ -728,8 +728,18 @@ public class HudService : IDisposable
         if (_craftingRows.Count == 0) return;
         for (int i = 0; i < _craftingRows.Count && i < _crafting.Recipes.Count; i++)
         {
-            bool can = _crafting.CanCraft(_crafting.Recipes[i]);
+            var recipe = _crafting.Recipes[i];
+            bool can = _crafting.CanCraft(recipe);
             _craftingRows[i].Button.Enabled = can;
+            // Level-gate hint: if the player is below RequiredLevel the
+            // status label surfaces "Needs Lv N" instead of a generic
+            // shortage message. Helps the player plan advancement.
+            if (!can && _stats.Level < recipe.RequiredLevel)
+            {
+                _craftingRows[i].Status.Text = $"Needs Lv {recipe.RequiredLevel}";
+                _craftingRows[i].Status.Color = System.Drawing.Color.FromArgb(
+                    220, 240, 170, 70);
+            }
         }
     }
 
