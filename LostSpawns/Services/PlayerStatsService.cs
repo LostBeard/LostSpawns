@@ -64,6 +64,23 @@ public class PlayerStatsService
     /// <summary>Total successful raw-to-cooked conversions across all lives.</summary>
     public int CookCount { get; private set; }
 
+    /// <summary>Total deaths across all lives. Bumped from HudService on OnDied.</summary>
+    public int Deaths { get; private set; }
+
+    /// <summary>Increment death count + check for the Resilient achievement at 3.</summary>
+    public void RecordDeath()
+    {
+        Deaths++;
+        OnStatsChanged?.Invoke();
+        if (Deaths == 3) TryAwardAchievement("Resilient");
+    }
+
+    public void SeedDeathsFromSave(int count)
+    {
+        Deaths = count;
+        OnStatsChanged?.Invoke();
+    }
+
     /// <summary>Increment cook count + check for the Gourmet achievement at 10.</summary>
     public void RecordCook()
     {
@@ -116,6 +133,7 @@ public class PlayerStatsService
             "Bowman"        => Fire(ref _bowman),
             "Hunter"        => Fire(ref _hunter),
             "Gourmet"       => Fire(ref _gourmet),
+            "Resilient"     => Fire(ref _resilient),
             "Completionist" => Fire(ref _completionist),
             _               => false,
         };
@@ -128,7 +146,7 @@ public class PlayerStatsService
         if (!_completionist
             && FirstKillAwarded && _firstFire && _firstCook && _firstWolf
             && _firstSleep && _veteran && _centurion && _survivor && _bowman
-            && _hunter && _gourmet)
+            && _hunter && _gourmet && _resilient)
         {
             TryAwardAchievement("Completionist");
         }
@@ -147,6 +165,7 @@ public class PlayerStatsService
     private bool _bowman;
     private bool _hunter;
     private bool _gourmet;
+    private bool _resilient;
     private bool _completionist;
 
     public bool VeteranAwarded => _veteran;
@@ -155,6 +174,7 @@ public class PlayerStatsService
     public bool BowmanAwarded => _bowman;
     public bool HunterAwarded => _hunter;
     public bool GourmetAwarded => _gourmet;
+    public bool ResilientAwarded => _resilient;
     public bool CompletionistAwarded => _completionist;
 
     /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
@@ -179,7 +199,7 @@ public class PlayerStatsService
     }
 
     /// <summary>Seed the other achievement flags from save. Bypasses OnAchievement so reloads don't spam.</summary>
-    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false, bool hunter = false, bool gourmet = false)
+    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false, bool hunter = false, bool gourmet = false, bool resilient = false)
     {
         _firstFire = fire;
         _firstCook = cook;
@@ -192,6 +212,7 @@ public class PlayerStatsService
         _completionist = completionist;
         _hunter = hunter;
         _gourmet = gourmet;
+        _resilient = resilient;
         OnStatsChanged?.Invoke();
     }
 
