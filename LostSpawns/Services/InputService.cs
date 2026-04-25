@@ -56,6 +56,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on F3 key press. Debug HUD toggle.</summary>
     public event Action? OnDebugTogglePressed;
 
+    /// <summary>Fired on M key press. Mute / unmute audio.</summary>
+    public event Action? OnMuteTogglePressed;
+
     /// <summary>Fired on left mouse-down while pointer is locked (in-game). Break-block action.</summary>
     public event Action? OnLeftClickPressed;
 
@@ -158,6 +161,10 @@ public class InputService : IAsyncDisposable
         // Debug HUD toggle on F3 - Minecraft convention.
         if (!e.Repeat && e.Key == "F3")
             OnDebugTogglePressed?.Invoke();
+
+        // Mute toggle on M.
+        if (!e.Repeat && (e.Key == "m" || e.Key == "M"))
+            OnMuteTogglePressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
         if (!e.Repeat && e.Key == "F9")

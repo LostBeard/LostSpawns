@@ -111,6 +111,7 @@
         Input.OnFeedFirePressed += HandleFeedFire;
         Input.OnSleepPressed += HandleSleep;
         Input.OnDebugTogglePressed += HandleDebugToggle;
+        Input.OnMuteTogglePressed += HandleMuteToggle;
         Input.OnInteractPressed += HandleInteract;
         Input.OnLeftClickPressed += HandleInteract;       // L-click = break, same as E
         Input.OnRightClickPressed += HandlePlaceBlock;    // R-click = place active hotbar material
@@ -775,6 +776,27 @@
 
     private void HandleDebugToggle() => Hud.ToggleDebug();
 
+    private float _preMuteVolume = 1f;
+    private bool _muted;
+    private void HandleMuteToggle()
+    {
+        if (_muted)
+        {
+            Audio.MasterVolume = _preMuteVolume;
+            Settings.SaveVolume(_preMuteVolume);
+            Hud.Notify("Audio unmuted");
+            _muted = false;
+        }
+        else
+        {
+            _preMuteVolume = Settings.MasterVolume;
+            Audio.MasterVolume = 0f;
+            Settings.SaveVolume(0f);
+            Hud.Notify("Audio muted");
+            _muted = true;
+        }
+    }
+
     /// <summary>Sum the Count of every slot holding the given item id.</summary>
     private int CountInventory(string id)
     {
@@ -1392,6 +1414,7 @@
         Input.OnFeedFirePressed -= HandleFeedFire;
         Input.OnSleepPressed -= HandleSleep;
         Input.OnDebugTogglePressed -= HandleDebugToggle;
+        Input.OnMuteTogglePressed -= HandleMuteToggle;
         Input.OnInteractPressed -= HandleInteract;
         Input.OnLeftClickPressed -= HandleInteract;
         Input.OnRightClickPressed -= HandlePlaceBlock;
