@@ -234,6 +234,8 @@
     // time so crackles don't land on a clock.
     private float _crackleTimer;
     private readonly Random _crackleRng = new();
+    private float _distantHowlTimer;
+    private readonly Random _howlRng = new();
 
     // Heartbeat cadence - pulses accelerate as HP drops, silences when the
     // player recovers past the low-HP threshold.
@@ -1335,10 +1337,25 @@
                 Audio.PlayCricket();
                 _cricketTimer = 1.0f + (float)_cricketRng.NextDouble() * 2.0f;
             }
+
+            // Distant wolf howls at sparse random intervals. Purely
+            // atmospheric - doesn't spawn a wolf, just announces that they're
+            // out there. 15-45s between howls so the night doesn't feel on a
+            // loop. Daytime silences this so the world doesn't howl at noon.
+            _distantHowlTimer -= deltaTime;
+            if (_distantHowlTimer <= 0f)
+            {
+                Audio.PlayWolfHowl();
+                _distantHowlTimer = 15f + (float)_howlRng.NextDouble() * 30f;
+            }
         }
         else
         {
             _cricketTimer = 0f;
+            // Rearm the howl timer on first night-tick so dawn doesn't cue a
+            // stale howl. A small first-howl delay gives the player a quiet
+            // moment to notice dusk before the first cry.
+            _distantHowlTimer = 8f + (float)_howlRng.NextDouble() * 12f;
         }
 
         // Fire crackle: fires when the player is in a campfire's warmth
