@@ -459,6 +459,37 @@ public class AudioService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Soft fabric-tearing audio - plays when a bandage is applied. Shorter
+    /// than PlayConsume and distinctly noisier (sawtooth -> noise) so it
+    /// reads as "ripping cloth" rather than "drinking water".
+    /// </summary>
+    public void PlayBandageRip()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            // Quick downward sawtooth glide approximates the ripping pitch.
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "sawtooth";
+            double t = _ctx.CurrentTime;
+            osc.Frequency.SetValueAtTime(260f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(140f, t + 0.18);
+            gain.Gain.SetValueAtTime(0f, t);
+            gain.Gain.LinearRampToValueAtTime(0.10f, t + 0.02);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.20);
+            osc.Connect(gain);
+            gain.Connect(Destination);
+            osc.Start();
+            osc.Stop((float)(t + 0.20));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayBandageRip failed: {ex.Message}");
+        }
+    }
+
     /// <summary>Short high-pitched chirp - used for night-ambient crickets.</summary>
     public void PlayCricket()
     {

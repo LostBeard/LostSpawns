@@ -1197,6 +1197,10 @@
         // doesn't carry the item Id.
         if (name == "Bandage" || name == "Painkiller")
         {
+            // Distinct fabric-rip audio whether or not there was an active
+            // bleed - the player just used a bandage and that's the sound
+            // a bandage makes.
+            Audio.PlayBandageRip();
             if (Stats.BleedSecondsRemaining > 0)
             {
                 Stats.ClearBleed();
