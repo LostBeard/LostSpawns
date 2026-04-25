@@ -90,6 +90,37 @@ public class HudService : IDisposable
         _impactSpawned[_impactIdx] = DateTime.UtcNow;
         _impactIdx = (_impactIdx + 1) % ImpactMax;
     }
+
+    // Blood splatter ring buffer. Each splatter is 4 particles that drift
+    // diagonally outward + fall, fading over ~800ms. Spawned from
+    // ShowBloodSplatter when an entity takes a non-fatal hit.
+    private const int BloodMax = 12;
+    private readonly System.Numerics.Vector3[] _bloodPos = new System.Numerics.Vector3[BloodMax];
+    private readonly System.Numerics.Vector3[] _bloodVel = new System.Numerics.Vector3[BloodMax];
+    private readonly DateTime[] _bloodSpawned = new DateTime[BloodMax];
+    private int _bloodIdx;
+    private readonly Random _bloodRng = new();
+
+    /// <summary>
+    /// Spawn 3 blood droplets at the given world position. Each gets a
+    /// randomized outward/upward velocity so the splatter reads as organic
+    /// spray rather than a particle fountain.
+    /// </summary>
+    public void ShowBloodSplatter(System.Numerics.Vector3 worldPos)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            double angle = _bloodRng.NextDouble() * Math.PI * 2;
+            float speed = 1.8f + (float)_bloodRng.NextDouble() * 1.2f;
+            _bloodPos[_bloodIdx] = worldPos;
+            _bloodVel[_bloodIdx] = new System.Numerics.Vector3(
+                (float)Math.Cos(angle) * speed,
+                1.5f + (float)_bloodRng.NextDouble() * 0.8f,
+                (float)Math.Sin(angle) * speed);
+            _bloodSpawned[_bloodIdx] = DateTime.UtcNow;
+            _bloodIdx = (_bloodIdx + 1) % BloodMax;
+        }
+    }
     private bool _rainSeeded;
     private readonly Random _rainRng = new();
     private RenderService? _renderer;
@@ -1520,6 +1551,45 @@ public class HudService : IDisposable
         }
     }
 
+    private void DrawBloodSplatters(int viewportWidth, int viewportHeight)
+    {
+        if (_renderer == null) return;
+        float aspect = (float)viewportWidth / viewportHeight;
+        var vp = _renderer.Camera.GetVpMatrix(aspect);
+        var now = DateTime.UtcNow;
+        const float Lifetime = 0.8f;
+        for (int i = 0; i < BloodMax; i++)
+        {
+            if (_bloodSpawned[i] == default) continue;
+            float age = (float)(now - _bloodSpawned[i]).TotalSeconds;
+            if (age >= Lifetime) continue;
+
+            // Integrate position: initial splatter + vel*t + gravity*t^2.
+            var p = _bloodPos[i];
+            var v = _bloodVel[i];
+            float wx = p.X + v.X * age;
+            float wy = p.Y + v.Y * age - 9f * age * age * 0.5f;
+            float wz = p.Z + v.Z * age;
+
+            var clip = System.Numerics.Vector4.Transform(
+                new System.Numerics.Vector4(wx, wy, wz, 1f), vp);
+            if (clip.W <= 0.001f) continue;
+            float ndcX = clip.X / clip.W;
+            float ndcY = clip.Y / clip.W;
+            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
+            if (screenX < -10 || screenX > viewportWidth + 10) continue;
+            if (screenY < -10 || screenY > viewportHeight + 10) continue;
+
+            float life = age / Lifetime;
+            int alpha = (int)(220 * (1f - life));
+            float size = Math.Clamp(8f / MathF.Max(0.1f, clip.W), 2f, 6f);
+            _ui.Renderer.DrawRect(
+                screenX - size * 0.5f, screenY - size * 0.5f, size, size,
+                System.Drawing.Color.FromArgb(alpha, 160, 20, 20));
+        }
+    }
+
     private void DrawEntityBillboards(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null || _entities.Entities.Count == 0) return;
@@ -2220,6 +2290,11 @@ public class HudService : IDisposable
             // Arrow impact marks render on top of the entity layer so the
             // white cross is always visible even mid-billboard.
             DrawImpactMarks(viewportWidth, viewportHeight);
+
+            // Blood splatter particles - small dark red specks that
+            // arc out + fall with gravity. Renders behind damage numbers so
+            // the number stays legible on top of the splatter.
+            DrawBloodSplatters(viewportWidth, viewportHeight);
 
             // Floating damage numbers rise above the hit point - rendered
             // last so they sit on top of all world geometry.

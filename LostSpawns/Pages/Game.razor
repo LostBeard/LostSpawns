@@ -747,6 +747,11 @@
             case LostSpawns.Services.EntityKind.Wolf: Audio.PlayWolfSnarl(); break;
             case LostSpawns.Services.EntityKind.Crow: Audio.PlayCrowCaw();  break;
         }
+        // Blood splatter particles at the chest anchor (matches damage
+        // number + billboard offsets). Purely cosmetic - reads as a "solid
+        // hit landed" cue.
+        Hud.ShowBloodSplatter(new System.Numerics.Vector3(
+            e.Position.X, e.Position.Y + 0.8f, e.Position.Z));
     }
 
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
