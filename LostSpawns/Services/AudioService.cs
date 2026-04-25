@@ -755,6 +755,45 @@ public class AudioService : IDisposable
     private GainNode? _windGain;
     private float _windPhase;
 
+    // Persistent "danger drone" - slow low pulsating bass that fades in
+    // when something is actively hunting the player. Started lazily on
+    // the first UpdateDangerDrone call with intensity > 0.
+    private OscillatorNode? _dangerOsc;
+    private GainNode? _dangerGain;
+
+    /// <summary>
+    /// Update the danger drone gain. Intensity [0,1] - 0 silences it,
+    /// 1.0 puts it at full bass-drone. Game.razor pushes this from
+    /// "is any aggro entity within combat range" tally.
+    /// </summary>
+    public void UpdateDangerDrone(float intensity)
+    {
+        if (_ctx is null) return;
+        try
+        {
+            if (intensity > 0.02f && _dangerOsc is null)
+            {
+                _dangerOsc = _ctx.CreateOscillator();
+                _dangerGain = _ctx.CreateGain();
+                _dangerOsc.Type = "sine";
+                _dangerOsc.Frequency.SetValueAtTime(48f, _ctx.CurrentTime);
+                _dangerGain.Gain.SetValueAtTime(0f, _ctx.CurrentTime);
+                _dangerOsc.Connect(_dangerGain);
+                _dangerGain.Connect(_ctx.Destination);
+                _dangerOsc.Start();
+            }
+            if (_dangerGain is not null)
+            {
+                float target = Math.Clamp(intensity * 0.06f, 0f, 0.06f);
+                _dangerGain.Gain.LinearRampToValueAtTime(target, _ctx.CurrentTime + 0.4);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] UpdateDangerDrone failed: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Update the wind loop. Intensity [0,1] targets gain; phase drives a
     /// slow 0.15 Hz sine modulation so the wind gusts. Call every frame

@@ -1756,6 +1756,19 @@
         Time.Tick(deltaTime);
         Weather.Tick(deltaTime);
         Audio.UpdateRainAmbient(Weather.RainIntensity);
+        // Danger drone: ramp up when any hostile is charging within ~20
+        // blocks. Multiple chargers stack the intensity. Bears count
+        // double since they're the apex threat.
+        float dangerIntensity = 0f;
+        foreach (var ent in Wildlife.Entities)
+        {
+            if (ent.Alert != LostSpawns.Services.AlertMode.Charge) continue;
+            float ddx = ent.Position.X - Renderer.Camera.Position.X;
+            float ddz = ent.Position.Z - Renderer.Camera.Position.Z;
+            if (ddx * ddx + ddz * ddz > 20f * 20f) continue;
+            dangerIntensity += ent.Kind == LostSpawns.Services.EntityKind.Bear ? 2f : 1f;
+        }
+        Audio.UpdateDangerDrone(MathF.Min(dangerIntensity / 3f, 1f));
         TickThunderQueue(deltaTime);
 
         // Rainwater collection: while it's actively raining hard, fill a
