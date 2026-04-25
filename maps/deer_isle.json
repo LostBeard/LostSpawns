@@ -1,0 +1,20 @@
+{
+    "name": "Deer Isle",
+    "description": "Coastal Maine terrain inspired by Deer Isle, Hancock County",
+    "gridSize": 1024,
+    "cellSizeMeters": 15.62,
+    "totalSizeKm": 16.0,
+    "seaLevelMeters": 0,
+    "minElevation": -1.4,
+    "maxElevation": 76.7,
+    "waterPercent": 58.1,
+    "source": "Copernicus DEM 30m (ESA)",
+    "bounds": {
+        "south": 44.153,
+        "north": 44.297,
+        "west": -68.773,
+        "east": -68.577
+    },
+    "realLocation": "Deer Isle & Stonington, Hancock County, Maine, USA",
+    "format": "raw Int16 little-endian, row-major, north-to-south"
+}

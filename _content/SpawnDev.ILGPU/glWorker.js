@@ -28,6 +28,15 @@ self.onmessage = function (e) {
             if (!gl) {
                 console.error('[GLWorker] INIT FAILED: Could not create WebGL2 context');
             }
+            // Monitor context loss/restoration
+            canvas.addEventListener('webglcontextlost', function (ev) {
+                ev.preventDefault(); // allows potential context restoration
+                self.postMessage({ type: 'contextlost' });
+            });
+            canvas.addEventListener('webglcontextrestored', function () {
+                gl = canvas.getContext('webgl2');
+                self.postMessage({ type: 'contextrestored' });
+            });
             break;
 
         case 'allocBuffer':
@@ -57,6 +66,10 @@ self.onmessage = function (e) {
                     error: err.message + '\n' + err.stack
                 });
             }
+            break;
+
+        case 'blitBuffer':
+            handleBlitBuffer(msg);
             break;
     }
 };
@@ -229,6 +242,14 @@ function dispatchKernel(msg) {
     const dimHLoc = getUniformLoc(cached, 'u_dimHeight');
     if (dimHLoc) gl.uniform1i(dimHLoc, dimY);
 
+    // Grid/group dimension uniforms (for Grid.IdxX/Y, Group.IdxX, Group.DimX)
+    const groupDimXLoc = getUniformLoc(cached, 'u_groupDimX');
+    if (groupDimXLoc) gl.uniform1i(groupDimXLoc, msg.groupDimX || 1);
+    const gridDimXLoc = getUniformLoc(cached, 'u_gridDimX');
+    if (gridDimXLoc) gl.uniform1i(gridDimXLoc, msg.gridDimX || 1);
+    const gridDimYLoc = getUniformLoc(cached, 'u_gridDimY');
+    if (gridDimYLoc) gl.uniform1i(gridDimYLoc, msg.gridDimY || 1);
+
     // ---- Step 3: Bind parameters ----
     let textureUnit = 0;
     const bufferParamMap = [];  // Track which params map to which bufferIds
@@ -259,6 +280,12 @@ function dispatchKernel(msg) {
                 if (lenLoc !== null) gl.uniform1i(lenLoc, p.elementCount | 0);
             }
 
+            // SubView element offset — added to texelFetch indices when buffer is a SubView
+            if (p.elementOffset !== undefined && p.elementOffset !== 0) {
+                const offsetLoc = getUniformLoc(cached, 'u_param' + p.paramIndex + '_offset');
+                if (offsetLoc !== null) gl.uniform1i(offsetLoc, p.elementOffset | 0);
+            }
+
             // Stride uniforms for ArrayView2D/3D
             if (strides && strides[p.paramIndex]) {
                 const dims = strides[p.paramIndex];
@@ -274,12 +301,16 @@ function dispatchKernel(msg) {
             const uniformName = 'u_param' + p.paramIndex;
             const loc = getUniformLoc(cached, uniformName);
             if (loc !== null) {
-                if (p.scalarType === 'int' || p.scalarType === 'bool' || p.scalarType === 'byte') {
+                if (p.scalarType === 'int' || p.scalarType === 'bool' || p.scalarType === 'byte'
+                    || p.scalarType === 'sbyte' || p.scalarType === 'short' || p.scalarType === 'ushort'
+                    || p.scalarType === 'long') {
                     gl.uniform1i(loc, p.value | 0);
-                } else if (p.scalarType === 'uint') {
+                } else if (p.scalarType === 'uint' || p.scalarType === 'ulong') {
                     gl.uniform1ui(loc, p.value >>> 0);
                 } else if (p.scalarType === 'float' || p.scalarType === 'double') {
                     gl.uniform1f(loc, p.value);
+                } else {
+                    console.warn('[GLWorker] Unknown scalar type:', p.scalarType, 'param:', p.paramIndex);
                 }
             }
         } else if (p.kind === 'scalar_emu64') {
@@ -386,6 +417,27 @@ function dispatchKernel(msg) {
         for (let oi = 0; oi < outputs.length; oi++) {
             const out = outputs[oi];
 
+            // Atomic vote: each thread emitted its increment amount; sum all and add to buffer[element].
+            // This emulates Atomic.Add without true GPU atomics (WebGL2 vertex shader limitation).
+            if (out.isAtomicVote) {
+                const entry = bufferRegistry[out.bufferId];
+                if (!entry) continue;
+                const destView = entry.data;
+                const writeOffset = out.writeByteOffset;
+                // Sum all per-vertex vote values (stored as int in the TF buffer)
+                const int32TF = new Int32Array(readbackFloat.buffer);
+                let sum = 0;
+                for (let v = 0; v < totalVertices; v++) {
+                    sum += int32TF[(v * strideBytes + out.outputIndex * 4) >> 2];
+                }
+                // Accumulate (not replace) the target buffer element using Int32 arithmetic
+                const destInt32 = new Int32Array(destView.buffer);
+                const destIdx = writeOffset >> 2;
+                destInt32[destIdx] = destInt32[destIdx] + sum;
+                modifiedBufferIds.add(out.bufferId);
+                continue;
+            }
+
             // Skip 'hi' emulated varyings (read with their 'lo' counterpart)
             if (out.isEmulated && out.emulatedSuffix === 'hi') continue;
 
@@ -434,15 +486,37 @@ function dispatchKernel(msg) {
                 const storeCount = out.storeCount || 1;
                 const storeSlot = out.storeSlot >= 0 ? out.storeSlot : 0;
                 const bytesPerVertex = storeCount * 4;
-                const elemCount = Math.min(totalVertices, Math.floor(out.writeLengthBytes / bytesPerVertex));
-                for (let v = 0; v < elemCount; v++) {
-                    const srcOff = v * strideBytes + out.outputIndex * 4;
-                    const dstOff = writeOffset + v * bytesPerVertex + storeSlot * 4;
-                    if (srcOff + 4 <= readbackBytes.length) {
-                        destView[dstOff] = readbackBytes[srcOff];
-                        destView[dstOff + 1] = readbackBytes[srcOff + 1];
-                        destView[dstOff + 2] = readbackBytes[srcOff + 2];
-                        destView[dstOff + 3] = readbackBytes[srcOff + 3];
+
+                // Sub-word packing: TF outputs one i32 per element, but the destination
+                // buffer stores packed sub-word values (e.g. 2 shorts per i32).
+                // Pack by reading each TF i32 and writing only the sub-word portion.
+                if (out.subWordElementSize && out.subWordElementSize < 4) {
+                    const swSize = out.subWordElementSize;
+                    const elemCount = Math.min(totalVertices, Math.floor(out.writeLengthBytes / swSize));
+                    const int32TF = new Int32Array(readbackFloat.buffer);
+                    for (let v = 0; v < elemCount; v++) {
+                        const srcIdx = (v * strideBytes + out.outputIndex * 4) >> 2;
+                        const val = int32TF[srcIdx];
+                        const dstOff = writeOffset + v * swSize;
+                        if (swSize === 2) {
+                            // Pack as 16-bit (little-endian)
+                            destView[dstOff] = val & 0xFF;
+                            destView[dstOff + 1] = (val >> 8) & 0xFF;
+                        } else if (swSize === 1) {
+                            destView[dstOff] = val & 0xFF;
+                        }
+                    }
+                } else {
+                    const elemCount = Math.min(totalVertices, Math.floor(out.writeLengthBytes / bytesPerVertex));
+                    for (let v = 0; v < elemCount; v++) {
+                        const srcOff = v * strideBytes + out.outputIndex * 4;
+                        const dstOff = writeOffset + v * bytesPerVertex + storeSlot * 4;
+                        if (srcOff + 4 <= readbackBytes.length) {
+                            destView[dstOff] = readbackBytes[srcOff];
+                            destView[dstOff + 1] = readbackBytes[srcOff + 1];
+                            destView[dstOff + 2] = readbackBytes[srcOff + 2];
+                            destView[dstOff + 3] = readbackBytes[srcOff + 3];
+                        }
                     }
                 }
             }
@@ -457,6 +531,7 @@ function dispatchKernel(msg) {
                 uploadTextureData(entry.texture, entry);
             }
         }
+
     }
 
     gl.useProgram(null);
@@ -466,4 +541,25 @@ function dispatchKernel(msg) {
         message: { done: true, dispatchId },
         transferList: []
     };
+}
+
+// ---- ImageBitmap blit ----
+// Creates an ImageBitmap from an RGBA pixel buffer and transfers it to the main thread.
+// The browser compositor manages the bitmap as a GPU texture — no pixel copy on transfer.
+function handleBlitBuffer(msg) {
+    const { bufferId, width, height, requestId } = msg;
+    const entry = bufferRegistry[bufferId];
+    if (!entry) {
+        self.postMessage({ type: 'blitResult', requestId, error: 'unknown bufferId' });
+        return;
+    }
+    // entry.data is always current after dispatch (TF readback keeps it in sync).
+    // Wrap as Uint8ClampedArray for ImageData — no copy, just a typed view.
+    const rgba = new Uint8ClampedArray(entry.data.buffer, 0, width * height * 4);
+    const imageData = new ImageData(rgba, width, height);
+    createImageBitmap(imageData).then(function(bitmap) {
+        self.postMessage({ type: 'blitResult', requestId, bitmap }, [bitmap]);
+    }).catch(function(err) {
+        self.postMessage({ type: 'blitResult', requestId, error: err.message });
+    });
 }
