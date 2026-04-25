@@ -1337,6 +1337,11 @@
         if (!placed) return;
 
         ConsumeBlockActionCost();
+        // Place audio: tool-family sound (chop for wood/leaves, mine for
+        // stone, generic thud otherwise). Different from chop because the
+        // PlayBeep frequency is lower for the "thunk" feel.
+        Audio.PlayBeep(blockType.Value == LostSpawns.Models.BlockType.Stone ? 90f : 140f,
+                       0.10f, 0.18f, "square");
 
         // Decrement active hotbar slot. Clearing at 0 leaves the slot empty so the
         // player can't keep placing out of thin air.
