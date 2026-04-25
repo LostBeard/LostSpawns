@@ -535,6 +535,8 @@ public class HudService : IDisposable
         SyncInventoryToHud();
     }
 
+    private UILabel? _pauseStatsLabel;
+
     private UIElement BuildPauseMenu()
     {
         var anchor = new UIAnchorPanel
@@ -547,7 +549,7 @@ public class HudService : IDisposable
         var panel = new UIPanel
         {
             Width = 280,
-            Height = 280,
+            Height = 330,
             CornerRadius = 8,
         };
 
@@ -599,14 +601,42 @@ public class HudService : IDisposable
         quit.OnClick = () => OnQuitToMenuClicked?.Invoke();
         panel.AddChild(quit);
 
+        // Mini stats block at bottom of the pause panel so the player gets
+        // a quick run overview without dismissing the menu. Refreshed in
+        // ShowPauseMenu so the values are fresh on every open.
+        _pauseStatsLabel = new UILabel
+        {
+            Text = "",
+            FontSize = FontSize.Caption,
+            Width = 260,
+            Height = 60,
+            X = 10,
+            Y = 250,
+            Align = TextAlign.Center,
+            Color = System.Drawing.Color.FromArgb(220, 210, 220, 230),
+        };
+        panel.AddChild(_pauseStatsLabel);
+
         anchor.AddAnchored(panel, Anchor.Center);
         return anchor;
+    }
+
+    private void RefreshPauseStats()
+    {
+        if (_pauseStatsLabel is null) return;
+        int s = (int)_stats.PlayTimeSeconds;
+        string time = $"{s / 3600:D2}:{(s % 3600) / 60:D2}:{s % 60:D2}";
+        _pauseStatsLabel.Text =
+            $"Day {_worldTime.DayNumber}  Lv {_stats.Level}  XP {_stats.Experience}\n" +
+            $"Kills {_stats.Kills}  Deaths {_stats.Deaths}  Best Combo {_stats.BestCombo}x\n" +
+            $"Playtime {time}";
     }
 
     /// <summary>Push the pause menu onto the screen stack (dims HUD behind it).</summary>
     public void ShowPauseMenu()
     {
         if (_ui.Screens.ActiveScreen == "pause") return;
+        RefreshPauseStats();
         _ui.Screens.Push("pause");
     }
 
