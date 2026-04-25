@@ -196,6 +196,28 @@
                 Renderer.Camera.Position.Z + fireXZ.Z));
         }
 
+        // Forage scatter: drop a handful of mushrooms + berries randomly
+        // around spawn so the player has a non-combat food source on
+        // first contact with the world. Pickup auto-fires when walked
+        // over (existing GroundItemService.Tick logic).
+        if (Ground.Items.Count == 0)
+        {
+            var foragerRng = new Random();
+            for (int i = 0; i < 6; i++)
+            {
+                float angle = (float)(foragerRng.NextDouble() * Math.PI * 2);
+                float dist = 8f + (float)foragerRng.NextDouble() * 30f;
+                float fx = Renderer.Camera.Position.X + MathF.Cos(angle) * dist;
+                float fz = Renderer.Camera.Position.Z + MathF.Sin(angle) * dist;
+                int fy = World.GetHeightAt(fx, fz) + 1;
+                bool isMushroom = foragerRng.NextDouble() < 0.5;
+                var item = isMushroom
+                    ? new LostSpawns.Services.InventoryItem("food.mushroom", "Mushroom", 1, LostSpawns.Services.ItemCategory.Food)
+                    : new LostSpawns.Services.InventoryItem("food.berry",    "Berries",  1, LostSpawns.Services.ItemCategory.Food);
+                Ground.Drop(new System.Numerics.Vector3(fx, fy, fz), item);
+            }
+        }
+
         // Restore save if one exists - applies stats / inventory / time / clock
         // and teleports the camera to the saved position. Blocks lost on reload
         // until world-diff persistence lands.

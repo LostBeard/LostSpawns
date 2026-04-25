@@ -113,6 +113,11 @@ public class InventoryService
         ["food.rabbit_meat_cooked"] = new(Hunger: 0.35f, Health: 0.05f, Warmth: 0.05f, DisplayVerb: "Ate"),
         ["food.boar_meat_cooked"]   = new(Hunger: 0.55f, Health: 0.10f, Warmth: 0.08f, DisplayVerb: "Ate"),
         ["food.deer_meat_cooked"]   = new(Hunger: 0.65f, Health: 0.12f, Warmth: 0.10f, DisplayVerb: "Ate"),
+        // Foraged mushrooms: small free-find hunger bump, no cooking
+        // needed. Less calorie-dense than meat but always safe to eat.
+        ["food.mushroom"]           = new(Hunger: 0.12f, DisplayVerb: "Foraged"),
+        // Berries: thirst bump + tiny hunger. Found near forest edges.
+        ["food.berry"]              = new(Hunger: 0.08f, Thirst: 0.10f, DisplayVerb: "Snacked on"),
     };
 
     /// <summary>Fired whenever any slot changes (set, clear, move).</summary>
