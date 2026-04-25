@@ -620,7 +620,21 @@
         bool added = Inventory.TryAdd(drop);
         if (added) Hud.NotifySuccess($"+1 {drop.Name}");
         else Hud.NotifyWarning($"Inventory full - {drop.Name} dropped");
+
+        // Wood chopping bonus: 25% chance to also drop a Leaves alongside
+        // the wood log. Felling a tree in real life yields bark + leaves
+        // both; this keeps the Field Bandage economy ticking even for
+        // players who only chop wood and never clear leaves blocks.
+        if (brokenType == LostSpawns.Models.BlockType.Wood && _leafRng.NextDouble() < 0.25)
+        {
+            var bonus = new LostSpawns.Services.InventoryItem(
+                "material.leaves", "Leaves", 1, LostSpawns.Services.ItemCategory.Material);
+            if (Inventory.TryAdd(bonus))
+                Hud.NotifySuccess("+1 Leaves (bonus)");
+        }
     }
+
+    private readonly Random _leafRng = new();
 
     /// <summary>
     /// True if the active item belongs to the same tool family as the required
