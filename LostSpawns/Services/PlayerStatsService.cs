@@ -406,6 +406,14 @@ public class PlayerStatsService
     /// <summary>Clear any active bleed (bandage / painkiller use).</summary>
     public void ClearBleed() => BleedSecondsRemaining = 0;
 
+    /// <summary>Reduce active bleed by `seconds` (clamped at 0). Used by
+    /// hot food / minor remedies that help but don't fully cure.</summary>
+    public void ReduceBleed(float seconds)
+    {
+        if (seconds <= 0) return;
+        BleedSecondsRemaining = MathF.Max(0, BleedSecondsRemaining - seconds);
+    }
+
     /// <summary>
     /// How fast body temperature drifts toward its ambient target. Lower = slower
     /// response; warm clothing / gear effectively reduces this on the consuming side.

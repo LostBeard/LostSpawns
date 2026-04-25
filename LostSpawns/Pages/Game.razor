@@ -1113,6 +1113,14 @@
                 Stats.TryAwardAchievement("First Aid");
             }
         }
+        // Hot meals reduce active bleed by 1s - the warm food helps the
+        // body close the wound. Doesn't fully clear bleed (that's
+        // bandage/painkiller's job) but nibbling cooked meat through a
+        // fight is now meaningful triage.
+        else if (name.EndsWith(" (Cooked)") && Stats.BleedSecondsRemaining > 0)
+        {
+            Stats.ReduceBleed(1.0f);
+        }
     }
 
     // Queued thunder delays. Each lightning strike pushes a random 0.5-2.0s
