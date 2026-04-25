@@ -1351,6 +1351,9 @@
         Time.Tick(deltaTime);
         Weather.Tick(deltaTime);
         Audio.UpdateRainAmbient(Weather.RainIntensity);
+        // Wind ambient: a baseline 0.3 intensity always runs so the world
+        // never feels sonically dead, plus rain adds on top so storms howl.
+        Audio.UpdateWindAmbient(0.3f + Weather.RainIntensity * 0.6f, deltaTime);
 
         // Low-HP heartbeat. Interval shortens as HP drops so the pulse
         // accelerates the closer the player gets to dying. Gate at 0.35 so

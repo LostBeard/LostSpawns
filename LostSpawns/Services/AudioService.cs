@@ -624,6 +624,48 @@ public class AudioService : IDisposable
         }
     }
 
+    // Persistent wind ambient - low sawtooth with slowly modulated gain so
+    // the volume breathes up and down like real wind gusts. Started on the
+    // first UpdateWindAmbient call and left running.
+    private OscillatorNode? _windOsc;
+    private GainNode? _windGain;
+    private float _windPhase;
+
+    /// <summary>
+    /// Update the wind loop. Intensity [0,1] targets gain; phase drives a
+    /// slow 0.15 Hz sine modulation so the wind gusts. Call every frame
+    /// with a value derived from weather / elevation / time-of-day.
+    /// </summary>
+    public void UpdateWindAmbient(float intensity, float dt)
+    {
+        if (_ctx is null) return;
+        try
+        {
+            if (intensity > 0.02f && _windOsc is null)
+            {
+                _windOsc = _ctx.CreateOscillator();
+                _windGain = _ctx.CreateGain();
+                _windOsc.Type = "sawtooth";
+                _windOsc.Frequency.SetValueAtTime(90f, _ctx.CurrentTime);
+                _windGain.Gain.SetValueAtTime(0, _ctx.CurrentTime);
+                _windOsc.Connect(_windGain);
+                _windGain.Connect(_ctx.Destination);
+                _windOsc.Start();
+            }
+            _windPhase += dt * 0.15f * MathF.PI * 2f;
+            if (_windGain is not null)
+            {
+                float gust = 0.5f + 0.5f * MathF.Sin(_windPhase);
+                float target = Math.Clamp(intensity * 0.025f * gust, 0, 0.05f);
+                _windGain.Gain.LinearRampToValueAtTime(target, _ctx.CurrentTime + 0.2);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] UpdateWindAmbient failed: {ex.Message}");
+        }
+    }
+
     // Persistent rain ambient - one oscillator + gain node reused across the
     // whole session. Frequency is a high broadband hiss approximation (real
     // white noise would need a noise buffer - sawtooth at ~1200 Hz is close
