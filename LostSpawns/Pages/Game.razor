@@ -911,6 +911,7 @@
         Inventory.TryConsumeOne("material.feather");
         ConsumeBlockActionCost();
         ApplyCameraKick();
+        Audio.PlayBowShot();
 
         if (target is not null)
         {
@@ -918,10 +919,6 @@
             Audio.PlayHit();
             // Bow durability decays per hit, not per shot.
             Inventory.DegradeActiveTool();
-        }
-        else
-        {
-            Audio.PlayWhoosh();
         }
     }
 

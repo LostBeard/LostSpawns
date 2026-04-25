@@ -183,6 +183,33 @@ public class AudioService : IDisposable
         PlayBeep(80f, 0.08f, Math.Clamp(intensity * 0.25f, 0.05f, 0.3f), "triangle");
     }
 
+    /// <summary>Bow twang - brief descending pluck before the arrow releases.</summary>
+    public void PlayBowShot()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "triangle";
+            double t = _ctx.CurrentTime;
+            // Fast downward bend 400 -> 220 Hz over 90ms - mimics a released string.
+            osc.Frequency.SetValueAtTime(400f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(220f, t + 0.09);
+            gain.Gain.SetValueAtTime(0f, t);
+            gain.Gain.LinearRampToValueAtTime(0.15f, t + 0.01);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.11);
+            osc.Connect(gain);
+            gain.Connect(_ctx.Destination);
+            osc.Start();
+            osc.Stop((float)(t + 0.11));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayBowShot failed: {ex.Message}");
+        }
+    }
+
     /// <summary>Water splash - descending noise-like sawtooth.</summary>
     public void PlaySplash()
     {
