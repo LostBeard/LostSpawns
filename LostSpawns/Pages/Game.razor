@@ -242,6 +242,11 @@
     private float _owlTimer;
     private readonly Random _owlRng = new();
 
+    // Dawn bird chirps (0.06-0.18 day fraction). Short cheerful trills
+    // that celebrate the sun coming up.
+    private float _birdTimer;
+    private readonly Random _birdRng = new();
+
     // Heartbeat cadence - pulses accelerate as HP drops, silences when the
     // player recovers past the low-HP threshold.
     private float _heartbeatTimer;
@@ -1439,6 +1444,19 @@
             // stale howl. A small first-howl delay gives the player a quiet
             // moment to notice dusk before the first cry.
             _distantHowlTimer = 8f + (float)_howlRng.NextDouble() * 12f;
+
+            // Dawn bird chirps fire during the sunrise window. Short 2-6s
+            // jittered interval makes it feel like a whole flock is active.
+            float dawnFrac = Time.DayFraction;
+            if (dawnFrac >= 0.06f && dawnFrac <= 0.18f)
+            {
+                _birdTimer -= deltaTime;
+                if (_birdTimer <= 0f)
+                {
+                    Audio.PlayBirdChirp();
+                    _birdTimer = 2f + (float)_birdRng.NextDouble() * 4f;
+                }
+            }
         }
 
         // Fire crackle: fires when the player is in a campfire's warmth

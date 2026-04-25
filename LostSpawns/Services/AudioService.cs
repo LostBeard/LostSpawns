@@ -526,6 +526,39 @@ public class AudioService : IDisposable
     }
 
     /// <summary>
+    /// Cheerful three-blip bird chirp. High sine tones that trill up and
+    /// down. Plays during dawn to celebrate the day turning over.
+    /// </summary>
+    public void PlayBirdChirp()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            double t = _ctx.CurrentTime;
+            float[] freqs = { 1800f, 2100f, 1600f };
+            for (int i = 0; i < freqs.Length; i++)
+            {
+                double start = t + i * 0.08;
+                using var osc = _ctx.CreateOscillator();
+                using var gain = _ctx.CreateGain();
+                osc.Type = "sine";
+                osc.Frequency.SetValueAtTime(freqs[i], start);
+                gain.Gain.SetValueAtTime(0, start);
+                gain.Gain.LinearRampToValueAtTime(0.06f, start + 0.015);
+                gain.Gain.ExponentialRampToValueAtTime(0.0001f, start + 0.08);
+                osc.Connect(gain);
+                gain.Connect(Destination);
+                osc.Start((float)start);
+                osc.Stop((float)(start + 0.08));
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayBirdChirp failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Two-note owl hoot - low sine pair with the second a perfect fifth
     /// above the first. Plays near midnight as atmosphere.
     /// </summary>
