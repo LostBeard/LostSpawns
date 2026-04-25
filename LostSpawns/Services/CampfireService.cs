@@ -61,6 +61,9 @@ public class CampfireService
     /// <summary>Fires once when a campfire's fuel dips below 0.15 and hasn't warned yet.</summary>
     public event Action<Campfire>? OnLowFuel;
 
+    /// <summary>Fired when a fire's fuel transitions from > 0 to 0 - the moment it goes out.</summary>
+    public event Action<Campfire>? OnExtinguished;
+
     public Campfire Spawn(Vector3 position, float radius = 6f)
     {
         var f = new Campfire
@@ -125,7 +128,14 @@ public class CampfireService
         float decay = dt / FuelLifetimeSeconds * FuelDecayMultiplier;
         foreach (var f in Fires)
         {
+            float prevFuel = f.Fuel;
             f.Fuel = MathF.Max(0f, f.Fuel - decay);
+            // Extinguish detection: caught the moment fuel drops from > 0
+            // to 0 so the consumer (Game.razor) can play a sizzle sound +
+            // toast. Re-arming on re-feed handled in the >0.5 branch below
+            // so a fed-back-to-life fire can fire OnExtinguished again.
+            if (prevFuel > 0f && f.Fuel == 0f)
+                OnExtinguished?.Invoke(f);
             if (f.Fuel < 0.15f && !f.LowFuelWarned)
             {
                 f.LowFuelWarned = true;

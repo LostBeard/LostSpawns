@@ -139,6 +139,7 @@
         Wildlife.OnContactAttack += HandleEntityContactAttack;
         Fires.OnCooked += HandleCooked;
         Fires.OnLowFuel += HandleLowFuel;
+        Fires.OnExtinguished += HandleFireExtinguished;
         Save.OnSaved += HandleSaved;
         Time.OnDayAdvanced += HandleDayAdvanced;
         Ground.OnPickedUp += HandleGroundPickup;
@@ -1062,6 +1063,14 @@
     private void HandleLowFuel(LostSpawns.Services.Campfire fire)
     {
         Hud.NotifyWarning("Fire is burning low - feed it Wood");
+    }
+
+    private void HandleFireExtinguished(LostSpawns.Services.Campfire fire)
+    {
+        // Sizzle audio + a brief "Fire went out" toast so the player knows
+        // their warmth source just died even if they're not looking at it.
+        Audio.PlayFireExtinguish();
+        Hud.NotifyWarning("Fire went out");
     }
 
     private void HandleSaved()
@@ -2541,6 +2550,7 @@
         Wildlife.OnContactAttack -= HandleEntityContactAttack;
         Fires.OnCooked -= HandleCooked;
         Fires.OnLowFuel -= HandleLowFuel;
+        Fires.OnExtinguished -= HandleFireExtinguished;
         Save.OnSaved -= HandleSaved;
         Time.OnDayAdvanced -= HandleDayAdvanced;
         Ground.OnPickedUp -= HandleGroundPickup;

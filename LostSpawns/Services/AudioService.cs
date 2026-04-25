@@ -460,6 +460,37 @@ public class AudioService : IDisposable
     }
 
     /// <summary>
+    /// Sizzle / hiss when a campfire's fuel hits zero - the steam-and-ember
+    /// final breath of an extinguished fire. Quick downward swept noise
+    /// (square at low frequency drops fast) so it reads as "fizzle out"
+    /// rather than a tonal cue.
+    /// </summary>
+    public void PlayFireExtinguish()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "square";
+            double t = _ctx.CurrentTime;
+            osc.Frequency.SetValueAtTime(180f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(40f, t + 0.45);
+            gain.Gain.SetValueAtTime(0f, t);
+            gain.Gain.LinearRampToValueAtTime(0.06f, t + 0.04);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.50);
+            osc.Connect(gain);
+            gain.Connect(Destination);
+            osc.Start();
+            osc.Stop((float)(t + 0.50));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayFireExtinguish failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Soft fabric-tearing audio - plays when a bandage is applied. Shorter
     /// than PlayConsume and distinctly noisier (sawtooth -> noise) so it
     /// reads as "ripping cloth" rather than "drinking water".
