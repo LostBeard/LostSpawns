@@ -54,7 +54,15 @@ public class Camera
     {
         bool sprinting = allowSprint &&
             (keysDown.Contains("ShiftLeft") || keysDown.Contains("ShiftRight"));
-        float speed = sprinting ? MovementSpeed * SprintMultiplier : MovementSpeed;
+        // Sneak mode: holding Ctrl while grounded reduces movement to 40%
+        // so the player can reposition precisely or sneak past a charging
+        // wolf's aggro check. Sprint + sneak both held = sprint wins (same
+        // priority order as Minecraft).
+        bool sneaking = !sprinting &&
+            (keysDown.Contains("ControlLeft") || keysDown.Contains("ControlRight"));
+        float speed = sprinting ? MovementSpeed * SprintMultiplier
+                    : sneaking  ? MovementSpeed * 0.40f
+                                : MovementSpeed;
         float velocity = speed * deltaTime;
 
         // Flatten forward/right to XZ plane for FPS-style movement

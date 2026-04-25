@@ -1713,10 +1713,13 @@
         // refers to it each tick.
         Wildlife.DayNumber = Time.DayNumber;
         // Fire-as-deterrent: halve wolf sensing range while player is inside a
-        // campfire's warmth aura. Rewards setting up a camp + staying near
-        // the fire at night. Default 10 blocks; halves to 5 when warm.
-        Wildlife.WolfAggroRange =
-            Fires.GetWarmthBonusAt(Renderer.Camera.Position) > 0.01f ? 5f : 10f;
+        // campfire's warmth aura. Sneak-crouch stacks on top: holding Ctrl
+        // further halves the aggro range so a player can creep past idle
+        // wolves at 2.5 blocks even before they auto-detect.
+        float aggro = Fires.GetWarmthBonusAt(Renderer.Camera.Position) > 0.01f ? 5f : 10f;
+        bool sneaking = Input.KeysDown.Contains("ControlLeft") || Input.KeysDown.Contains("ControlRight");
+        if (sneaking) aggro *= 0.5f;
+        Wildlife.WolfAggroRange = aggro;
         Wildlife.Tick(deltaTime, World, Renderer.Camera.Position, Time.IsNight);
 
         // Day/night transition latch. On falling edge (night->day) reset the
