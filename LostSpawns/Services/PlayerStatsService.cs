@@ -418,7 +418,22 @@ public class PlayerStatsService
         // whichever cause was active at the moment HP crossed zero.
         LastDamageCause = cause;
         float before = _health;
-        Health = MathF.Max(0f, _health - amount);
+        // Last Stand: above 10% HP this hit can drop you to 0; below 10%
+        // single-hit damage caps at leaving you with 0.01 (1%) HP. Forces
+        // a second hit to actually kill you when you're clinging to life.
+        // Skipped for environmental DoT (bleed, starve, etc.) so those can
+        // still finish a downed player; only carnivore + fall hits clamp.
+        bool clamp = before <= 0.10f
+            && (cause == DamageCause.Wolf || cause == DamageCause.Bear
+                || cause == DamageCause.Boar || cause == DamageCause.Fall);
+        if (clamp && amount >= before)
+        {
+            Health = 0.01f;
+        }
+        else
+        {
+            Health = MathF.Max(0f, _health - amount);
+        }
         float applied = before - _health;
         if (applied > 0) OnDamageTaken?.Invoke(applied);
         if (_health <= 0f && !_deathFired)
