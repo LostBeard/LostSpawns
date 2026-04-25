@@ -1466,6 +1466,11 @@
             HandlePlaceCampfire(item);
             return;
         }
+        if (item.Id == "place.bonfire")
+        {
+            HandlePlaceBonfire(item);
+            return;
+        }
         if (item.Id == "craft.torch")
         {
             HandlePlaceTorch(item);
@@ -1528,6 +1533,33 @@
             Inventory.SetHotbar(slot, null);
 
         Hud.NotifySuccess("Placed Campfire");
+        Stats.TryAwardAchievement("First Fire");
+    }
+
+    private void HandlePlaceBonfire(LostSpawns.Services.InventoryItem item)
+    {
+        var hit = World.Raycast(Renderer.Camera.Position, Renderer.Camera.Front, 5f);
+        if (!hit.DidHit)
+        {
+            Hud.NotifyWarning("Aim at the ground to place a bonfire");
+            return;
+        }
+        var pos = new System.Numerics.Vector3(hit.AdjacentX + 0.5f, hit.AdjacentY, hit.AdjacentZ + 0.5f);
+        // Bonfire = bigger campfire: 12-block radius (vs 6) + boosted
+        // intensity. Reuses Campfire data path so all the existing
+        // smoke/glow/cook/feed flows just work.
+        var bonfire = Fires.Spawn(pos, radius: 12f);
+        bonfire.Intensity = 2.0f;
+        bonfire.Fuel = 1.0f;
+        ConsumeBlockActionCost();
+
+        int slot = Inventory.ActiveHotbarIndex;
+        if (item.Count > 1)
+            Inventory.SetHotbar(slot, item with { Count = item.Count - 1 });
+        else
+            Inventory.SetHotbar(slot, null);
+
+        Hud.NotifySuccess("Placed Bonfire (2x range)");
         Stats.TryAwardAchievement("First Fire");
     }
 

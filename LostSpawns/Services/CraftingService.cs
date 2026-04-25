@@ -62,6 +62,11 @@ public class CraftingService
                 new[] { ("material.wood", 4), ("material.leaves", 2) },
                 new InventoryItem("place.campfire", "Campfire", 1, ItemCategory.Marker)),
             new CraftingRecipe(
+                "Bonfire",
+                new[] { ("material.wood", 6), ("material.stone", 2), ("material.leaves", 1) },
+                new InventoryItem("place.bonfire", "Bonfire", 1, ItemCategory.Marker),
+                RequiredLevel: 4),
+            new CraftingRecipe(
                 "Axe",
                 new[] { ("material.wood", 2), ("material.stone", 1) },
                 new InventoryItem("tool.axe", "Axe", 1, ItemCategory.Tool, UsesRemaining: 100)),
