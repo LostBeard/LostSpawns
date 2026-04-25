@@ -39,6 +39,18 @@ public class HudService : IDisposable
     private readonly float[] _rainY = new float[140];
     private readonly float[] _rainSpeed = new float[140];
 
+    // Firefly particles - tiny pulsing yellow dots that drift slowly
+    // through the screen-space upper half during night. Pure atmosphere
+    // overlay; not tied to entity logic. Each firefly has a position,
+    // a phase offset for pulse, and a horizontal drift speed.
+    private const int FireflyCount = 24;
+    private readonly float[] _flyX = new float[FireflyCount];
+    private readonly float[] _flyY = new float[FireflyCount];
+    private readonly float[] _flyPhase = new float[FireflyCount];
+    private readonly float[] _flyDrift = new float[FireflyCount];
+    private bool _firefliesSeeded;
+    private readonly Random _flyRng = new();
+
     // Breath-puff particles for cold weather. Shorter-lived + fewer than rain;
     // emitted only when the player's temperature is low. Each particle rises
     // a few pixels as it fades. Age runs 0 -> 1 (1 = dead).
@@ -2048,6 +2060,58 @@ public class HudService : IDisposable
     }
 
     /// <summary>
+    /// Render fireflies during deep night - tiny yellow dots that pulse
+    /// in alpha + drift slowly horizontally. Lazy-seeds on first night
+    /// frame; positions persist so they feel like real fireflies tracking
+    /// across the scene rather than spawning fresh every frame.
+    /// </summary>
+    private void DrawFireflies(int viewportWidth, int viewportHeight)
+    {
+        // Only at night; fade in/out across dawn / dusk.
+        float t = _worldTime.DayFraction;
+        float visibility;
+        if (t < 0.05f) visibility = 1f - t / 0.05f;
+        else if (t < 0.55f) visibility = 0f;
+        else if (t < 0.65f) visibility = (t - 0.55f) / 0.10f;
+        else if (t < 0.95f) visibility = 1f;
+        else visibility = 1f - (t - 0.95f) / 0.05f;
+        if (visibility <= 0.02f) return;
+
+        if (!_firefliesSeeded)
+        {
+            for (int i = 0; i < FireflyCount; i++)
+            {
+                _flyX[i] = (float)(_flyRng.NextDouble() * viewportWidth);
+                _flyY[i] = (float)(_flyRng.NextDouble() * viewportHeight * 0.7f);
+                _flyPhase[i] = (float)(_flyRng.NextDouble() * MathF.PI * 2);
+                _flyDrift[i] = (float)((_flyRng.NextDouble() - 0.5) * 30f);
+            }
+            _firefliesSeeded = true;
+        }
+
+        // Per-frame drift + pulse. Wraps at viewport edges so a firefly
+        // that exits stage right enters stage left.
+        double now = (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
+        for (int i = 0; i < FireflyCount; i++)
+        {
+            // Drift uses wall-clock time elapsed. ~0.016 = 60fps frame.
+            _flyX[i] += _flyDrift[i] * 0.016f;
+            if (_flyX[i] < -10) _flyX[i] = viewportWidth + 10;
+            if (_flyX[i] > viewportWidth + 10) _flyX[i] = -10;
+
+            // Bobs vertically by sin(phase + t) so they don't sit static.
+            float yBob = MathF.Sin((float)now * 1.5f + _flyPhase[i]) * 4f;
+
+            // Alpha pulse: each firefly cycles brightness independently.
+            float pulse = 0.5f + 0.5f * MathF.Sin((float)now * 2f + _flyPhase[i] * 3f);
+            int alpha = (int)(180 * pulse * visibility);
+            if (alpha < 8) continue;
+            _ui.Renderer.DrawRect(_flyX[i], _flyY[i] + yBob, 3f, 3f,
+                System.Drawing.Color.FromArgb(alpha, 230, 240, 100));
+        }
+    }
+
+    /// <summary>
     /// Render the sun + moon as small bright circles that arc across the
     /// sky based on DayFraction. Rough projection: x sweeps left-to-right
     /// over the day, y dips lowest at noon (midpoint) and apex matches.
@@ -2654,6 +2718,7 @@ public class HudService : IDisposable
             // at night + twilight; during day the draw is a cheap no-op.
             DrawStars(viewportWidth, viewportHeight);
             DrawSunMoon(viewportWidth, viewportHeight);
+            DrawFireflies(viewportWidth, viewportHeight);
 
             // Campfires render first so entity billboards paint on top - a
             // critter standing in front of the fire occludes it naturally.
