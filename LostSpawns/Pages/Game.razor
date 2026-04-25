@@ -1073,6 +1073,10 @@
 
     private void HandleRespawnClicked()
     {
+        // Quick black fade to cover the teleport + reset while the player's
+        // view snaps back to spawn. Runs off the existing flash lifetime so
+        // no extra state needed.
+        Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(230, 0, 0, 0), 0.8f);
         Stats.ResetToDefaults();
         Hud.HideDeathScreen();
 
