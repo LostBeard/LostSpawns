@@ -51,6 +51,18 @@ public class HudService : IDisposable
     private bool _firefliesSeeded;
     private readonly Random _flyRng = new();
 
+    // Falling leaves - small green/brown squares drifting diagonally
+    // downward like real autumn leaves. Mostly visible during day; fades
+    // out at deep night. Each leaf has independent fall speed + sway.
+    private const int LeafCount = 18;
+    private readonly float[] _leafX = new float[LeafCount];
+    private readonly float[] _leafY = new float[LeafCount];
+    private readonly float[] _leafFallSpeed = new float[LeafCount];
+    private readonly float[] _leafSwayPhase = new float[LeafCount];
+    private readonly int[] _leafColorIdx = new int[LeafCount];
+    private bool _leavesSeeded;
+    private readonly Random _leafFallRng = new();
+
     // Breath-puff particles for cold weather. Shorter-lived + fewer than rain;
     // emitted only when the player's temperature is low. Each particle rises
     // a few pixels as it fades. Age runs 0 -> 1 (1 = dead).
@@ -2112,6 +2124,62 @@ public class HudService : IDisposable
     }
 
     /// <summary>
+    /// Render falling leaves drifting diagonally down across the screen.
+    /// Each leaf has independent fall speed + sin-sway X so the swarm
+    /// moves naturally. Faded out at deep night (only sparse during day).
+    /// </summary>
+    private void DrawFallingLeaves(int viewportWidth, int viewportHeight)
+    {
+        // Brighter during day, fade at night.
+        float t = _worldTime.DayFraction;
+        float visibility;
+        if (t < 0.05f) visibility = 0.2f;
+        else if (t < 0.55f) visibility = 1f;
+        else if (t < 0.65f) visibility = 1f - (t - 0.55f) / 0.10f;
+        else visibility = 0.15f;
+
+        if (!_leavesSeeded)
+        {
+            for (int i = 0; i < LeafCount; i++)
+            {
+                _leafX[i] = (float)(_leafFallRng.NextDouble() * viewportWidth);
+                _leafY[i] = (float)(_leafFallRng.NextDouble() * viewportHeight);
+                _leafFallSpeed[i] = 30f + (float)_leafFallRng.NextDouble() * 40f;
+                _leafSwayPhase[i] = (float)(_leafFallRng.NextDouble() * MathF.PI * 2);
+                _leafColorIdx[i] = _leafFallRng.Next(3);
+            }
+            _leavesSeeded = true;
+        }
+
+        var palette = new[]
+        {
+            System.Drawing.Color.FromArgb(180, 110, 160, 70),  // forest green
+            System.Drawing.Color.FromArgb(180, 200, 140, 50),  // amber
+            System.Drawing.Color.FromArgb(180, 180, 80, 40),   // burnt orange
+        };
+
+        double now = (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
+        for (int i = 0; i < LeafCount; i++)
+        {
+            // Fall with sin-sway X so the path arcs.
+            _leafY[i] += _leafFallSpeed[i] * 0.016f;
+            float sway = MathF.Sin((float)now * 1.2f + _leafSwayPhase[i]) * 12f;
+
+            if (_leafY[i] > viewportHeight + 10)
+            {
+                _leafY[i] = -10;
+                _leafX[i] = (float)(_leafFallRng.NextDouble() * viewportWidth);
+            }
+
+            int alpha = (int)(180 * visibility);
+            if (alpha < 10) continue;
+            var c = palette[_leafColorIdx[i]];
+            c = System.Drawing.Color.FromArgb(alpha, c.R, c.G, c.B);
+            _ui.Renderer.DrawRect(_leafX[i] + sway, _leafY[i], 4f, 4f, c);
+        }
+    }
+
+    /// <summary>
     /// Render the sun + moon as small bright circles that arc across the
     /// sky based on DayFraction. Rough projection: x sweeps left-to-right
     /// over the day, y dips lowest at noon (midpoint) and apex matches.
@@ -2719,6 +2787,7 @@ public class HudService : IDisposable
             DrawStars(viewportWidth, viewportHeight);
             DrawSunMoon(viewportWidth, viewportHeight);
             DrawFireflies(viewportWidth, viewportHeight);
+            DrawFallingLeaves(viewportWidth, viewportHeight);
 
             // Campfires render first so entity billboards paint on top - a
             // critter standing in front of the fire occludes it naturally.
