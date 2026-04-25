@@ -800,6 +800,8 @@
         // Knockback: shove the camera away from the attacker. Boars get the
         // biggest push because their gimmick is "aggressive tusk charge";
         // wolves get a smaller nudge since they're a bite-and-run pattern.
+        // Skip the push if the destination is inside a block so we never
+        // tunnel through a wall.
         var fromAttacker = Renderer.Camera.Position - e.Position;
         fromAttacker.Y = 0;
         float dist = fromAttacker.Length();
@@ -809,7 +811,9 @@
             float mag = e.Kind == LostSpawns.Services.EntityKind.Boar ? 2.0f
                       : e.Kind == LostSpawns.Services.EntityKind.Wolf ? 1.0f
                                                                        : 0.6f;
-            Renderer.Camera.Position += push * mag;
+            var target = Renderer.Camera.Position + push * mag;
+            if (!IsInsideSolidBlock(target))
+                Renderer.Camera.Position = target;
         }
         // Hit shake: small random yaw + pitch nudge scaled by damage. Reads
         // as the bite "jarring" the player. Mouse-look snaps back on the
