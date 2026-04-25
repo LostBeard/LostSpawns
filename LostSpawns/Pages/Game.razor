@@ -1000,6 +1000,16 @@
         int dayBonus = 5 * day;
         Stats.AwardXp(dayBonus);
         Hud.Notify($"Day {day} - survived (+{dayBonus} XP)");
+        // Milestone toasts at survival landmarks for psychological reward.
+        // Each one fires once (OnDayAdvanced is per-day so no latch needed).
+        switch (day)
+        {
+            case 5:  Hud.NotifyAchievement("5 days. The wilderness knows you."); break;
+            case 10: Hud.NotifyAchievement("10 days. Few make it this far."); break;
+            case 14: Hud.NotifyAchievement("Two weeks. You're an expert now."); break;
+            case 21: Hud.NotifyAchievement("Three weeks. A legend in these woods."); break;
+            case 30: Hud.NotifyAchievement("30 days. The forest is yours."); break;
+        }
         if (day >= 7) Stats.TryAwardAchievement("Survivor");
         // Celebratory dawn flash: warm golden wash fades over 1.2s to mark
         // "you survived another night". Softer than the damage flash so it
