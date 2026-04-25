@@ -127,6 +127,7 @@
         Fires.OnCooked += HandleCooked;
         Fires.OnLowFuel += HandleLowFuel;
         Save.OnSaved += HandleSaved;
+        Time.OnDayAdvanced += HandleDayAdvanced;
         Ground.OnPickedUp += HandleGroundPickup;
         Stats.OnLevelUp += HandleLevelUpSound;
         Stats.OnHealed += HandleHealSound;
@@ -696,6 +697,12 @@
     }
 
     private void HandleSaved() => Hud.Notify("Saved");
+
+    private void HandleDayAdvanced(int day)
+    {
+        Hud.Notify($"Day {day}");
+        if (day >= 7) Stats.TryAwardAchievement("Survivor");
+    }
 
     private void HandleGroundPickup(LostSpawns.Services.InventoryItem payload)
     {
@@ -1458,6 +1465,7 @@
         Fires.OnCooked -= HandleCooked;
         Fires.OnLowFuel -= HandleLowFuel;
         Save.OnSaved -= HandleSaved;
+        Time.OnDayAdvanced -= HandleDayAdvanced;
         Ground.OnPickedUp -= HandleGroundPickup;
         Stats.OnLevelUp -= HandleLevelUpSound;
         Stats.OnHealed -= HandleHealSound;

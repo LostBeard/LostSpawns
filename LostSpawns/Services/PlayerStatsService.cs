@@ -91,6 +91,7 @@ public class PlayerStatsService
             "First Sleep" => Fire(ref _firstSleep),
             "Veteran"     => Fire(ref _veteran),
             "Centurion"   => Fire(ref _centurion),
+            "Survivor"    => Fire(ref _survivor),
             _             => false,
         };
         if (!fired) return false;
@@ -107,9 +108,11 @@ public class PlayerStatsService
     private bool _firstSleep;
     private bool _veteran;
     private bool _centurion;
+    private bool _survivor;
 
     public bool VeteranAwarded => _veteran;
     public bool CenturionAwarded => _centurion;
+    public bool SurvivorAwarded => _survivor;
 
     /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
     public void RecordKill()
@@ -133,7 +136,7 @@ public class PlayerStatsService
     }
 
     /// <summary>Seed the other achievement flags from save. Bypasses OnAchievement so reloads don't spam.</summary>
-    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false)
+    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false)
     {
         _firstFire = fire;
         _firstCook = cook;
@@ -141,6 +144,7 @@ public class PlayerStatsService
         _firstSleep = sleep;
         _veteran = veteran;
         _centurion = centurion;
+        _survivor = survivor;
         OnStatsChanged?.Invoke();
     }
 

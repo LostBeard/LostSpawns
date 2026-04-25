@@ -28,6 +28,9 @@ public class WorldTimeService
     /// <summary>Seed DayNumber from save. Skips the wrap-count path so loading doesn't desync.</summary>
     public void SetDayNumber(int day) => DayNumber = Math.Max(1, day);
 
+    /// <summary>Fires each time DayNumber increments so consumers can award achievements, etc.</summary>
+    public event Action<int>? OnDayAdvanced;
+
     /// <summary>Advance time by `dt` real-world seconds. Wraps at 1.0 and bumps DayNumber.</summary>
     public void Tick(float dt)
     {
@@ -36,7 +39,11 @@ public class WorldTimeService
         DayFraction = (prev + dt / DayLengthSeconds) % 1f;
         if (DayFraction < 0) DayFraction += 1f;
         // Wrap detection: any frame where DayFraction < prev means a day passed.
-        if (DayFraction < prev) DayNumber++;
+        if (DayFraction < prev)
+        {
+            DayNumber++;
+            OnDayAdvanced?.Invoke(DayNumber);
+        }
     }
 
     /// <summary>
