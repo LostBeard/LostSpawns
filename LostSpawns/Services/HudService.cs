@@ -735,10 +735,27 @@ public class HudService : IDisposable
         if (_pauseStatsLabel is null) return;
         int s = (int)_stats.PlayTimeSeconds;
         string time = $"{s / 3600:D2}:{(s % 3600) / 60:D2}:{s % 60:D2}";
+        // Achievement count - mirrors the death-screen counter so pause +
+        // death show the same number.
+        int achv = (_stats.FirstKillAwarded ? 1 : 0)
+                 + (_stats.FirstFireAwarded ? 1 : 0)
+                 + (_stats.FirstCookAwarded ? 1 : 0)
+                 + (_stats.FirstWolfAwarded ? 1 : 0)
+                 + (_stats.FirstSleepAwarded ? 1 : 0)
+                 + (_stats.HunterAwarded ? 1 : 0)
+                 + (_stats.BowmanAwarded ? 1 : 0)
+                 + (_stats.FirstAidAwarded ? 1 : 0)
+                 + (_stats.GourmetAwarded ? 1 : 0)
+                 + (_stats.VeteranAwarded ? 1 : 0)
+                 + (_stats.CenturionAwarded ? 1 : 0)
+                 + (_stats.SurvivorAwarded ? 1 : 0)
+                 + (_stats.ResilientAwarded ? 1 : 0)
+                 + (_stats.PackHunterAwarded ? 1 : 0)
+                 + (_stats.CompletionistAwarded ? 1 : 0);
         _pauseStatsLabel.Text =
             $"Day {_worldTime.DayNumber}  Lv {_stats.Level}  XP {_stats.Experience}\n" +
             $"Kills {_stats.Kills}  Deaths {_stats.Deaths}  Best Combo {_stats.BestCombo}x\n" +
-            $"Playtime {time}";
+            $"Achievements {achv}/15  Playtime {time}";
     }
 
     /// <summary>Push the pause menu onto the screen stack (dims HUD behind it).</summary>
