@@ -62,6 +62,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on F1 key press. Toggles the help overlay.</summary>
     public event Action? OnHelpTogglePressed;
 
+    /// <summary>Fired on Q key press. Drop active hotbar item to ground.</summary>
+    public event Action? OnDropPressed;
+
     /// <summary>Fired on left mouse-down while pointer is locked (in-game). Break-block action.</summary>
     public event Action? OnLeftClickPressed;
 
@@ -172,6 +175,10 @@ public class InputService : IAsyncDisposable
         // Help overlay on F1.
         if (!e.Repeat && e.Key == "F1")
             OnHelpTogglePressed?.Invoke();
+
+        // Drop active item on Q.
+        if (!e.Repeat && (e.Key == "q" || e.Key == "Q"))
+            OnDropPressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
         if (!e.Repeat && e.Key == "F9")

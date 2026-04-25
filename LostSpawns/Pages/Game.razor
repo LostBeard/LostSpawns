@@ -113,6 +113,7 @@
         Input.OnDebugTogglePressed += HandleDebugToggle;
         Input.OnMuteTogglePressed += HandleMuteToggle;
         Input.OnHelpTogglePressed += HandleHelpToggle;
+        Input.OnDropPressed += HandleDropActive;
         Input.OnInteractPressed += HandleInteract;
         Input.OnLeftClickPressed += HandleInteract;       // L-click = break, same as E
         Input.OnRightClickPressed += HandlePlaceBlock;    // R-click = place active hotbar material
@@ -802,6 +803,32 @@
     private void HandleDebugToggle() => Hud.ToggleDebug();
     private void HandleHelpToggle() => Hud.ToggleHelp();
 
+    private void HandleDropActive()
+    {
+        if (Hud.IsAnyMenuOpen) return;
+        var item = Inventory.ActiveItem;
+        if (item is null) return;
+
+        // Drop one unit of the active stack at the player's feet plus a
+        // forward nudge so the player walks past it before pickup auto-fires.
+        var fwd = Renderer.Camera.Front;
+        var pos = new System.Numerics.Vector3(
+            Renderer.Camera.Position.X + fwd.X * 1.5f,
+            Renderer.Camera.Position.Y - 1.0f,
+            Renderer.Camera.Position.Z + fwd.Z * 1.5f);
+        var dropped = item with { Count = 1 };
+        Ground.Drop(pos, dropped);
+
+        // Decrement the active slot.
+        int slot = Inventory.ActiveHotbarIndex;
+        if (item.Count > 1)
+            Inventory.SetHotbar(slot, item with { Count = item.Count - 1 });
+        else
+            Inventory.SetHotbar(slot, null);
+
+        Hud.Notify($"Dropped {item.Name}");
+    }
+
     private float _preMuteVolume = 1f;
     private bool _muted;
     private void HandleMuteToggle()
@@ -1455,6 +1482,7 @@
         Input.OnDebugTogglePressed -= HandleDebugToggle;
         Input.OnMuteTogglePressed -= HandleMuteToggle;
         Input.OnHelpTogglePressed -= HandleHelpToggle;
+        Input.OnDropPressed -= HandleDropActive;
         Input.OnInteractPressed -= HandleInteract;
         Input.OnLeftClickPressed -= HandleInteract;
         Input.OnRightClickPressed -= HandlePlaceBlock;
