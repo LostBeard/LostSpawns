@@ -958,7 +958,15 @@
         }
     }
 
-    private void HandleLightningSound() => Audio.PlayThunder();
+    private void HandleLightningSound()
+    {
+        Audio.PlayThunder();
+        // Storms drain fuel off every fire - the lightning itself doesn't
+        // strike each fire, but the gust + rain that comes with it takes
+        // a bite out of exposed wood. 10% per strike.
+        foreach (var f in Fires.Fires)
+            f.Fuel = MathF.Max(0f, f.Fuel - 0.10f);
+    }
 
     private void HandleFeedFire()
     {
