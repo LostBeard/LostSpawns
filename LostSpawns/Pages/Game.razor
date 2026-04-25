@@ -1179,6 +1179,14 @@
         Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(110, 100, 220, 120), 0.8f);
         Stats.Stamina = 1f;
         Stats.Heal(0.20f);
+        // Level-up second wind also closes any active bleed - the rush of
+        // adrenaline + the symbolic "fresh chapter" reads as a complete
+        // reset moment. Matches the existing stamina + HP restore.
+        if (Stats.BleedSecondsRemaining > 0)
+        {
+            Stats.ClearBleed();
+            Hud.NotifySuccess("Bleeding stopped");
+        }
         Hud.NotifyAchievement($"Level {newLevel}");
         // Unlock toasts: surface recipes that just became craftable at this
         // level. Scans CraftingService for RequiredLevel == newLevel so
