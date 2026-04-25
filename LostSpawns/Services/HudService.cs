@@ -244,6 +244,7 @@ public class HudService : IDisposable
     private UILabel? _xpLabel;
     private UILabel? _comboLabel;
     private UILabel? _sneakIndicator;
+    private UILabel? _terraformIndicator;
 
     /// <summary>Set true while CTRL is held so HUD can show a sneak indicator. Game.razor pushes this each frame.</summary>
     public bool IsSneaking { get; set; }
@@ -627,6 +628,21 @@ public class HudService : IDisposable
             Visible = false,
         };
         root.AddAnchored(_sneakIndicator, Anchor.Center, offsetY: 50);
+
+        // Terraform indicator - persistent badge above the crosshair while
+        // B-mode is active. Cyan to match the brush preview rings. Updates
+        // its label each frame to reflect the current radius.
+        _terraformIndicator = new UILabel
+        {
+            Text = "TERRAFORM  R 2.5",
+            FontSize = FontSize.Caption,
+            Width = 200,
+            Height = 18,
+            Align = TextAlign.Center,
+            Color = System.Drawing.Color.FromArgb(230, 80, 220, 240),
+            Visible = false,
+        };
+        root.AddAnchored(_terraformIndicator, Anchor.Center, offsetY: -50);
 
         // F1 help overlay - hidden by default; ToggleHelp flips visibility.
         _helpLabel = new UILabel
@@ -3091,6 +3107,18 @@ public class HudService : IDisposable
         // each frame from CTRL key state.
         if (_sneakIndicator != null)
             _sneakIndicator.Visible = IsSneaking;
+
+        // Terraform indicator: visible while the preview center is set
+        // (i.e. mode is on AND camera is aimed at terrain). Label includes
+        // the live brush radius so the wheel-adjust value is always visible
+        // without needing the toast.
+        if (_terraformIndicator != null)
+        {
+            bool tShow = TerraformPreviewCenter is not null;
+            _terraformIndicator.Visible = tShow;
+            if (tShow)
+                _terraformIndicator.Text = $"TERRAFORM  R {TerraformPreviewRadius:F1}";
+        }
 
         // Combo badge: live "COMBO Nx  Ys" while a kill chain is active.
         // CurrentCombo and ComboExpiry are pushed from Game.razor on each
