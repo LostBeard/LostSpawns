@@ -2179,11 +2179,17 @@ public class HudService : IDisposable
                     // so packs of wolves don't flicker in unison.
                     if (_worldTime.IsNight && e.HitFlashTimer <= 0)
                     {
+                        // Charging wolves glow brighter + bigger eyes -
+                        // intimidation tell that the wolf locked onto you.
+                        bool charging = e.Alert == AlertMode.Charge;
                         float eyePulse = 0.7f + 0.3f * MathF.Sin(
-                            (float)Environment.TickCount * 0.008f + e.Id);
-                        int eyeAlpha = (int)(230 * eyePulse);
-                        var eyeColor = System.Drawing.Color.FromArgb(eyeAlpha, 255, 50, 30);
-                        float eyeSize = MathF.Max(2f, size * 0.08f);
+                            (float)Environment.TickCount * (charging ? 0.014f : 0.008f) + e.Id);
+                        int eyeBaseAlpha = charging ? 255 : 230;
+                        int eyeAlpha = (int)(eyeBaseAlpha * eyePulse);
+                        var eyeColor = charging
+                            ? System.Drawing.Color.FromArgb(eyeAlpha, 255, 80, 0)
+                            : System.Drawing.Color.FromArgb(eyeAlpha, 255, 50, 30);
+                        float eyeSize = MathF.Max(2f, size * (charging ? 0.10f : 0.08f));
                         _ui.Renderer.DrawRect(
                             x + size * 0.02f, y + size * 0.15f, eyeSize, eyeSize, eyeColor);
                         _ui.Renderer.DrawRect(
