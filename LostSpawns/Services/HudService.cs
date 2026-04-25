@@ -1690,8 +1690,16 @@ public class HudService : IDisposable
             if (screenY < -50 || screenY > viewportHeight + 50) continue;
 
             // Size shrinks with distance but clamps so close-ups aren't obscene.
+            // Tough wolves (day-scaled HP boost) render visibly larger so
+            // alphas in the late-game pack don't look identical to the
+            // Day 1 baseline. Scales by MaxHealth / 1.8 (base wolf HP).
             float dist = MathF.Max(0.1f, clip.W);
             float size = Math.Clamp(90f / dist, 6f, 60f);
+            if (e.Kind == EntityKind.Wolf && e.MaxHealth > 1.8f)
+            {
+                float hpScale = MathF.Min(e.MaxHealth / 1.8f, 1.6f);
+                size *= hpScale;
+            }
 
             // Per-kind color. A recent hit (HitFlashTimer > 0) overrides with
             // a bright white flash so the player gets a clear "swing landed"
