@@ -748,6 +748,17 @@
 
     private void HandleDebugToggle() => Hud.ToggleDebug();
 
+    /// <summary>Sum the Count of every slot holding the given item id.</summary>
+    private int CountInventory(string id)
+    {
+        int total = 0;
+        for (int i = 0; i < LostSpawns.Services.InventoryService.HotbarSize; i++)
+            if (Inventory.Hotbar[i]?.Id == id) total += Inventory.Hotbar[i]!.Count;
+        for (int i = 0; i < LostSpawns.Services.InventoryService.BackpackSize; i++)
+            if (Inventory.Backpack[i]?.Id == id) total += Inventory.Backpack[i]!.Count;
+        return total;
+    }
+
     /// <summary>
     /// True if any entity currently charging the player is within range.
     /// Used to gate stamina regen - fleeing rabbits don't count, a
@@ -1268,6 +1279,16 @@
             // Green interactive tint for breakable blocks.
             Hud.Crosshair.TargetType = SpawnDev.GameUI.Elements.CrosshairTarget.Interactive;
             Hud.InteractionPrompt.Text = BuildInteractionPromptText((LostSpawns.Models.BlockType)targetHit.BlockType);
+        }
+        else if (Inventory.ActiveItem?.Id == "tool.bow")
+        {
+            // Bow with no target in sight: show arrow count so the player
+            // can tell if they're out of ammo without opening the inventory.
+            Hud.Crosshair.TargetType = SpawnDev.GameUI.Elements.CrosshairTarget.None;
+            int arrows = CountInventory("material.feather");
+            Hud.InteractionPrompt.Text = arrows > 0
+                ? $"[RMB] Shoot ({arrows} arrows)"
+                : "Need feathers for arrows";
         }
         else
         {
