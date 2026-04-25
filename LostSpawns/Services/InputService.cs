@@ -56,6 +56,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on G key press. Quick-eat the best food in inventory.</summary>
     public event Action? OnQuickEatPressed;
 
+    /// <summary>Fired on T key press. Quick-drink the first water in inventory.</summary>
+    public event Action? OnQuickDrinkPressed;
+
     /// <summary>Fired on F3 key press. Debug HUD toggle.</summary>
     public event Action? OnDebugTogglePressed;
 
@@ -186,6 +189,10 @@ public class InputService : IAsyncDisposable
         // Quick-eat best food in inventory on G.
         if (!e.Repeat && (e.Key == "g" || e.Key == "G"))
             OnQuickEatPressed?.Invoke();
+
+        // Quick-drink first water in inventory on T.
+        if (!e.Repeat && (e.Key == "t" || e.Key == "T"))
+            OnQuickDrinkPressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
         if (!e.Repeat && e.Key == "F9")

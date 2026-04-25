@@ -445,7 +445,7 @@ public class HudService : IDisposable
                 "LMB attack / chop  RMB place / shoot bow\n" +
                 "E interact  F feed fire / drink  Z sleep near fire\n" +
                 "CTRL sneak (slower + halves wolf sensing)\n" +
-                "G quick-eat  Q drop active item\n" +
+                "G quick-eat  T quick-drink  Q drop active item\n" +
                 "I inventory  C craft  ESC pause\n" +
                 "F1 help  F3 debug  M mute",
             FontSize = FontSize.Body,

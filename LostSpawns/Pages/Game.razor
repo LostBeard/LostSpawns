@@ -115,6 +115,7 @@
         Input.OnHelpTogglePressed += HandleHelpToggle;
         Input.OnDropPressed += HandleDropActive;
         Input.OnQuickEatPressed += HandleQuickEat;
+        Input.OnQuickDrinkPressed += HandleQuickDrink;
 
         // Auto-pause when the player tabs away. Browser fires visibilitychange
         // on document; SpawnDev.BlazorJS wraps it as a typed ActionEvent so we
@@ -1095,6 +1096,30 @@
     private void HandleDebugToggle() => Hud.ToggleDebug();
     private void HandleHelpToggle() => Hud.ToggleHelp();
 
+    private void HandleQuickDrink()
+    {
+        if (Hud.IsAnyMenuOpen) return;
+        if (Hud.IsLoading || Hud.IsDead) return;
+        // Search hotbar then backpack for the first consume.water and use
+        // it. Stew also hydrates so it's a fallback for runs that already
+        // drank their water bottles dry.
+        string[] priority = new[] { "consume.water", "craft.stew" };
+        foreach (var id in priority)
+        {
+            for (int i = 0; i < LostSpawns.Services.InventoryService.HotbarSize; i++)
+            {
+                if (Inventory.Hotbar[i]?.Id == id
+                    && Inventory.TryUseSlot(fromHotbar: true, index: i)) return;
+            }
+            for (int i = 0; i < LostSpawns.Services.InventoryService.BackpackSize; i++)
+            {
+                if (Inventory.Backpack[i]?.Id == id
+                    && Inventory.TryUseSlot(fromHotbar: false, index: i)) return;
+            }
+        }
+        Hud.NotifyWarning("No water to drink");
+    }
+
     private void HandleQuickEat()
     {
         if (Hud.IsAnyMenuOpen) return;
@@ -1963,6 +1988,7 @@
         Input.OnHelpTogglePressed -= HandleHelpToggle;
         Input.OnDropPressed -= HandleDropActive;
         Input.OnQuickEatPressed -= HandleQuickEat;
+        Input.OnQuickDrinkPressed -= HandleQuickDrink;
         if (_doc is not null) _doc.OnVisibilityChange -= HandleVisibilityChange;
         _doc?.Dispose();
         _doc = null;
