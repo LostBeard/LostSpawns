@@ -679,7 +679,7 @@ public class HudService : IDisposable
                       + (_stats.CompletionistAwarded ? 1 : 0);
             _deathStats.Text =
                 $"Lv {_stats.Level}  XP {_stats.Experience}  T {time}\n" +
-                $"Day {_worldTime.DayNumber}  Kills: {_stats.Kills}   R:{_stats.RabbitKills}  B:{_stats.BoarKills}  C:{_stats.CrowKills}  W:{_stats.WolfKills}\n" +
+                $"Day {_worldTime.DayNumber}  Kills: {_stats.Kills}   R:{_stats.RabbitKills}  B:{_stats.BoarKills}  C:{_stats.CrowKills}  W:{_stats.WolfKills}  D:{_stats.DeerKills}\n" +
                 $"Achievements: {achvs} / 11";
         }
 

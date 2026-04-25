@@ -31,6 +31,7 @@ public class PlayerStatsService
     public int BoarKills { get; private set; }
     public int CrowKills { get; private set; }
     public int WolfKills { get; private set; }
+    public int DeerKills { get; private set; }
 
     /// <summary>Record a kill by kind name for per-kind tallies. Kind strings match EntityKind.ToString().</summary>
     public void RecordKindKill(string kind)
@@ -41,17 +42,19 @@ public class PlayerStatsService
             case "Boar":   BoarKills++;   break;
             case "Crow":   CrowKills++;   break;
             case "Wolf":   WolfKills++;   break;
+            case "Deer":   DeerKills++;   break;
         }
         OnStatsChanged?.Invoke();
     }
 
     /// <summary>Seed per-kind kills directly - used by save load.</summary>
-    public void SeedKindKillsFromSave(int rabbit, int boar, int crow, int wolf)
+    public void SeedKindKillsFromSave(int rabbit, int boar, int crow, int wolf, int deer = 0)
     {
         RabbitKills = rabbit;
         BoarKills = boar;
         CrowKills = crow;
         WolfKills = wolf;
+        DeerKills = deer;
         OnStatsChanged?.Invoke();
     }
 
