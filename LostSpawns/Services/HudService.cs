@@ -152,6 +152,10 @@ public class HudService : IDisposable
     private UIProgressBar? _xpBar;
     private UILabel? _xpLabel;
     private UILabel? _comboLabel;
+    private UILabel? _sneakIndicator;
+
+    /// <summary>Set true while CTRL is held so HUD can show a sneak indicator. Game.razor pushes this each frame.</summary>
+    public bool IsSneaking { get; set; }
 
     /// <summary>Current kill-streak; Game.razor pushes this each frame so HudService can render the live combo badge.</summary>
     public int CurrentCombo { get; set; }
@@ -488,6 +492,21 @@ public class HudService : IDisposable
             Color = System.Drawing.Color.FromArgb(220, 230, 230, 240),
         };
         root.AddAnchored(InteractionPrompt, Anchor.Center, offsetY: 28);
+
+        // Sneak indicator below the interaction prompt - small "SNEAK"
+        // pill that's only visible when CTRL is held. Player gets a clear
+        // confirmation that the stealth state is active.
+        _sneakIndicator = new UILabel
+        {
+            Text = "SNEAK",
+            FontSize = FontSize.Caption,
+            Width = 80,
+            Height = 16,
+            Align = TextAlign.Center,
+            Color = System.Drawing.Color.FromArgb(220, 150, 200, 230),
+            Visible = false,
+        };
+        root.AddAnchored(_sneakIndicator, Anchor.Center, offsetY: 50);
 
         // F1 help overlay - hidden by default; ToggleHelp flips visibility.
         _helpLabel = new UILabel
@@ -2423,6 +2442,11 @@ public class HudService : IDisposable
                 _bleedLabel.Visible = false;
             }
         }
+
+        // Sneak indicator visibility tracks IsSneaking which Game.razor pushes
+        // each frame from CTRL key state.
+        if (_sneakIndicator != null)
+            _sneakIndicator.Visible = IsSneaking;
 
         // Combo badge: live "COMBO Nx  Ys" while a kill chain is active.
         // CurrentCombo and ComboExpiry are pushed from Game.razor on each

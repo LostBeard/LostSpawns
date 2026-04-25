@@ -1860,6 +1860,7 @@
         bool sneaking = Input.KeysDown.Contains("ControlLeft") || Input.KeysDown.Contains("ControlRight");
         if (sneaking) aggro *= 0.5f;
         Wildlife.WolfAggroRange = aggro;
+        Hud.IsSneaking = sneaking;
         Wildlife.Tick(deltaTime, World, Renderer.Camera.Position, Time.IsNight);
 
         // Day/night transition latch. On falling edge (night->day) reset the
