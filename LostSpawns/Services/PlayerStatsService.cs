@@ -540,7 +540,14 @@ public class PlayerStatsService
             Thirst = _thirst - dt * ThirstDecayRate * 1.5f;
         }
         else if (!StaminaRegenBlocked)
-            Stamina = _stamina + dt * StaminaRegenRate;
+        {
+            // Hunger and thirst gate stamina recovery - a starving body
+            // can't replenish energy. Multiplier scales linearly: full
+            // food/water = 1.0x regen, 0% = 0.3x. Doesn't fully zero so
+            // the player can always crawl out of the hole, just slowly.
+            float hungerMul = 0.3f + 0.7f * MathF.Min(_hunger, _thirst);
+            Stamina = _stamina + dt * StaminaRegenRate * hungerMul;
+        }
 
         // Temperature drifts toward the ambient target. Step size is clamped so
         // we never overshoot within a single tick.
