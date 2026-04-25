@@ -854,6 +854,12 @@
             drop = drop with { Count = pelts };
         }
 
+        // Death blood spray: 3 blood-splatter calls = 9 droplets total at
+        // the kill position. Bigger spray than the per-hit splatter so
+        // killing blow reads as a finishing impact, not a regular hit.
+        var deathPos = new System.Numerics.Vector3(e.Position.X, e.Position.Y + 0.8f, e.Position.Z);
+        for (int i = 0; i < 3; i++) Hud.ShowBloodSplatter(deathPos);
+
         // Loot now lands on the ground at the entity's death position -
         // walking over it auto-picks it up (see GroundItemService.Tick).
         // Makes kills visually meaningful + keeps loot out of inventory
