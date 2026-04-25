@@ -1331,6 +1331,19 @@ public class HudService : IDisposable
 
             float x = screenX - size / 2f;
             float y = screenY - size / 2f;
+
+            // Pulsing halo behind the bag so pickups stand out even in tall
+            // grass. Sin wave keyed to wall-clock time so all loot pulses in
+            // unison - reads as "drop" not "particle".
+            double t = (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
+            float pulse = 0.5f + 0.5f * MathF.Sin((float)t * 3f);
+            int haloAlpha = (int)(55 + 35 * pulse);
+            float haloGrow = size * 0.4f * pulse;
+            _ui.Renderer.DrawRect(
+                x - haloGrow, y - haloGrow,
+                size + haloGrow * 2, size + haloGrow * 2,
+                System.Drawing.Color.FromArgb(haloAlpha, tint.R, tint.G, tint.B));
+
             _ui.Renderer.DrawRect(x, y, size, size, tint);
             // Dark bottom shadow so the bag reads as sitting on ground not floating.
             _ui.Renderer.DrawRect(x, y + size, size, 2f,
