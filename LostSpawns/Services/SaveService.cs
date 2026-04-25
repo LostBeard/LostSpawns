@@ -80,6 +80,7 @@ public class SaveService
                 FirstCookAwarded = _stats.FirstCookAwarded,
                 FirstWolfAwarded = _stats.FirstWolfAwarded,
                 FirstSleepAwarded = _stats.FirstSleepAwarded,
+                PlayTimeSeconds = _stats.PlayTimeSeconds,
                 Hotbar = ToDtoArray(_inventory.Hotbar),
                 Backpack = ToDtoArray(_inventory.Backpack),
                 ActiveHotbarIndex = _inventory.ActiveHotbarIndex,
@@ -150,6 +151,7 @@ public class SaveService
             _stats.SeedAchievementsFromSave(
                 state.FirstFireAwarded, state.FirstCookAwarded,
                 state.FirstWolfAwarded, state.FirstSleepAwarded);
+            _stats.SeedPlayTimeFromSave(state.PlayTimeSeconds);
 
             // Apply inventory slot by slot. Nulls stay null.
             if (state.Hotbar != null)
@@ -284,6 +286,7 @@ public class SaveService
         public bool FirstCookAwarded { get; set; }
         public bool FirstWolfAwarded { get; set; }
         public bool FirstSleepAwarded { get; set; }
+        public float PlayTimeSeconds { get; set; }
         public InventoryItemDto?[]? Hotbar { get; set; }
         public InventoryItemDto?[]? Backpack { get; set; }
         public int ActiveHotbarIndex { get; set; }

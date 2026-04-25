@@ -1651,10 +1651,12 @@ public class HudService : IDisposable
         if (_debugLabel != null && _fpsAccumTime > 0.25f)
         {
             _fpsAccumTime = 0;
+            int s = (int)_stats.PlayTimeSeconds;
+            string time = $"{s / 3600:D2}:{(s % 3600) / 60:D2}:{s % 60:D2}";
             _debugLabel.Text =
                 $"{(int)_fpsSmoothed} fps    " +
                 $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}    " +
-                $"Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}";
+                $"Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  T {time}";
         }
 
         // Update compass bearing from camera yaw

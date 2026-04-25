@@ -26,6 +26,9 @@ public class PlayerStatsService
     /// <summary>Lifetime kills tally - incremented once per downed entity.</summary>
     public int Kills { get; private set; }
 
+    /// <summary>Cumulative seconds played across all lives. Tick increments this by dt.</summary>
+    public float PlayTimeSeconds { get; private set; }
+
     /// <summary>Flags for one-shot first-time achievements. Each toggles to true the first time the named event happens and stays true across respawn + save/load.</summary>
     public bool FirstKillAwarded { get; private set; }
     public bool FirstFireAwarded => _firstFire;
@@ -100,6 +103,12 @@ public class PlayerStatsService
         _firstWolf = wolf;
         _firstSleep = sleep;
         OnStatsChanged?.Invoke();
+    }
+
+    /// <summary>Seed lifetime play time from save.</summary>
+    public void SeedPlayTimeFromSave(float seconds)
+    {
+        PlayTimeSeconds = seconds;
     }
 
     /// <summary>
@@ -263,6 +272,7 @@ public class PlayerStatsService
     public void Tick(float dt, float ambientTarget = 0.5f, bool sprinting = false)
     {
         if (dt <= 0) return;
+        PlayTimeSeconds += dt;
         Hunger = _hunger - dt * HungerDecayRate;
         Thirst = _thirst - dt * ThirstDecayRate;
         // Sprint drains stamina; otherwise it regens. Mutually exclusive so the
