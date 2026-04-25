@@ -63,6 +63,22 @@ public class HudService : IDisposable
     private readonly DateTime[] _impactSpawned = new DateTime[ImpactMax];
     private int _impactIdx;
 
+    // Floating damage numbers - rise + fade from a world-space anchor.
+    private const int DamageNumberMax = 8;
+    private readonly System.Numerics.Vector3[] _dmgPos = new System.Numerics.Vector3[DamageNumberMax];
+    private readonly DateTime[] _dmgSpawned = new DateTime[DamageNumberMax];
+    private readonly float[] _dmgValue = new float[DamageNumberMax];
+    private int _dmgIdx;
+
+    /// <summary>Spawn a floating "-NN" red number rising from worldPos. Lifetime ~900ms.</summary>
+    public void ShowDamageNumber(System.Numerics.Vector3 worldPos, float amount)
+    {
+        _dmgPos[_dmgIdx] = worldPos;
+        _dmgValue[_dmgIdx] = amount;
+        _dmgSpawned[_dmgIdx] = DateTime.UtcNow;
+        _dmgIdx = (_dmgIdx + 1) % DamageNumberMax;
+    }
+
     /// <summary>
     /// Spawn an impact marker at a world-space position. Renders a brief
     /// white cross that fades over ~350ms. Used by bow hits so the player
@@ -1404,6 +1420,46 @@ public class HudService : IDisposable
     /// <summary>Trigger a one-shot viewmodel swing animation. Duration ~220ms.</summary>
     public void TriggerSwing() => _swingStart = DateTime.UtcNow;
 
+    /// <summary>
+    /// Render rising floating damage numbers above hit positions. Each number
+    /// rises ~30px and fades over ~900ms. Past-lifetime slots skip.
+    /// </summary>
+    private void DrawDamageNumbers(int viewportWidth, int viewportHeight)
+    {
+        if (_renderer == null) return;
+        float aspect = (float)viewportWidth / viewportHeight;
+        var vp = _renderer.Camera.GetVpMatrix(aspect);
+        var now = DateTime.UtcNow;
+        for (int i = 0; i < DamageNumberMax; i++)
+        {
+            if (_dmgSpawned[i] == default) continue;
+            float age = (float)(now - _dmgSpawned[i]).TotalSeconds;
+            if (age >= 0.9f) continue;
+
+            var worldPos = new System.Numerics.Vector4(
+                _dmgPos[i].X, _dmgPos[i].Y + 1.4f, _dmgPos[i].Z, 1f);
+            var clip = System.Numerics.Vector4.Transform(worldPos, vp);
+            if (clip.W <= 0.001f) continue;
+            float ndcX = clip.X / clip.W;
+            float ndcY = clip.Y / clip.W;
+            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
+
+            float life = age / 0.9f;
+            int alpha = (int)(255 * (1f - life));
+            float rise = life * 30f;
+            string txt = $"-{(int)(_dmgValue[i] * 100)}";
+            float pixelSize = 18f;
+            float tw = _ui.Renderer.MeasureText(txt, pixelSize);
+            _ui.Renderer.DrawText(
+                txt,
+                screenX - tw * 0.5f,
+                screenY - rise,
+                pixelSize,
+                System.Drawing.Color.FromArgb(alpha, 240, 80, 70));
+        }
+    }
+
     private void DrawEntityBillboards(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null || _entities.Entities.Count == 0) return;
@@ -2045,6 +2101,10 @@ public class HudService : IDisposable
             // Arrow impact marks render on top of the entity layer so the
             // white cross is always visible even mid-billboard.
             DrawImpactMarks(viewportWidth, viewportHeight);
+
+            // Floating damage numbers rise above the hit point - rendered
+            // last so they sit on top of all world geometry.
+            DrawDamageNumbers(viewportWidth, viewportHeight);
 
             // Durability bar above the active hotbar slot for tools that can
             // break. Small but always-visible so the player isn't surprised.
