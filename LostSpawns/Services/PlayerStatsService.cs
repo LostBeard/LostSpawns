@@ -93,6 +93,7 @@ public class PlayerStatsService
             "Centurion"     => Fire(ref _centurion),
             "Survivor"      => Fire(ref _survivor),
             "Bowman"        => Fire(ref _bowman),
+            "Hunter"        => Fire(ref _hunter),
             "Completionist" => Fire(ref _completionist),
             _               => false,
         };
@@ -104,7 +105,8 @@ public class PlayerStatsService
         // flag itself stops infinite loops.
         if (!_completionist
             && FirstKillAwarded && _firstFire && _firstCook && _firstWolf
-            && _firstSleep && _veteran && _centurion && _survivor && _bowman)
+            && _firstSleep && _veteran && _centurion && _survivor && _bowman
+            && _hunter)
         {
             TryAwardAchievement("Completionist");
         }
@@ -121,12 +123,14 @@ public class PlayerStatsService
     private bool _centurion;
     private bool _survivor;
     private bool _bowman;
+    private bool _hunter;
     private bool _completionist;
 
     public bool VeteranAwarded => _veteran;
     public bool CenturionAwarded => _centurion;
     public bool SurvivorAwarded => _survivor;
     public bool BowmanAwarded => _bowman;
+    public bool HunterAwarded => _hunter;
     public bool CompletionistAwarded => _completionist;
 
     /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
@@ -151,7 +155,7 @@ public class PlayerStatsService
     }
 
     /// <summary>Seed the other achievement flags from save. Bypasses OnAchievement so reloads don't spam.</summary>
-    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false)
+    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false, bool hunter = false)
     {
         _firstFire = fire;
         _firstCook = cook;
@@ -162,6 +166,7 @@ public class PlayerStatsService
         _survivor = survivor;
         _bowman = bowman;
         _completionist = completionist;
+        _hunter = hunter;
         OnStatsChanged?.Invoke();
     }
 

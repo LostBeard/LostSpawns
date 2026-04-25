@@ -688,6 +688,8 @@
         Stats.RecordKindKill(e.Kind.ToString());
         if (e.Kind == LostSpawns.Services.EntityKind.Wolf)
             Stats.TryAwardAchievement("First Wolf");
+        if (e.Kind == LostSpawns.Services.EntityKind.Deer)
+            Stats.TryAwardAchievement("Hunter");
 
         var drop = LootForEntityKind(e.Kind);
         if (drop is null) { Hud.Notify($"Killed {e.Kind} (+{xp} XP)"); return; }
