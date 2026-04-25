@@ -579,6 +579,35 @@ public class AudioService : IDisposable
     }
 
     /// <summary>
+    /// Quick low-pitch thump for a small mammal hitting the ground. Plays
+    /// when a rabbit / deer enters flee state (panic stomp).
+    /// </summary>
+    public void PlayPreyThump()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            double t = _ctx.CurrentTime;
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "sine";
+            osc.Frequency.SetValueAtTime(120f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(70f, t + 0.10);
+            gain.Gain.SetValueAtTime(0, t);
+            gain.Gain.LinearRampToValueAtTime(0.08f, t + 0.02);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.14);
+            osc.Connect(gain);
+            gain.Connect(Destination);
+            osc.Start();
+            osc.Stop((float)(t + 0.14));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayPreyThump failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Cheerful three-blip bird chirp. High sine tones that trill up and
     /// down. Plays during dawn to celebrate the day turning over.
     /// </summary>
