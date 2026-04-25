@@ -713,6 +713,7 @@
     {
         Hud.NotifySuccess($"Cooked {cookedName}");
         Stats.TryAwardAchievement("First Cook");
+        Stats.RecordCook();
     }
 
     private void HandleLowFuel(LostSpawns.Services.Campfire fire)

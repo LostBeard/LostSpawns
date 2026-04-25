@@ -61,6 +61,24 @@ public class PlayerStatsService
     /// <summary>Cumulative seconds played across all lives. Tick increments this by dt.</summary>
     public float PlayTimeSeconds { get; private set; }
 
+    /// <summary>Total successful raw-to-cooked conversions across all lives.</summary>
+    public int CookCount { get; private set; }
+
+    /// <summary>Increment cook count + check for the Gourmet achievement at 10.</summary>
+    public void RecordCook()
+    {
+        CookCount++;
+        OnStatsChanged?.Invoke();
+        if (CookCount == 10) TryAwardAchievement("Gourmet");
+    }
+
+    /// <summary>Seed cook count from save load.</summary>
+    public void SeedCookCountFromSave(int count)
+    {
+        CookCount = count;
+        OnStatsChanged?.Invoke();
+    }
+
     /// <summary>Flags for one-shot first-time achievements. Each toggles to true the first time the named event happens and stays true across respawn + save/load.</summary>
     public bool FirstKillAwarded { get; private set; }
     public bool FirstFireAwarded => _firstFire;
@@ -97,6 +115,7 @@ public class PlayerStatsService
             "Survivor"      => Fire(ref _survivor),
             "Bowman"        => Fire(ref _bowman),
             "Hunter"        => Fire(ref _hunter),
+            "Gourmet"       => Fire(ref _gourmet),
             "Completionist" => Fire(ref _completionist),
             _               => false,
         };
@@ -109,7 +128,7 @@ public class PlayerStatsService
         if (!_completionist
             && FirstKillAwarded && _firstFire && _firstCook && _firstWolf
             && _firstSleep && _veteran && _centurion && _survivor && _bowman
-            && _hunter)
+            && _hunter && _gourmet)
         {
             TryAwardAchievement("Completionist");
         }
@@ -127,6 +146,7 @@ public class PlayerStatsService
     private bool _survivor;
     private bool _bowman;
     private bool _hunter;
+    private bool _gourmet;
     private bool _completionist;
 
     public bool VeteranAwarded => _veteran;
@@ -134,6 +154,7 @@ public class PlayerStatsService
     public bool SurvivorAwarded => _survivor;
     public bool BowmanAwarded => _bowman;
     public bool HunterAwarded => _hunter;
+    public bool GourmetAwarded => _gourmet;
     public bool CompletionistAwarded => _completionist;
 
     /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
@@ -158,7 +179,7 @@ public class PlayerStatsService
     }
 
     /// <summary>Seed the other achievement flags from save. Bypasses OnAchievement so reloads don't spam.</summary>
-    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false, bool hunter = false)
+    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false, bool hunter = false, bool gourmet = false)
     {
         _firstFire = fire;
         _firstCook = cook;
@@ -170,6 +191,7 @@ public class PlayerStatsService
         _bowman = bowman;
         _completionist = completionist;
         _hunter = hunter;
+        _gourmet = gourmet;
         OnStatsChanged?.Invoke();
     }
 

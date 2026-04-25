@@ -94,6 +94,8 @@ public class SaveService
                 BowmanAwarded = _stats.BowmanAwarded,
                 CompletionistAwarded = _stats.CompletionistAwarded,
                 HunterAwarded = _stats.HunterAwarded,
+                GourmetAwarded = _stats.GourmetAwarded,
+                CookCount = _stats.CookCount,
                 PlayTimeSeconds = _stats.PlayTimeSeconds,
                 Hotbar = ToDtoArray(_inventory.Hotbar),
                 Backpack = ToDtoArray(_inventory.Backpack),
@@ -172,7 +174,9 @@ public class SaveService
                 state.FirstWolfAwarded, state.FirstSleepAwarded,
                 state.VeteranAwarded, state.CenturionAwarded,
                 state.SurvivorAwarded, state.BowmanAwarded,
-                state.CompletionistAwarded, state.HunterAwarded);
+                state.CompletionistAwarded, state.HunterAwarded,
+                state.GourmetAwarded);
+            _stats.SeedCookCountFromSave(state.CookCount);
             _stats.SeedPlayTimeFromSave(state.PlayTimeSeconds);
 
             // Apply inventory slot by slot. Nulls stay null.
@@ -320,6 +324,8 @@ public class SaveService
         public bool BowmanAwarded { get; set; }
         public bool CompletionistAwarded { get; set; }
         public bool HunterAwarded { get; set; }
+        public bool GourmetAwarded { get; set; }
+        public int CookCount { get; set; }
         public float PlayTimeSeconds { get; set; }
         public InventoryItemDto?[]? Hotbar { get; set; }
         public InventoryItemDto?[]? Backpack { get; set; }
