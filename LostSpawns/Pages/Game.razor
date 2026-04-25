@@ -2032,6 +2032,11 @@
             if (_heartbeatTimer <= 0f)
             {
                 Audio.PlayHeartbeat();
+                // Subtle red pulse synced with the heartbeat audio - reads
+                // as "your vision is throbbing with each beat" while the
+                // persistent low-HP vignette stays in the background.
+                Hud.ScreenOverlay.Flash(
+                    System.Drawing.Color.FromArgb(35, 200, 30, 30), 0.35f);
                 // 0.0 HP -> 0.45s interval; 0.35 HP -> 1.1s interval.
                 float norm = Stats.Health / 0.35f; // 1 at threshold, 0 at death
                 _heartbeatTimer = 0.45f + norm * 0.65f;
