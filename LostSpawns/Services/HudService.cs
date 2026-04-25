@@ -2813,7 +2813,12 @@ public class HudService : IDisposable
                 && _stats.LongestLifeSeconds > 0
                 ? " *"
                 : "";
-            _clockLabel.Text = $"{_worldTime.ClockString}  {_worldTime.PhaseName}  Day {_worldTime.DayNumber}  Life {lifeStr}{newBest}";
+            // Append current-life kills only if non-zero so brand-new lives
+            // don't waste pixels on "Kills 0".
+            string klsTag = _stats.CurrentLifeKills > 0
+                ? $"  Kills {_stats.CurrentLifeKills}"
+                : "";
+            _clockLabel.Text = $"{_worldTime.ClockString}  {_worldTime.PhaseName}  Day {_worldTime.DayNumber}  Life {lifeStr}{newBest}{klsTag}";
             _clockLabel.Color = _worldTime.PhaseName switch
             {
                 "Dawn"  => System.Drawing.Color.FromArgb(240, 255, 190, 120),

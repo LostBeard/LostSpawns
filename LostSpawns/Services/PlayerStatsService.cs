@@ -90,6 +90,16 @@ public class PlayerStatsService
     /// <summary>Seconds survived in the current life - reset on respawn, ticked by Tick.</summary>
     public float CurrentLifeSeconds { get; private set; }
 
+    /// <summary>Kills made on the current life. Reset on respawn.</summary>
+    public int CurrentLifeKills { get; private set; }
+
+    /// <summary>Bump current-life kills. Called from RecordKindKill caller path.</summary>
+    public void RecordCurrentLifeKill()
+    {
+        CurrentLifeKills++;
+        OnStatsChanged?.Invoke();
+    }
+
     /// <summary>Longest single-life duration ever, in seconds. Persists across deaths + saves.</summary>
     public float LongestLifeSeconds { get; private set; }
 
@@ -144,6 +154,7 @@ public class PlayerStatsService
         if (CurrentLifeSeconds > LongestLifeSeconds)
             LongestLifeSeconds = CurrentLifeSeconds;
         CurrentLifeSeconds = 0;
+        CurrentLifeKills = 0;
         OnStatsChanged?.Invoke();
         if (Deaths == 3) TryAwardAchievement("Resilient");
     }

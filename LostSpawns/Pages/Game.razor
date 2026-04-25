@@ -898,6 +898,7 @@
         Stats.AwardXp(xp);
         Stats.RecordKill();
         Stats.RecordKindKill(e.Kind.ToString());
+        Stats.RecordCurrentLifeKill();
         // Big-beast kill confirmation audio for wolves + boars (the threats).
         // Other kinds stay on the default PlayHit since they're unremarkable
         // kills that don't need a "fanfare".
