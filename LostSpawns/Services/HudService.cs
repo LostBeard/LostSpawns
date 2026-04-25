@@ -1754,13 +1754,21 @@ public class HudService : IDisposable
             // Ground shadow: a dark translucent oval beneath the billboard
             // that helps the entity read as "standing on terrain" rather
             // than "floating". Crows skip this because they ARE floating.
+            // Shadow offset shifts left/right based on the sun's screen
+            // x-position so shadows actually point away from the light.
             if (e.Kind != EntityKind.Crow)
             {
                 float shadowY = y + size + size * 0.05f;
                 float shadowW = size * 0.9f;
                 float shadowH = size * 0.15f;
+                // Sun arc angle: 0 at dawn, 1 at dusk (for sun-visible window).
+                float frac = _worldTime.DayFraction;
+                float sunU = (frac - 0.05f) / 0.50f;
+                float shadowOffset = 0f;
+                if (sunU > 0 && sunU < 1)
+                    shadowOffset = (sunU - 0.5f) * size * -0.4f; // sun on right -> shadow on left
                 _ui.Renderer.DrawRect(
-                    x + (size - shadowW) * 0.5f, shadowY,
+                    x + (size - shadowW) * 0.5f + shadowOffset, shadowY,
                     shadowW, shadowH,
                     System.Drawing.Color.FromArgb(110, 10, 10, 10));
             }
