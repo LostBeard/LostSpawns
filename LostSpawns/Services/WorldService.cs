@@ -540,6 +540,102 @@ public class WorldService
     }
 
     /// <summary>
+    /// Carve out a sphere of voxels centered at world-space `center` with the
+    /// given `radius`. Cells inside the sphere become Air. Returns a dictionary
+    /// of removed-cell counts keyed by the original BlockType, so the caller
+    /// can roll up loot drops or just count total cells removed.
+    ///
+    /// All affected columns are re-meshed exactly once at the end (batching
+    /// the GPU mesh kernel work) instead of once per cell - critical for a
+    /// reasonable-radius sphere that touches dozens of cells.
+    /// </summary>
+    public Dictionary<BlockType, int> CarveSphere(Vector3 center, float radius)
+    {
+        return SphereOp(center, radius, replaceWith: 0, allowOverwrite: true);
+    }
+
+    /// <summary>
+    /// Fill a sphere of voxels centered at world-space `center` with the given
+    /// block type. Cells already non-air are skipped (no overwriting), matching
+    /// TryPlaceBlock's contract. Returns counts of cells written keyed by the
+    /// type written (always one entry today, but mirrors CarveSphere's API).
+    /// </summary>
+    public Dictionary<BlockType, int> BuildSphere(Vector3 center, float radius, BlockType type)
+    {
+        if (type == BlockType.Air) return new Dictionary<BlockType, int>();
+        return SphereOp(center, radius, replaceWith: (byte)type, allowOverwrite: false);
+    }
+
+    private Dictionary<BlockType, int> SphereOp(Vector3 center, float radius, byte replaceWith, bool allowOverwrite)
+    {
+        var changed = new Dictionary<BlockType, int>();
+        if (radius <= 0) return changed;
+
+        // Bounding box in world cell space; clamp Y to the chunk Height range.
+        int minX = (int)MathF.Floor(center.X - radius);
+        int maxX = (int)MathF.Floor(center.X + radius);
+        int minY = Math.Max(0, (int)MathF.Floor(center.Y - radius));
+        int maxY = Math.Min(ChunkData.Height - 1, (int)MathF.Floor(center.Y + radius));
+        int minZ = (int)MathF.Floor(center.Z - radius);
+        int maxZ = (int)MathF.Floor(center.Z + radius);
+
+        float r2 = radius * radius;
+        // Track every column that gets a write so we can re-mesh exactly once
+        // at the end + cover XZ neighbors when writes fall on a chunk boundary.
+        var dirty = new HashSet<(int cx, int cz)>();
+
+        for (int wx = minX; wx <= maxX; wx++)
+        for (int wy = minY; wy <= maxY; wy++)
+        for (int wz = minZ; wz <= maxZ; wz++)
+        {
+            // Sphere test: cell-center distance from the operation center.
+            float dx = (wx + 0.5f) - center.X;
+            float dy = (wy + 0.5f) - center.Y;
+            float dz = (wz + 0.5f) - center.Z;
+            if (dx * dx + dy * dy + dz * dz > r2) continue;
+
+            int cx = (int)MathF.Floor(wx / (float)ChunkData.SizeXZ);
+            int cz = (int)MathF.Floor(wz / (float)ChunkData.SizeXZ);
+            if (!_blocksCache.TryGetValue((cx, cz), out var col)) continue;
+
+            int lx = wx - cx * ChunkData.SizeXZ;
+            int lz = wz - cz * ChunkData.SizeXZ;
+            int idx = lx + lz * ChunkData.SizeXZ + wy * ChunkData.SizeXZ * ChunkData.SizeXZ;
+
+            byte original = col[idx];
+            if (allowOverwrite)
+            {
+                // Carve: skip already-air cells so we don't fire spurious edits.
+                if (original == 0) continue;
+            }
+            else
+            {
+                // Build: skip non-air cells so we don't overwrite existing geometry.
+                if (original != 0) continue;
+            }
+
+            col[idx] = replaceWith;
+            RecordEdit(cx, cz, idx, replaceWith);
+
+            // Tally the type that changed (original for carve, replaceWith for build).
+            BlockType changedType = allowOverwrite ? (BlockType)original : (BlockType)replaceWith;
+            changed[changedType] = changed.GetValueOrDefault(changedType) + 1;
+
+            dirty.Add((cx, cz));
+            // Boundary writes also dirty the XZ neighbor so the seam re-meshes.
+            if (lx == 0) dirty.Add((cx - 1, cz));
+            if (lx == ChunkData.SizeXZ - 1) dirty.Add((cx + 1, cz));
+            if (lz == 0) dirty.Add((cx, cz - 1));
+            if (lz == ChunkData.SizeXZ - 1) dirty.Add((cx, cz + 1));
+        }
+
+        foreach (var (cx, cz) in dirty)
+            _ = ReMeshColumnAsync(cx, cz);
+
+        return changed;
+    }
+
+    /// <summary>
     /// Snapshot every column's edits as a flat list suitable for JSON. Keys are
     /// a packed "cx,cz" so save files stay compact and schema-stable.
     /// </summary>

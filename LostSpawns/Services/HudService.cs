@@ -628,7 +628,7 @@ public class HudService : IDisposable
                 "CTRL sneak (slower + halves wolf sensing)\n" +
                 "G quick-eat  T quick-drink  H quick-bandage  Q drop\n" +
                 "I inventory  J achievements  C craft  ESC pause\n" +
-                "F1 help  F3 debug  F5 save  M mute\n" +
+                "F1 help  F3 debug  F4 terraform  F5 save  M mute\n" +
                 "* on Life clock = past your best run",
             FontSize = FontSize.Body,
             Width = 560,

@@ -65,6 +65,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on F3 key press. Debug HUD toggle.</summary>
     public event Action? OnDebugTogglePressed;
 
+    /// <summary>Fired on F4 key press. Terraform mode toggle (sphere carve/build).</summary>
+    public event Action? OnTerraformTogglePressed;
+
     /// <summary>Fired on M key press. Mute / unmute audio.</summary>
     public event Action? OnMuteTogglePressed;
 
@@ -182,6 +185,10 @@ public class InputService : IAsyncDisposable
         // Debug HUD toggle on F3 - Minecraft convention.
         if (!e.Repeat && e.Key == "F3")
             OnDebugTogglePressed?.Invoke();
+
+        // Terraform mode toggle on F4 - sphere carve/build per click.
+        if (!e.Repeat && e.Key == "F4")
+            OnTerraformTogglePressed?.Invoke();
 
         // Mute toggle on M.
         if (!e.Repeat && (e.Key == "m" || e.Key == "M"))

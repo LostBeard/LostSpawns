@@ -117,6 +117,7 @@
         Input.OnQuickEatPressed += HandleQuickEat;
         Input.OnQuickDrinkPressed += HandleQuickDrink;
         Input.OnQuickHealPressed += HandleQuickHeal;
+        Input.OnTerraformTogglePressed += HandleTerraformToggle;
         Input.OnAchievementsTogglePressed += () => Hud.ToggleAchievements();
         Input.OnQuickSavePressed += HandleQuickSave;
 
@@ -627,6 +628,75 @@
     };
 
     /// <summary>
+    /// F4 toggle handler. Flips terraform mode + announces it. The mode
+    /// changes how LMB and RMB behave: LMB carves a sphere, RMB builds
+    /// one. While disabled, both fall back to standard block break/place.
+    /// </summary>
+    private void HandleTerraformToggle()
+    {
+        if (Hud.IsAnyMenuOpen) return;
+        _terraformMode = !_terraformMode;
+        Hud.NotifySuccess(_terraformMode
+            ? "Terraform: ON  (LMB carve, RMB build)"
+            : "Terraform: OFF");
+        Audio.PlayBeep(_terraformMode ? 720f : 360f, 0.10f, 0.15f, "triangle");
+    }
+
+    /// <summary>
+    /// Run a sphere carve or build at the raycast hit point. Carves center
+    /// on the hit block; builds center on the adjacent (face-out) block.
+    /// Carved cell types roll up into a drop dictionary so we can credit
+    /// inventory; build pulls hardcoded Stone for now (future: held item).
+    /// </summary>
+    private void ExecuteTerraform(SpawnDev.VoxelEngine.RaycastHit hit, bool carve)
+    {
+        var center = carve
+            ? new System.Numerics.Vector3(hit.BlockX + 0.5f, hit.BlockY + 0.5f, hit.BlockZ + 0.5f)
+            : new System.Numerics.Vector3(hit.AdjacentX + 0.5f, hit.AdjacentY + 0.5f, hit.AdjacentZ + 0.5f);
+
+        var changed = carve
+            ? World.CarveSphere(center, TerraformRadius)
+            : World.BuildSphere(center, TerraformRadius, LostSpawns.Models.BlockType.Stone);
+
+        int totalCells = 0;
+        foreach (var (_, count) in changed) totalCells += count;
+        if (totalCells == 0)
+        {
+            Audio.PlayWhoosh();
+            return;
+        }
+
+        ConsumeBlockActionCost();
+        ApplyCameraKick(carve ? 3.0f : 2.5f);
+        Audio.PlayMine();
+        // Big dust burst at the operation center - particle count scales
+        // with how much terrain actually moved, so a near-empty carve puffs
+        // a few specks while a full sphere kicks up a cloud.
+        Hud.ShowDustPuff(center, Math.Clamp(totalCells / 2, 4, 24));
+
+        // Carve drops material into inventory: 1 unit per ~6 cells removed
+        // (sphere of radius 2.5 ~ 65 cells -> ~10 drops). Aggregate by type
+        // so a mixed dirt/stone carve credits both. Drops route through
+        // the standard TryAdd so full-inventory cases still work cleanly.
+        if (carve)
+        {
+            foreach (var (type, count) in changed)
+            {
+                var drop = DropForBlockType(type);
+                if (drop is null) continue;
+                int qty = Math.Max(1, count / 6);
+                for (int i = 0; i < qty; i++)
+                {
+                    if (!Inventory.TryAdd(drop with { Count = 1 })) break;
+                }
+            }
+        }
+        Hud.NotifySuccess(carve
+            ? $"Carved {totalCells} cells"
+            : $"Built {totalCells} cells");
+    }
+
+    /// <summary>
     /// Tick the active tool's durability once per successful swing and toast
     /// on break. Tools with no durability (hands + most items) no-op. Kept
     /// out of InventoryService so the gameplay-facing toast phrasing lives
@@ -649,6 +719,16 @@
 
         var origin = Renderer.Camera.Position;
         var dir = Renderer.Camera.Front;
+
+        // Terraform mode: LMB carves a sphere at the aim point. Skips the
+        // entity hit-test entirely - terraforming is for terrain only.
+        if (_terraformMode)
+        {
+            var carveHit = World.Raycast(origin, dir, maxDistance: 8f);
+            if (!carveHit.DidHit) { Audio.PlayWhoosh(); return; }
+            ExecuteTerraform(carveHit, carve: true);
+            return;
+        }
 
         // Entity hit-test runs BEFORE the block raycast so you can punch a
         // wandering rabbit even if there's a tree behind it. Cone dot 0.95
@@ -1007,6 +1087,13 @@
     private bool _newRecordPinged;
     private bool _packWarningArmed = true;
     private DateTime _lastPackWarn = DateTime.MinValue;
+
+    // Terraform mode (F4): LMB carves a sphere of terrain, RMB builds one.
+    // Sphere radius is fixed for the first cut; mouse-wheel adjustment is a
+    // future iteration. Build material is hardcoded to Stone for now -
+    // future passes will read from the held inventory item.
+    private bool _terraformMode;
+    private const float TerraformRadius = 2.5f;
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
     {
         // Cause attribution drives the death-screen subtitle. Entity kinds
@@ -1641,6 +1728,18 @@
     {
         if (Hud.IsAnyMenuOpen) return;
         if (!BlockActionReady()) return;
+
+        // Terraform mode: RMB builds a sphere of stone at the aim point.
+        // Skips the held-item check entirely - we're building from "the
+        // earth itself," not consuming inventory items (matches NMS where
+        // build-mode pulls from a unified terrain resource).
+        if (_terraformMode)
+        {
+            var thit = World.Raycast(Renderer.Camera.Position, Renderer.Camera.Front, 8f);
+            if (!thit.DidHit) return;
+            ExecuteTerraform(thit, carve: false);
+            return;
+        }
 
         var item = Inventory.ActiveItem;
         if (item is null) return;
@@ -2631,6 +2730,7 @@
         Input.OnQuickEatPressed -= HandleQuickEat;
         Input.OnQuickDrinkPressed -= HandleQuickDrink;
         Input.OnQuickHealPressed -= HandleQuickHeal;
+        Input.OnTerraformTogglePressed -= HandleTerraformToggle;
         if (_doc is not null) _doc.OnVisibilityChange -= HandleVisibilityChange;
         _doc?.Dispose();
         _doc = null;
