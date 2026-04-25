@@ -151,6 +151,13 @@ public class HudService : IDisposable
     private UILabel? _bleedLabel;
     private UIProgressBar? _xpBar;
     private UILabel? _xpLabel;
+    private UILabel? _comboLabel;
+
+    /// <summary>Current kill-streak; Game.razor pushes this each frame so HudService can render the live combo badge.</summary>
+    public int CurrentCombo { get; set; }
+
+    /// <summary>UTC expiry of the current combo window; HUD hides the badge once now > this.</summary>
+    public DateTime ComboExpiry { get; set; } = DateTime.MinValue;
 
     /// <summary>Toggle the debug HUD line (FPS + coords + level). Hot key F3.</summary>
     public void ToggleDebug()
@@ -386,6 +393,22 @@ public class HudService : IDisposable
             Color = System.Drawing.Color.FromArgb(255, 220, 40, 40),
         };
         root.AddAnchored(_bleedLabel, Anchor.BottomLeft, offsetX: 16, offsetY: -200);
+
+        // === Combo badge (above bleed badge) ===
+        // Shows live "COMBO Nx  Ys" while a kill chain is active. Fades
+        // when the window expires. Game.razor pushes CurrentCombo +
+        // ComboExpiry each kill.
+        _comboLabel = new UILabel
+        {
+            Text = "",
+            FontSize = FontSize.Caption,
+            Width = 180,
+            Height = 22,
+            Align = TextAlign.Center,
+            Visible = false,
+            Color = System.Drawing.Color.FromArgb(240, 255, 210, 90),
+        };
+        root.AddAnchored(_comboLabel, Anchor.BottomLeft, offsetX: 16, offsetY: -225);
 
         // === Hotbar (bottom-center) ===
         Hotbar = new UIHotbar { SlotCount = InventoryService.HotbarSize };
@@ -2252,6 +2275,32 @@ public class HudService : IDisposable
             else if (_bleedLabel.Visible)
             {
                 _bleedLabel.Visible = false;
+            }
+        }
+
+        // Combo badge: live "COMBO Nx  Ys" while a kill chain is active.
+        // CurrentCombo and ComboExpiry are pushed from Game.razor on each
+        // kill. Shows only for streak >= 2 (1 is just "a kill").
+        if (_comboLabel != null)
+        {
+            var now = DateTime.UtcNow;
+            float left = (float)(ComboExpiry - now).TotalSeconds;
+            if (CurrentCombo >= 2 && left > 0)
+            {
+                _comboLabel.Visible = true;
+                _comboLabel.Text = $"{CurrentCombo}x COMBO  {left:F1}s";
+                // Color intensifies with streak: 2x warm yellow, 3-4x
+                // orange, 5x+ bright red. Gives a visual "you're cooking"
+                // cue as the chain grows.
+                _comboLabel.Color = CurrentCombo >= 5
+                    ? System.Drawing.Color.FromArgb(245, 255, 120, 80)
+                    : CurrentCombo >= 3
+                        ? System.Drawing.Color.FromArgb(240, 255, 180, 80)
+                        : System.Drawing.Color.FromArgb(235, 255, 220, 100);
+            }
+            else if (_comboLabel.Visible)
+            {
+                _comboLabel.Visible = false;
             }
         }
 

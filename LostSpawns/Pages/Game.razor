@@ -776,6 +776,9 @@
         }
         // Record best combo so the death screen can show a personal record.
         Stats.RecordCombo(_killStreak);
+        // Mirror live combo state into the HUD for the on-screen badge.
+        Hud.CurrentCombo = _killStreak;
+        Hud.ComboExpiry = _killStreakExpiry;
         Stats.AwardXp(xp);
         Stats.RecordKill();
         Stats.RecordKindKill(e.Kind.ToString());
