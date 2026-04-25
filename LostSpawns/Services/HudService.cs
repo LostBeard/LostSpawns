@@ -117,6 +117,7 @@ public class HudService : IDisposable
     private UIProgressBar? _loadingBar;
     private UILabel? _loadingStatus;
     private UILabel? _debugLabel;
+    private UILabel? _bleedLabel;
 
     /// <summary>Toggle the debug HUD line (FPS + coords + level). Hot key F3.</summary>
     public void ToggleDebug()
@@ -310,6 +311,21 @@ public class HudService : IDisposable
         StatusHUD = new UIStatusHUD { Width = 180, ShowAllPercentages = true };
         SyncStatsToHud();
         root.AddAnchored(StatusHUD, Anchor.BottomLeft, offsetX: 16, offsetY: -16);
+
+        // === Bleed badge (above status HUD) ===
+        // Only visible while bleed is active. Pulses red so the player can't
+        // miss it. Game.razor's frame Push pulls from PlayerStatsService.
+        _bleedLabel = new UILabel
+        {
+            Text = "",
+            FontSize = FontSize.Caption,
+            Width = 180,
+            Height = 22,
+            Align = TextAlign.Center,
+            Visible = false,
+            Color = System.Drawing.Color.FromArgb(255, 220, 40, 40),
+        };
+        root.AddAnchored(_bleedLabel, Anchor.BottomLeft, offsetX: 16, offsetY: -180);
 
         // === Hotbar (bottom-center) ===
         Hotbar = new UIHotbar { SlotCount = InventoryService.HotbarSize };
@@ -1973,6 +1989,29 @@ public class HudService : IDisposable
 
         // Update compass bearing from camera yaw
         Compass.Bearing = cameraYaw;
+
+        // Bleed badge: shown while BleedSecondsRemaining > 0, pulses by sin
+        // wave so the player notices it. Hidden the rest of the time.
+        if (_bleedLabel != null)
+        {
+            float remaining = _stats.BleedSecondsRemaining;
+            if (remaining > 0)
+            {
+                _bleedLabel.Visible = true;
+                _bleedLabel.Text = $"BLEEDING  {remaining:F1}s";
+                // Pulse alpha 160-255 at ~3Hz so it reads as "urgent" without
+                // being distracting. Uses UTC ticks so it's frame-rate
+                // independent.
+                double t = (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
+                int alpha = 200 + (int)(MathF.Sin((float)t * 6f) * 55f);
+                alpha = Math.Clamp(alpha, 160, 255);
+                _bleedLabel.Color = System.Drawing.Color.FromArgb(alpha, 220, 40, 40);
+            }
+            else if (_bleedLabel.Visible)
+            {
+                _bleedLabel.Visible = false;
+            }
+        }
 
         // Update minimap player position (XZ plane + altitude)
         Minimap.PlayerPosition = new Vector2(cameraPosition.X, cameraPosition.Z);
