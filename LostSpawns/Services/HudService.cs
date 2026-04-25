@@ -461,12 +461,12 @@ public class HudService : IDisposable
         Compass = new UICompass { Width = 200 };
         root.AddAnchored(Compass, Anchor.TopCenter, offsetY: 12);
 
-        // === Clock (top-left) - "HH:MM  Phase" tick-updated from WorldTimeService ===
+        // === Clock (top-left) - "HH:MM Phase Day N" tick-updated from WorldTimeService ===
         _clockLabel = new UILabel
         {
-            Text = "06:00  Dawn",
+            Text = "06:00  Dawn  Day 1",
             FontSize = FontSize.Body,
-            Width = 180,
+            Width = 260,
             Height = 24,
             Align = TextAlign.Left,
         };
@@ -2279,7 +2279,7 @@ public class HudService : IDisposable
         // top-left corner without needing to parse the string.
         if (_clockLabel != null)
         {
-            _clockLabel.Text = $"{_worldTime.ClockString}  {_worldTime.PhaseName}";
+            _clockLabel.Text = $"{_worldTime.ClockString}  {_worldTime.PhaseName}  Day {_worldTime.DayNumber}";
             _clockLabel.Color = _worldTime.PhaseName switch
             {
                 "Dawn"  => System.Drawing.Color.FromArgb(240, 255, 190, 120),
