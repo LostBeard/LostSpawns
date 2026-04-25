@@ -128,6 +128,7 @@
         Wildlife.OnEntitySpawned += HandleEntitySpawned;
         Crafter.OnCrafted += HandleCraftedSound;
         Stats.OnFirstKill += HandleFirstKill;
+        Stats.OnAchievement += HandleAchievement;
         Inventory.OnItemConsumed += HandleItemConsumedSound;
         Inventory.OnItemPickedUp += HandleItemPickedUpSound;
         Weather.OnLightningStrike += HandleLightningSound;
@@ -619,6 +620,8 @@
         };
         Stats.AwardXp(xp);
         Stats.RecordKill();
+        if (e.Kind == LostSpawns.Services.EntityKind.Wolf)
+            Stats.TryAwardAchievement("First Wolf");
 
         var drop = LootForEntityKind(e.Kind);
         if (drop is null) { Hud.Notify($"Killed {e.Kind} (+{xp} XP)"); return; }
@@ -641,6 +644,7 @@
     private void HandleCooked(string cookedName)
     {
         Hud.NotifySuccess($"Cooked {cookedName}");
+        Stats.TryAwardAchievement("First Cook");
     }
 
     private void HandleGroundPickup(LostSpawns.Services.InventoryItem payload)
@@ -667,6 +671,12 @@
     {
         Hud.NotifyAchievement("First Kill!");
         Audio.PlayLevelUp(); // reuse the two-note chime for the milestone
+    }
+
+    private void HandleAchievement(string name)
+    {
+        Hud.NotifyAchievement(name + "!");
+        Audio.PlayLevelUp();
     }
 
     private void HandleLevelUpSound(int newLevel) => Audio.PlayLevelUp();
@@ -765,6 +775,7 @@
         Stats.Heal(0.15f);
 
         Hud.NotifySuccess("Slept through the night");
+        Stats.TryAwardAchievement("First Sleep");
     }
 
     private static LostSpawns.Services.InventoryItem? DropForBlockType(LostSpawns.Models.BlockType t) => t switch
@@ -856,6 +867,7 @@
             Inventory.SetHotbar(slot, null);
 
         Hud.NotifySuccess("Placed Campfire");
+        Stats.TryAwardAchievement("First Fire");
     }
 
     private void HandlePlaceTorch(LostSpawns.Services.InventoryItem item)
@@ -1276,6 +1288,7 @@
         Wildlife.OnEntitySpawned -= HandleEntitySpawned;
         Crafter.OnCrafted -= HandleCraftedSound;
         Stats.OnFirstKill -= HandleFirstKill;
+        Stats.OnAchievement -= HandleAchievement;
         Inventory.OnItemConsumed -= HandleItemConsumedSound;
         Inventory.OnItemPickedUp -= HandleItemPickedUpSound;
         Weather.OnLightningStrike -= HandleLightningSound;

@@ -76,6 +76,10 @@ public class SaveService
                 Experience = _stats.Experience,
                 Kills = _stats.Kills,
                 FirstKillAwarded = _stats.FirstKillAwarded,
+                FirstFireAwarded = _stats.FirstFireAwarded,
+                FirstCookAwarded = _stats.FirstCookAwarded,
+                FirstWolfAwarded = _stats.FirstWolfAwarded,
+                FirstSleepAwarded = _stats.FirstSleepAwarded,
                 Hotbar = ToDtoArray(_inventory.Hotbar),
                 Backpack = ToDtoArray(_inventory.Backpack),
                 ActiveHotbarIndex = _inventory.ActiveHotbarIndex,
@@ -143,6 +147,9 @@ public class SaveService
             // Seed kills + achievement flag directly so the FirstKill event
             // doesn't fire on every save-reload.
             _stats.SeedKillsFromSave(state.Kills, state.FirstKillAwarded);
+            _stats.SeedAchievementsFromSave(
+                state.FirstFireAwarded, state.FirstCookAwarded,
+                state.FirstWolfAwarded, state.FirstSleepAwarded);
 
             // Apply inventory slot by slot. Nulls stay null.
             if (state.Hotbar != null)
@@ -273,6 +280,10 @@ public class SaveService
         public int Experience { get; set; }
         public int Kills { get; set; }
         public bool FirstKillAwarded { get; set; }
+        public bool FirstFireAwarded { get; set; }
+        public bool FirstCookAwarded { get; set; }
+        public bool FirstWolfAwarded { get; set; }
+        public bool FirstSleepAwarded { get; set; }
         public InventoryItemDto?[]? Hotbar { get; set; }
         public InventoryItemDto?[]? Backpack { get; set; }
         public int ActiveHotbarIndex { get; set; }

@@ -26,11 +26,51 @@ public class PlayerStatsService
     /// <summary>Lifetime kills tally - incremented once per downed entity.</summary>
     public int Kills { get; private set; }
 
-    /// <summary>True once the player has scored their first kill.</summary>
+    /// <summary>Flags for one-shot first-time achievements. Each toggles to true the first time the named event happens and stays true across respawn + save/load.</summary>
     public bool FirstKillAwarded { get; private set; }
+    public bool FirstFireAwarded => _firstFire;
+    public bool FirstCookAwarded => _firstCook;
+    public bool FirstWolfAwarded => _firstWolf;
+    public bool FirstSleepAwarded => _firstSleep;
+
+    /// <summary>Fires once per first-time achievement. Arg = display name of the achievement.</summary>
+    public event Action<string>? OnAchievement;
 
     /// <summary>Fires once when the player scores their first kill.</summary>
     public event Action? OnFirstKill;
+
+    /// <summary>
+    /// Try to claim a one-shot achievement by name. Sets the matching flag
+    /// and fires OnAchievement once. Returns false if already claimed.
+    /// </summary>
+    public bool TryAwardAchievement(string name)
+    {
+        bool Fire(ref bool flag)
+        {
+            if (flag) return false;
+            flag = true;
+            return true;
+        }
+        bool fired = name switch
+        {
+            "First Fire"  => Fire(ref _firstFire),
+            "First Cook"  => Fire(ref _firstCook),
+            "First Wolf"  => Fire(ref _firstWolf),
+            "First Sleep" => Fire(ref _firstSleep),
+            _             => false,
+        };
+        if (!fired) return false;
+        OnAchievement?.Invoke(name);
+        OnStatsChanged?.Invoke();
+        return true;
+    }
+
+    // Backing fields for TryAwardAchievement - public props are read-only
+    // snapshots so consumers can't bypass the event path.
+    private bool _firstFire;
+    private bool _firstCook;
+    private bool _firstWolf;
+    private bool _firstSleep;
 
     /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
     public void RecordKill()
@@ -49,6 +89,16 @@ public class PlayerStatsService
     {
         Kills = kills;
         FirstKillAwarded = firstKillAwarded;
+        OnStatsChanged?.Invoke();
+    }
+
+    /// <summary>Seed the other achievement flags from save. Bypasses OnAchievement so reloads don't spam.</summary>
+    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep)
+    {
+        _firstFire = fire;
+        _firstCook = cook;
+        _firstWolf = wolf;
+        _firstSleep = sleep;
         OnStatsChanged?.Invoke();
     }
 
