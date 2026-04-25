@@ -1459,9 +1459,11 @@
         var target = Wildlife.FindTargetInCone(origin, dir, maxDist: 20f, minDot: 0.99f);
 
         // Always consume an arrow + charge the cooldown, even on a miss -
-        // you loosed it, it's gone.
+        // you loosed it, it's gone. Bow string also wears per shot (regardless
+        // of hit), matching how real archery wears the string.
         Inventory.TryConsumeOne("material.feather");
         ConsumeBlockActionCost();
+        DegradeActiveToolWithFeedback();
         ApplyCameraKick();
         Audio.PlayBowShot();
 
@@ -1471,8 +1473,9 @@
             Audio.PlayHit();
             Hud.ShowImpactMark(target.Position);
             Hud.ShowDamageNumber(target.Position, 0.7f);
-            // Bow durability decays per hit, not per shot.
-            Inventory.DegradeActiveTool();
+            // Per-shot DegradeActiveToolWithFeedback already fired above so
+            // the bow wears whether you hit or miss. No duplicate degrade
+            // here - real archery the string stresses on every release.
             // Any bow-kill lands the Bowman achievement, not only the first
             // attempt - so a miss-then-hit sequence on the same shot still
             // counts.
