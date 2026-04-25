@@ -1623,7 +1623,11 @@
             {
                 _stepTimer = 0;
                 _stepAlt = !_stepAlt;
+                // Water > rain > dry. WaterStep is the airy wade sound;
+                // rain swaps in the same water tone at lower intensity so
+                // running across wet grass squelches but doesn't full-splash.
                 if (IsInWater()) Audio.PlayWaterStep(_stepAlt);
+                else if (Weather.RainIntensity > 0.25f) Audio.PlayWaterStep(_stepAlt);
                 else             Audio.PlayStep(_stepAlt);
             }
         }
