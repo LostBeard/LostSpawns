@@ -1286,17 +1286,24 @@ public class HudService : IDisposable
             // Smoke wisps: 3 gray puffs rising above the flame, each phase-
             // offset so they don't stack. Higher rects = older = lower alpha.
             // Only render for fueled fires - extinguished piles don't smoke.
+            // Low-fuel fires smoke darker + denser (dying embers produce
+            // oily smoke); fresh fires smoke paler.
             if (f.Fuel > 0.02f)
             {
                 float smokeTime = t * 3f + f.Id * 0.7f;
+                // Tint darker as fuel drops. 170 at full fuel, 80 at empty.
+                byte smokeTint = (byte)(80 + (int)(f.Fuel * 90f));
                 for (int s = 0; s < 3; s++)
                 {
                     float phase = (smokeTime + s * 0.33f) % 1f;
                     float riseY = phase * size * 2.2f;
                     float drift = MathF.Sin(phase * 6f + s) * size * 0.15f;
-                    int sAlpha = (int)(120 * (1f - phase) * f.Fuel);
+                    // Dying fires smoke more visibly. Multiplier grows as
+                    // fuel drops so a low-fuel fire actually smokes MORE.
+                    float densityMul = 1f + (1f - f.Fuel) * 0.6f;
+                    int sAlpha = (int)(120 * (1f - phase) * f.Fuel * densityMul);
                     if (sAlpha <= 0) continue;
-                    var smoke = System.Drawing.Color.FromArgb(sAlpha, 170, 170, 175);
+                    var smoke = System.Drawing.Color.FromArgb(sAlpha, smokeTint, smokeTint, (byte)(smokeTint + 5));
                     _ui.Renderer.DrawRect(
                         x + size * 0.35f + drift,
                         yBottom - size * 0.95f - riseY,
