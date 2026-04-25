@@ -1540,9 +1540,11 @@
         _killStreakExpiry = DateTime.MinValue;
 
         // Teleport camera back to the heightmap spawn point and re-arm gravity so
-        // it settles cleanly on the terrain.
+        // it settles cleanly on the terrain. Reset pitch so the death-collapse
+        // tilt doesn't leak into the new life.
         int spawnHeight = World.GetHeightAt(0, 0);
         Renderer.Camera.Position = new System.Numerics.Vector3(0, spawnHeight + EyeHeight + 2f, 0);
+        Renderer.Camera.Pitch = -15f;
         _verticalVelocity = 0;
         _peakFallSpeed = 0;
         _grounded = false;
