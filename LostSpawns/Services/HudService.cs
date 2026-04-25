@@ -1558,6 +1558,28 @@ public class HudService : IDisposable
                 x + size * 0.32f, yBottom - size * 0.85f,
                 size * 0.36f, size * 0.25f, tip);
 
+            // Sparks: 4 bright orange specks rising above the flame tip,
+            // phase-offset like smoke. Faster than smoke + brighter, fade
+            // before they reach smoke height. Reads as the bright bits
+            // popping off a vigorous fire.
+            if (f.Fuel > 0.05f)
+            {
+                float sparkTime = t * 5f + f.Id * 0.41f;
+                for (int sp = 0; sp < 4; sp++)
+                {
+                    float phase = (sparkTime + sp * 0.25f) % 1f;
+                    float riseY = phase * size * 1.4f;
+                    float jitter = MathF.Sin(phase * 12f + sp * 1.7f) * size * 0.08f;
+                    int spAlpha = (int)(220 * (1f - phase) * f.Fuel);
+                    if (spAlpha <= 0) continue;
+                    _ui.Renderer.DrawRect(
+                        x + size * 0.40f + jitter,
+                        yBottom - size * 0.85f - riseY,
+                        2.5f, 2.5f,
+                        System.Drawing.Color.FromArgb(spAlpha, 255, 200, 80));
+                }
+            }
+
             // Smoke wisps: 3 gray puffs rising above the flame, each phase-
             // offset so they don't stack. Higher rects = older = lower alpha.
             // Only render for fueled fires - extinguished piles don't smoke.
