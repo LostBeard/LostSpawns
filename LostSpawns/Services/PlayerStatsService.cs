@@ -134,6 +134,7 @@ public class PlayerStatsService
             "Hunter"        => Fire(ref _hunter),
             "Gourmet"       => Fire(ref _gourmet),
             "Resilient"     => Fire(ref _resilient),
+            "First Aid"     => Fire(ref _firstAid),
             "Completionist" => Fire(ref _completionist),
             _               => false,
         };
@@ -146,7 +147,7 @@ public class PlayerStatsService
         if (!_completionist
             && FirstKillAwarded && _firstFire && _firstCook && _firstWolf
             && _firstSleep && _veteran && _centurion && _survivor && _bowman
-            && _hunter && _gourmet && _resilient)
+            && _hunter && _gourmet && _resilient && _firstAid)
         {
             TryAwardAchievement("Completionist");
         }
@@ -166,6 +167,7 @@ public class PlayerStatsService
     private bool _hunter;
     private bool _gourmet;
     private bool _resilient;
+    private bool _firstAid;
     private bool _completionist;
 
     public bool VeteranAwarded => _veteran;
@@ -175,6 +177,7 @@ public class PlayerStatsService
     public bool HunterAwarded => _hunter;
     public bool GourmetAwarded => _gourmet;
     public bool ResilientAwarded => _resilient;
+    public bool FirstAidAwarded => _firstAid;
     public bool CompletionistAwarded => _completionist;
 
     /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
@@ -199,7 +202,7 @@ public class PlayerStatsService
     }
 
     /// <summary>Seed the other achievement flags from save. Bypasses OnAchievement so reloads don't spam.</summary>
-    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false, bool hunter = false, bool gourmet = false, bool resilient = false)
+    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false, bool hunter = false, bool gourmet = false, bool resilient = false, bool firstAid = false)
     {
         _firstFire = fire;
         _firstCook = cook;
@@ -213,6 +216,7 @@ public class PlayerStatsService
         _hunter = hunter;
         _gourmet = gourmet;
         _resilient = resilient;
+        _firstAid = firstAid;
         OnStatsChanged?.Invoke();
     }
 

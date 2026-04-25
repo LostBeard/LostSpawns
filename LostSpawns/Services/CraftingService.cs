@@ -50,6 +50,13 @@ public class CraftingService
                 "Bandage",
                 new[] { ("material.cloth", 1), ("material.rope", 1) },
                 new InventoryItem("med.bandage", "Bandage", 1, ItemCategory.Medical)),
+            // Field bandage: cheap leaves-only fallback so players who run out
+            // of cloth/rope after a wolf fight still have a way to stop bleed.
+            // Lower-quality but unblocks the survival loop.
+            new CraftingRecipe(
+                "Field Bandage",
+                new[] { ("material.leaves", 3) },
+                new InventoryItem("med.bandage", "Bandage", 1, ItemCategory.Medical)),
             new CraftingRecipe(
                 "Campfire",
                 new[] { ("material.wood", 4), ("material.leaves", 2) },

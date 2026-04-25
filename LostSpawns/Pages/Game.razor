@@ -836,6 +836,9 @@
             {
                 Stats.ClearBleed();
                 Hud.NotifySuccess("Bleeding stopped");
+                // First Aid achievement: only fires when this consume actually
+                // ended an active bleed, not on a cosmetic heal.
+                Stats.TryAwardAchievement("First Aid");
             }
         }
     }

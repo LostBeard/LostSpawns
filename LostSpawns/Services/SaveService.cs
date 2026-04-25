@@ -96,6 +96,7 @@ public class SaveService
                 HunterAwarded = _stats.HunterAwarded,
                 GourmetAwarded = _stats.GourmetAwarded,
                 ResilientAwarded = _stats.ResilientAwarded,
+                FirstAidAwarded = _stats.FirstAidAwarded,
                 CookCount = _stats.CookCount,
                 Deaths = _stats.Deaths,
                 PlayTimeSeconds = _stats.PlayTimeSeconds,
@@ -177,7 +178,8 @@ public class SaveService
                 state.VeteranAwarded, state.CenturionAwarded,
                 state.SurvivorAwarded, state.BowmanAwarded,
                 state.CompletionistAwarded, state.HunterAwarded,
-                state.GourmetAwarded, state.ResilientAwarded);
+                state.GourmetAwarded, state.ResilientAwarded,
+                state.FirstAidAwarded);
             _stats.SeedCookCountFromSave(state.CookCount);
             _stats.SeedDeathsFromSave(state.Deaths);
             _stats.SeedPlayTimeFromSave(state.PlayTimeSeconds);
@@ -329,6 +331,7 @@ public class SaveService
         public bool HunterAwarded { get; set; }
         public bool GourmetAwarded { get; set; }
         public bool ResilientAwarded { get; set; }
+        public bool FirstAidAwarded { get; set; }
         public int CookCount { get; set; }
         public int Deaths { get; set; }
         public float PlayTimeSeconds { get; set; }
