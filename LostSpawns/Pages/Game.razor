@@ -867,6 +867,10 @@
         Hud.NotifyAchievement(name + "! (+25 XP)");
         Audio.PlayLevelUp();
         Stats.AwardXp(25);
+        // Immediate save on achievement so progress isn't lost to a browser
+        // crash between 10s auto-saves. Achievements are rare + high-value
+        // so the cost of one extra localStorage write is negligible.
+        Save.SaveNow(Renderer.Camera.Position, Renderer.Camera.Yaw, Renderer.Camera.Pitch);
     }
 
     private void HandleLevelUpSound(int newLevel) => Audio.PlayLevelUp();
