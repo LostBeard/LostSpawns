@@ -453,6 +453,81 @@ public class AudioService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Short sharp growl used when a wolf flips to Charge mode. Two stacked
+    /// oscillators (low sawtooth + mid-freq square) give it a snarly rasp.
+    /// </summary>
+    public void PlayWolfSnarl()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            double t = _ctx.CurrentTime;
+            using var osc1 = _ctx.CreateOscillator();
+            using var gain1 = _ctx.CreateGain();
+            osc1.Type = "sawtooth";
+            osc1.Frequency.SetValueAtTime(95f, t);
+            osc1.Frequency.ExponentialRampToValueAtTime(60f, t + 0.25);
+            gain1.Gain.SetValueAtTime(0, t);
+            gain1.Gain.LinearRampToValueAtTime(0.18f, t + 0.04);
+            gain1.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.30);
+            osc1.Connect(gain1);
+            gain1.Connect(Destination);
+            osc1.Start();
+            osc1.Stop((float)(t + 0.30));
+
+            using var osc2 = _ctx.CreateOscillator();
+            using var gain2 = _ctx.CreateGain();
+            osc2.Type = "square";
+            osc2.Frequency.SetValueAtTime(220f, t);
+            osc2.Frequency.ExponentialRampToValueAtTime(140f, t + 0.22);
+            gain2.Gain.SetValueAtTime(0, t);
+            gain2.Gain.LinearRampToValueAtTime(0.08f, t + 0.03);
+            gain2.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.25);
+            osc2.Connect(gain2);
+            gain2.Connect(Destination);
+            osc2.Start();
+            osc2.Stop((float)(t + 0.25));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayWolfSnarl failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Crow caw - two quick rising square blips, classic cartoon crow cry.
+    /// Plays when a crow takes damage and flees.
+    /// </summary>
+    public void PlayCrowCaw()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            double t = _ctx.CurrentTime;
+            for (int i = 0; i < 2; i++)
+            {
+                double start = t + i * 0.18;
+                using var osc = _ctx.CreateOscillator();
+                using var gain = _ctx.CreateGain();
+                osc.Type = "square";
+                osc.Frequency.SetValueAtTime(520f, start);
+                osc.Frequency.ExponentialRampToValueAtTime(360f, start + 0.12);
+                gain.Gain.SetValueAtTime(0, start);
+                gain.Gain.LinearRampToValueAtTime(0.08f, start + 0.02);
+                gain.Gain.ExponentialRampToValueAtTime(0.0001f, start + 0.15);
+                osc.Connect(gain);
+                gain.Connect(Destination);
+                osc.Start((float)start);
+                osc.Stop((float)(start + 0.15));
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayCrowCaw failed: {ex.Message}");
+        }
+    }
+
     // Persistent rain ambient - one oscillator + gain node reused across the
     // whole session. Frequency is a high broadband hiss approximation (real
     // white noise would need a noise buffer - sawtooth at ~1200 Hz is close

@@ -130,6 +130,7 @@
         Hud.OnRespawnClicked += HandleRespawnClicked;
         Stats.OnDied += HandleDied;
         Wildlife.OnEntityKilled += HandleEntityKilled;
+        Wildlife.OnEntityHit += HandleEntityHitAudio;
         Wildlife.OnContactAttack += HandleEntityContactAttack;
         Fires.OnCooked += HandleCooked;
         Fires.OnLowFuel += HandleLowFuel;
@@ -732,6 +733,18 @@
         // when it's already full, so nothing's silently lost.
         Ground.Drop(e.Position, drop);
         Hud.Notify($"Killed {e.Kind} (+{xp} XP) - drop on the ground");
+    }
+
+    private void HandleEntityHitAudio(LostSpawns.Services.WanderingEntity e)
+    {
+        // Per-kind reaction sound on non-fatal hits. Kill flow still plays
+        // PlayHit from the attack handler; this layer adds vocal character:
+        // wolves snarl when bitten-back, crows caw, others use the default.
+        switch (e.Kind)
+        {
+            case LostSpawns.Services.EntityKind.Wolf: Audio.PlayWolfSnarl(); break;
+            case LostSpawns.Services.EntityKind.Crow: Audio.PlayCrowCaw();  break;
+        }
     }
 
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
@@ -1595,6 +1608,7 @@
         Hud.OnRespawnClicked -= HandleRespawnClicked;
         Stats.OnDied -= HandleDied;
         Wildlife.OnEntityKilled -= HandleEntityKilled;
+        Wildlife.OnEntityHit -= HandleEntityHitAudio;
         Wildlife.OnContactAttack -= HandleEntityContactAttack;
         Fires.OnCooked -= HandleCooked;
         Fires.OnLowFuel -= HandleLowFuel;
