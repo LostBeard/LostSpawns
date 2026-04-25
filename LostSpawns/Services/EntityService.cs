@@ -77,6 +77,19 @@ public class EntityService
     /// <summary>Max active wandering entities - respawn tick stops once this is reached.</summary>
     public int MaxEntities { get; set; } = 5;
 
+    /// <summary>
+    /// Survival day index (0-based). Higher values escalate the night wolf
+    /// bias + effective population cap. Game.razor pushes the current day
+    /// number each frame; EntityService uses it to scale threat.
+    /// </summary>
+    public int DayNumber { get; set; }
+
+    /// <summary>Effective cap including day-number escalation.</summary>
+    private int EffectiveCap =>
+        DayNumber >= 7 ? MaxEntities + 4
+      : DayNumber >= 4 ? MaxEntities + 2
+                       : MaxEntities;
+
     /// <summary>Seconds between respawn attempts once the population is below cap.</summary>
     public float RespawnIntervalSeconds { get; set; } = 45f;
 
@@ -260,7 +273,7 @@ public class EntityService
         // Respawn tick - only advances while population is below cap so a
         // fully-stocked world doesn't accumulate progress and dump a wave
         // of new entities the instant the player kills one.
-        if (Entities.Count < MaxEntities)
+        if (Entities.Count < EffectiveCap)
         {
             _respawnTimer += dt;
             if (_respawnTimer >= RespawnIntervalSeconds)
@@ -285,16 +298,22 @@ public class EntityService
     private void RespawnOneNear(Vector3 playerPos, WorldService world, bool isNight)
     {
         // Day: 30% rabbit, 25% boar, 20% crow, 25% deer (no wolves).
-        // Night: 15% rabbit, 15% boar, 10% crow, 5% deer, 55% wolf.
+        // Night: 15% rabbit, 15% boar, 10% crow, 5% deer, 55% wolf (base).
+        // Past day 7, wolf night bias grows so nights get actively worse.
         double roll = _rng.NextDouble();
         EntityKind kind;
         if (isNight)
         {
-            kind = roll < 0.15 ? EntityKind.Rabbit
-                 : roll < 0.30 ? EntityKind.Boar
-                 : roll < 0.40 ? EntityKind.Crow
-                 : roll < 0.45 ? EntityKind.Deer
-                               : EntityKind.Wolf;
+            // Wolf floor grows with day number: 0.45 base, 0.30 by day 4,
+            // 0.15 by day 7+. Lower threshold = higher wolf probability.
+            double wolfThreshold = DayNumber >= 7 ? 0.15
+                                 : DayNumber >= 4 ? 0.30
+                                                  : 0.45;
+            kind = roll < wolfThreshold * 0.33 ? EntityKind.Rabbit
+                 : roll < wolfThreshold * 0.66 ? EntityKind.Boar
+                 : roll < wolfThreshold * 0.89 ? EntityKind.Crow
+                 : roll < wolfThreshold         ? EntityKind.Deer
+                                                : EntityKind.Wolf;
         }
         else
         {

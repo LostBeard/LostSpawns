@@ -1412,6 +1412,10 @@
         Stats.Tick(deltaTime, ambient, sprinting);
         // Wildlife wanders each frame; gated by the same active-play branch so
         // critters hold still while the player is paused / in menus.
+        // Push the current survival day number so EntityService can scale the
+        // wolf bias + entity cap. Cheap assignment; computed EffectiveCap
+        // refers to it each tick.
+        Wildlife.DayNumber = Time.DayNumber;
         Wildlife.Tick(deltaTime, World, Renderer.Camera.Position, Time.IsNight);
         // Campfire cook tick - converts raw meat to cooked while the player
         // loiters inside the warmth radius. Reset logic lives in the service
