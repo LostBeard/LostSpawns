@@ -1551,6 +1551,25 @@
         Wildlife.Entities.Clear();
         Wildlife.SpawnStarter(Renderer.Camera.Position, World);
 
+        // Respawn-mercy: if every campfire went out before the player died,
+        // re-spawn a low-fuel starter fire near spawn so the new life isn't
+        // immediately fighting hypothermia + zero shelter at night.
+        bool hasLiveFire = false;
+        foreach (var f in Fires.Fires)
+            if (f.Fuel > 0.05f) { hasLiveFire = true; break; }
+        if (!hasLiveFire)
+        {
+            var fireXZ = new System.Numerics.Vector3(3, 0, 0);
+            int fireY = World.GetHeightAt(Renderer.Camera.Position.X + fireXZ.X,
+                                          Renderer.Camera.Position.Z + fireXZ.Z) + 1;
+            var mercyFire = Fires.Spawn(new System.Numerics.Vector3(
+                Renderer.Camera.Position.X + fireXZ.X,
+                fireY,
+                Renderer.Camera.Position.Z + fireXZ.Z));
+            mercyFire.Fuel = 0.4f; // half-fuel - feed it to keep it
+            Hud.NotifySuccess("Respawn fire lit - feed it Wood to keep going");
+        }
+
         // Re-request pointer lock so the player can look around immediately.
         try
         {
