@@ -648,6 +648,17 @@
         if (target is not null)
         {
             float dmg = DamageForEquippedTool();
+            // Sneak attack: 1.75x damage when CTRL is held AND the target
+            // hasn't aggro'd yet. Rewards careful approach, especially on
+            // bears (aggro halved by sneak too). The "Critical!" toast +
+            // heavier damage number tell the player it landed.
+            bool sneaking = Input.KeysDown.Contains("ControlLeft") || Input.KeysDown.Contains("ControlRight");
+            bool ambush = sneaking && target.Alert == LostSpawns.Services.AlertMode.Idle;
+            if (ambush)
+            {
+                dmg *= 1.75f;
+                Hud.NotifySuccess("Critical!");
+            }
             Wildlife.ApplyDamage(target, dmg, origin);
             ConsumeBlockActionCost();
             ApplyCameraKick(KickMagnitudeFor(target.Kind));
