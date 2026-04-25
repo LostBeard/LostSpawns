@@ -540,7 +540,13 @@ public class EntityService
         // duration is intentionally long enough that a single axe swing
         // actually moves the rabbit out of immediate swing range.
         e.LastAlertSource = attackerPos;
-        e.Alert = (e.Kind == EntityKind.Boar || e.Kind == EntityKind.Wolf)
+        // Wounded wolves break off when below 30% HP - the survival
+        // instinct flips from "kill the threat" to "live to hunt later".
+        // Boars hold the charge to the death; they're stubborn by design.
+        // Bears stay aggressive too - apex predators don't run.
+        bool woundedWolf = e.Kind == EntityKind.Wolf && e.Health < e.MaxHealth * 0.3f;
+        e.Alert = (e.Kind == EntityKind.Boar || e.Kind == EntityKind.Bear
+                   || (e.Kind == EntityKind.Wolf && !woundedWolf))
             ? AlertMode.Charge
             : AlertMode.Flee;
         e.AlertTimer = 3.0f;
