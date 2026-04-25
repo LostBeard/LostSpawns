@@ -995,6 +995,9 @@
                 return;
             }
             Stats.Thirst = Math.Min(1f, Stats.Thirst + 0.30f);
+            // Small HP bump alongside the thirst restore - hydration actively
+            // helps recovery, not just staves off dehydration damage.
+            Stats.Heal(0.03f);
             Hud.NotifySuccess("Drank water");
             return;
         }
