@@ -950,9 +950,10 @@
 
     private void HandleSaved()
     {
-        Hud.Notify("Saved");
-        // Mirror the SaveService timestamp so the debug HUD can display
-        // "saved Xs ago" without taking a DI dependency on SaveService.
+        // No toast on every auto-save - feels chatty every 10s. The
+        // F3 debug HUD shows "saved Xs ago", and explicit triggers
+        // (F5 quick-save, achievement-immediate-save) toast their own
+        // message. Just mirror the timestamp.
         Hud.LastSaveTime = Save.LastSaveTime;
     }
 
