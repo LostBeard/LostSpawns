@@ -162,6 +162,47 @@ public class AudioService : IDisposable
         }
     }
 
+    /// <summary>Heavy thud when a wolf/boar dies - low square hit plus a
+    /// short rising sine "confirm" tone. Cheaper and shorter than PlayDeath
+    /// since it's per-kill not per-player-death.</summary>
+    public void PlayBeastFell()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            double t = _ctx.CurrentTime;
+            using var thud = _ctx.CreateOscillator();
+            using var thudGain = _ctx.CreateGain();
+            thud.Type = "square";
+            thud.Frequency.SetValueAtTime(75f, t);
+            thud.Frequency.ExponentialRampToValueAtTime(45f, t + 0.18);
+            thudGain.Gain.SetValueAtTime(0, t);
+            thudGain.Gain.LinearRampToValueAtTime(0.22f, t + 0.02);
+            thudGain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.22);
+            thud.Connect(thudGain);
+            thudGain.Connect(Destination);
+            thud.Start();
+            thud.Stop((float)(t + 0.22));
+
+            using var chime = _ctx.CreateOscillator();
+            using var chimeGain = _ctx.CreateGain();
+            chime.Type = "sine";
+            chime.Frequency.SetValueAtTime(520f, t + 0.10);
+            chime.Frequency.ExponentialRampToValueAtTime(740f, t + 0.25);
+            chimeGain.Gain.SetValueAtTime(0, t + 0.10);
+            chimeGain.Gain.LinearRampToValueAtTime(0.12f, t + 0.14);
+            chimeGain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.30);
+            chime.Connect(chimeGain);
+            chimeGain.Connect(Destination);
+            chime.Start((float)(t + 0.10));
+            chime.Stop((float)(t + 0.30));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayBeastFell failed: {ex.Message}");
+        }
+    }
+
     /// <summary>Long descending death tone - dramatic fade on player death.</summary>
     public void PlayDeath()
     {
