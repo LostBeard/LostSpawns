@@ -966,6 +966,15 @@ public class HudService : IDisposable
             "Feathers from crows are arrows for the bow.",
             "Fur Coat gives passive warmth wherever you are.",
             "Stone Axe / Pick at Level 3 doubles your durability.",
+            "G quick-eats the best food in your inventory.",
+            "3 Leaves crafts a Field Bandage - cures bleeding.",
+            "Wolf bites cause bleeding - sleep is blocked until treated.",
+            "Chaining kills within 8s gives bonus XP (up to 3x).",
+            "Nights get deadlier past Day 4. Past Day 7 it's brutal.",
+            "Near a campfire wolves have to get closer before aggroing.",
+            "Cooked meat also warms you. Water cools you.",
+            "Lightning strikes during storms take 10% off every fire.",
+            "Pack Hunter: kill 5 wolves in one night for the achievement.",
         };
         var tipLabel = new UILabel
         {
