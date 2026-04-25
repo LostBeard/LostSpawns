@@ -1224,15 +1224,21 @@ public class HudService : IDisposable
             }
 
             // Fuel bar under the ember. Always shown so the player can see
-            // that a fire needs feeding before it's too late.
+            // that a fire needs feeding before it's too late. Bar color
+            // shifts red at low fuel so the warning reads at a glance.
             float barW = size;
             float barH = 4f;
             float barX = x;
             float barY = yBottom + 2f;
             _ui.Renderer.DrawRect(barX, barY, barW, barH,
                 System.Drawing.Color.FromArgb(180, 20, 20, 20));
-            _ui.Renderer.DrawRect(barX, barY, barW * Math.Clamp(f.Fuel, 0, 1), barH,
-                System.Drawing.Color.FromArgb(230, 250, 170, 40));
+            float fuelRatio = Math.Clamp(f.Fuel, 0, 1);
+            System.Drawing.Color fuelColor = fuelRatio < 0.20f
+                ? System.Drawing.Color.FromArgb(230, 230, 70, 50)
+                : fuelRatio < 0.45f
+                    ? System.Drawing.Color.FromArgb(230, 240, 180, 60)
+                    : System.Drawing.Color.FromArgb(230, 140, 230, 90);
+            _ui.Renderer.DrawRect(barX, barY, barW * fuelRatio, barH, fuelColor);
         }
     }
 
@@ -1599,6 +1605,8 @@ public class HudService : IDisposable
             // HP bar above the body when damaged. Bar fill normalizes to the
             // entity's MaxHealth so wolves (1.8 HP) and boars (1.5 HP) read as
             // "full" when undamaged instead of already showing a partial bar.
+            // Bar color shifts green -> yellow -> red as HP drops so the
+            // player reads "low / near-kill" at a glance.
             float maxHp = MathF.Max(e.MaxHealth, 0.001f);
             if (e.Health < maxHp)
             {
@@ -1606,10 +1614,15 @@ public class HudService : IDisposable
                 float barH = 4f;
                 float barX = x;
                 float barY = y - 8f;
+                float hpRatio = Math.Clamp(e.Health / maxHp, 0f, 1f);
                 _ui.Renderer.DrawRect(barX, barY, barW, barH,
                     System.Drawing.Color.FromArgb(200, 40, 10, 10));
-                _ui.Renderer.DrawRect(barX, barY, barW * Math.Clamp(e.Health / maxHp, 0f, 1f), barH,
-                    System.Drawing.Color.FromArgb(255, 220, 60, 60));
+                System.Drawing.Color hpColor = hpRatio < 0.33f
+                    ? System.Drawing.Color.FromArgb(255, 230, 60, 60)
+                    : hpRatio < 0.66f
+                        ? System.Drawing.Color.FromArgb(255, 240, 200, 60)
+                        : System.Drawing.Color.FromArgb(255, 120, 220, 100);
+                _ui.Renderer.DrawRect(barX, barY, barW * hpRatio, barH, hpColor);
             }
 
             // Name label above the billboard. Text scales with billboard size
