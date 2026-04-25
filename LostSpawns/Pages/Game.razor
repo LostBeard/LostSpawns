@@ -472,6 +472,13 @@
                     float excess = _peakFallSpeed - SafeFallSpeed;
                     float dmg = excess * FallDamageScale;
                     Stats.TakeDamage(dmg, LostSpawns.Services.DamageCause.Fall);
+                    // Dust burst at the player's feet on hard landings.
+                    // Particle count scales with how hard the impact was -
+                    // small drops kick up a few specks, big falls puff a
+                    // cloud. Dirt under the camera is the spawn point.
+                    int count = Math.Clamp((int)(excess * 2f) + 4, 4, 12);
+                    var feet = new System.Numerics.Vector3(pos.X, pos.Y - 1.6f, pos.Z);
+                    Hud.ShowDustPuff(feet, count);
                 }
                 // Landing audio - gain scales with peak fall speed so big
                 // drops thud harder than hops. Water landings get a splash

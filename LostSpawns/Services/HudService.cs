@@ -155,6 +155,37 @@ public class HudService : IDisposable
             _bloodIdx = (_bloodIdx + 1) % BloodMax;
         }
     }
+
+    // Dust puff ring buffer. Used for fall landings, block-break dust, and
+    // any other "kicked-up sediment" feedback. Tan/gray particles drift
+    // slower and fade over ~600ms.
+    private const int DustMax = 16;
+    private readonly System.Numerics.Vector3[] _dustPos = new System.Numerics.Vector3[DustMax];
+    private readonly System.Numerics.Vector3[] _dustVel = new System.Numerics.Vector3[DustMax];
+    private readonly DateTime[] _dustSpawned = new DateTime[DustMax];
+    private int _dustIdx;
+    private readonly Random _dustRng = new();
+
+    /// <summary>
+    /// Spawn a dust puff at the given world position. Count scales the
+    /// number of particles - default 6 for a regular puff, larger for
+    /// hard landings. Particles drift outward + slightly up + fall.
+    /// </summary>
+    public void ShowDustPuff(System.Numerics.Vector3 worldPos, int count = 6)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            double angle = _dustRng.NextDouble() * Math.PI * 2;
+            float speed = 1.0f + (float)_dustRng.NextDouble() * 1.0f;
+            _dustPos[_dustIdx] = worldPos;
+            _dustVel[_dustIdx] = new System.Numerics.Vector3(
+                (float)Math.Cos(angle) * speed,
+                0.4f + (float)_dustRng.NextDouble() * 0.6f,
+                (float)Math.Sin(angle) * speed);
+            _dustSpawned[_dustIdx] = DateTime.UtcNow;
+            _dustIdx = (_dustIdx + 1) % DustMax;
+        }
+    }
     private bool _rainSeeded;
     private readonly Random _rainRng = new();
     private RenderService? _renderer;
@@ -1875,6 +1906,45 @@ public class HudService : IDisposable
         }
     }
 
+    private void DrawDustPuffs(int viewportWidth, int viewportHeight)
+    {
+        if (_renderer == null) return;
+        float aspect = (float)viewportWidth / viewportHeight;
+        var vp = _renderer.Camera.GetVpMatrix(aspect);
+        var now = DateTime.UtcNow;
+        const float Lifetime = 0.6f;
+        for (int i = 0; i < DustMax; i++)
+        {
+            if (_dustSpawned[i] == default) continue;
+            float age = (float)(now - _dustSpawned[i]).TotalSeconds;
+            if (age >= Lifetime) continue;
+
+            var p = _dustPos[i];
+            var v = _dustVel[i];
+            float wx = p.X + v.X * age;
+            // Lighter gravity than blood - dust hangs in the air longer.
+            float wy = p.Y + v.Y * age - 4f * age * age * 0.5f;
+            float wz = p.Z + v.Z * age;
+
+            var clip = System.Numerics.Vector4.Transform(
+                new System.Numerics.Vector4(wx, wy, wz, 1f), vp);
+            if (clip.W <= 0.001f) continue;
+            float ndcX = clip.X / clip.W;
+            float ndcY = clip.Y / clip.W;
+            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
+            if (screenX < -10 || screenX > viewportWidth + 10) continue;
+            if (screenY < -10 || screenY > viewportHeight + 10) continue;
+
+            float life = age / Lifetime;
+            int alpha = (int)(180 * (1f - life));
+            float size = Math.Clamp(10f / MathF.Max(0.1f, clip.W), 3f, 8f);
+            _ui.Renderer.DrawRect(
+                screenX - size * 0.5f, screenY - size * 0.5f, size, size,
+                System.Drawing.Color.FromArgb(alpha, 180, 165, 140));
+        }
+    }
+
     private void DrawBloodSplatters(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null) return;
@@ -3022,6 +3092,7 @@ public class HudService : IDisposable
             // arc out + fall with gravity. Renders behind damage numbers so
             // the number stays legible on top of the splatter.
             DrawBloodSplatters(viewportWidth, viewportHeight);
+            DrawDustPuffs(viewportWidth, viewportHeight);
 
             // Floating damage numbers rise above the hit point - rendered
             // last so they sit on top of all world geometry.
