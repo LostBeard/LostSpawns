@@ -1285,6 +1285,17 @@ public class HudService : IDisposable
         float bobX = _bobCurrentX * 6f;
         float bobY = _bobCurrentY * 6f;
 
+        // One-shot swing arc - quick up + over, recovery back to rest.
+        float swingAge = (float)(DateTime.UtcNow - _swingStart).TotalSeconds;
+        if (swingAge >= 0 && swingAge < 0.22f)
+        {
+            float t = swingAge / 0.22f;           // 0..1
+            // Ease-out: fast outbound, slow return. Parabola peak at t=0.4.
+            float arc = MathF.Sin(t * MathF.PI);  // 0->1->0 across 0..1
+            bobX -= arc * 40f;
+            bobY -= arc * 60f;
+        }
+
         // Main tool body (rotated-looking via an offset rect)
         _ui.Renderer.DrawRect(baseX + bobX + 20, baseY + bobY, 80, 120, tint);
         _ui.Renderer.DrawRect(baseX + bobX + 10, baseY + bobY + 30, 100, 18,
@@ -1308,6 +1319,12 @@ public class HudService : IDisposable
         _bobCurrentX = bobX;
         _bobCurrentY = bobY;
     }
+
+    // Viewmodel swing offset - timestamp-driven so the animation runs on
+    // wall clock (same pattern as impact marks) without extra tick plumbing.
+    private DateTime _swingStart;
+    /// <summary>Trigger a one-shot viewmodel swing animation. Duration ~220ms.</summary>
+    public void TriggerSwing() => _swingStart = DateTime.UtcNow;
 
     private void DrawEntityBillboards(int viewportWidth, int viewportHeight)
     {

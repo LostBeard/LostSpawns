@@ -465,6 +465,9 @@
     private void ApplyCameraKick()
     {
         Renderer.Camera.Pitch = Math.Clamp(Renderer.Camera.Pitch + 2.5f, -89f, 89f);
+        // Viewmodel swing pairs with every kick - same trigger point, same
+        // success conditions. Both feel like "the tool just landed / loosed".
+        Hud.TriggerSwing();
     }
 
     /// <summary>
