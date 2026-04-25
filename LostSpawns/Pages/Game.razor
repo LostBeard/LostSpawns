@@ -292,6 +292,11 @@
     private int _wolvesKilledThisNight;
     private bool _wasNight;
 
+    // Tracks whether the previous frame had an active combo so we can
+    // detect the falling edge - drops a "combo break" beep when the
+    // 8s window expires without a new kill.
+    private bool _hadCombo;
+
     // Document handle for visibility-change auto-pause. Disposed in
     // DisposeAsync alongside the rest of the JS interop teardown.
     private SpawnDev.BlazorJS.JSObjects.Document? _doc;
@@ -1841,6 +1846,19 @@
             _duskWarned = false;
         }
         _wasNight = Time.IsNight;
+
+        // Combo break: detect the falling edge of an active combo (was 2+
+        // and now expired without a new kill). Plays a soft descending
+        // beep so the player hears their streak ended.
+        bool hasCombo = _killStreak >= 2 && DateTime.UtcNow <= _killStreakExpiry;
+        if (_hadCombo && !hasCombo)
+        {
+            Audio.PlayBeep(220f, 0.25f, 0.10f, "triangle");
+            _killStreak = 0;
+            Hud.CurrentCombo = 0;
+            Hud.ComboExpiry = DateTime.MinValue;
+        }
+        _hadCombo = hasCombo;
 
         // Dusk warning: one-shot toast when DayFraction enters the 0.50-0.58
         // window (late afternoon). Gives the player 8% of a day to prep
