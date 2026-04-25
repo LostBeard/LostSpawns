@@ -205,6 +205,10 @@
             _verticalVelocity = 0;
             _peakFallSpeed = 0;
             _grounded = false;
+            // Mirror the load-stamp into the HUD so the debug line reads
+            // "saved Xs ago" immediately instead of "never" until the first
+            // auto-save fires.
+            Hud.LastSaveTime = Save.LastSaveTime;
             Hud.NotifySuccess("Save restored");
         }
 

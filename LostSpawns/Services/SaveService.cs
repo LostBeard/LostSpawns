@@ -163,6 +163,11 @@ public class SaveService
             var state = JsonSerializer.Deserialize<SaveState>(raw, _json);
             if (state is null || state.Version != SaveVersion) return null;
 
+            // Stamp LastSaveTime so the debug HUD doesn't show "saved never"
+            // after a successful load. The save IS live in localStorage; it
+            // just hasn't had a SaveNow this session yet.
+            LastSaveTime = DateTime.UtcNow;
+
             // Apply stats directly (setters clamp to [0,1]).
             _stats.Health = state.Health;
             _stats.Stamina = state.Stamina;
