@@ -912,6 +912,7 @@
         {
             case LostSpawns.Services.EntityKind.Wolf:   Audio.PlayWolfSnarl(); break;
             case LostSpawns.Services.EntityKind.Crow:   Audio.PlayCrowCaw();   break;
+            case LostSpawns.Services.EntityKind.Bear:   Audio.PlayBearRoar();  break;
             case LostSpawns.Services.EntityKind.Rabbit:
             case LostSpawns.Services.EntityKind.Deer:   Audio.PlayPreyThump(); break;
         }
@@ -1093,10 +1094,16 @@
     private void HandleEntitySpawned(LostSpawns.Services.WanderingEntity e)
     {
         // Wolf arrival is meant to feel ominous - the howl announces them
-        // before the red eyes are close enough to spot. Other kinds spawn
-        // silently so the world doesn't chirp every 45 seconds.
+        // before the red eyes are close enough to spot. Bears get an even
+        // heavier roar since they're the rare apex spawn. Other kinds
+        // spawn silently so the world doesn't chirp every 45 seconds.
         if (e.Kind == LostSpawns.Services.EntityKind.Wolf)
             Audio.PlayWolfHowl();
+        else if (e.Kind == LostSpawns.Services.EntityKind.Bear)
+        {
+            Audio.PlayBearRoar();
+            Hud.NotifyWarning("A bear has appeared!");
+        }
     }
 
     private void HandleItemConsumedSound(string name, string verb, LostSpawns.Services.ItemEffect effect)

@@ -579,6 +579,48 @@ public class AudioService : IDisposable
     }
 
     /// <summary>
+    /// Deep low growl-roar for bears - much heavier than a wolf snarl.
+    /// Two stacked low oscillators (sawtooth bass + square mid) over 0.5s.
+    /// </summary>
+    public void PlayBearRoar()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            double t = _ctx.CurrentTime;
+            using var bass = _ctx.CreateOscillator();
+            using var bassGain = _ctx.CreateGain();
+            bass.Type = "sawtooth";
+            bass.Frequency.SetValueAtTime(60f, t);
+            bass.Frequency.ExponentialRampToValueAtTime(40f, t + 0.45);
+            bassGain.Gain.SetValueAtTime(0, t);
+            bassGain.Gain.LinearRampToValueAtTime(0.22f, t + 0.06);
+            bassGain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.55);
+            bass.Connect(bassGain);
+            bassGain.Connect(Destination);
+            bass.Start();
+            bass.Stop((float)(t + 0.55));
+
+            using var mid = _ctx.CreateOscillator();
+            using var midGain = _ctx.CreateGain();
+            mid.Type = "square";
+            mid.Frequency.SetValueAtTime(140f, t);
+            mid.Frequency.ExponentialRampToValueAtTime(95f, t + 0.42);
+            midGain.Gain.SetValueAtTime(0, t);
+            midGain.Gain.LinearRampToValueAtTime(0.10f, t + 0.05);
+            midGain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.50);
+            mid.Connect(midGain);
+            midGain.Connect(Destination);
+            mid.Start();
+            mid.Stop((float)(t + 0.50));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayBearRoar failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Quick low-pitch thump for a small mammal hitting the ground. Plays
     /// when a rabbit / deer enters flee state (panic stomp).
     /// </summary>
