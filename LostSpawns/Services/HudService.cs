@@ -2464,6 +2464,21 @@ public class HudService : IDisposable
             ScreenOverlay?.ClearPersistent("cold");
         }
 
+        // Symmetric: warm orange vignette when body temperature is high.
+        // Ramps in from Temperature 0.70 up to 1.0. Heatstroke is the
+        // hot equivalent of hypothermia and now reads visually too.
+        if (_stats.Temperature > 0.70f)
+        {
+            float t = (_stats.Temperature - 0.70f) / 0.30f;
+            int alpha = Math.Clamp((int)(15 + t * 80f), 15, 100);
+            ScreenOverlay?.SetPersistent("hot",
+                System.Drawing.Color.FromArgb(alpha, 230, 140, 60));
+        }
+        else
+        {
+            ScreenOverlay?.ClearPersistent("hot");
+        }
+
         // Threshold-cross toasts for hunger + thirst + temperature + stamina. Fires
         // exactly once on the frame the value crosses each threshold. Recovery on
         // the other side resets it.
