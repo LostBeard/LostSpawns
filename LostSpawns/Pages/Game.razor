@@ -1142,7 +1142,14 @@
 
     private void HandleItemPickedUpSound(LostSpawns.Services.InventoryItem item)
     {
+        // Rare drops get a higher sparkle chime layered on top of the
+        // standard pickup. Pelt + feather are the main rare items today;
+        // future rare loot can extend this set.
+        bool rare = item.Id == "material.pelt"
+                 || item.Id == "material.feather"
+                 || item.Id == "med.bandage";
         Audio.PlayPickup();
+        if (rare) Audio.PlayBeep(1320f, 0.10f, 0.12f, "triangle");
     }
 
     private void HandleCraftedSound(LostSpawns.Services.CraftingRecipe recipe)
