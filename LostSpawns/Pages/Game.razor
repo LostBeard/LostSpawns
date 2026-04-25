@@ -1554,10 +1554,14 @@
 
         // Rest restores stamina fully and gives a small HP bump. Warmth
         // bumps to comfortable since the player slept by an active fire -
-        // wake up cozy, not freezing.
+        // wake up cozy, not freezing. Bigger fires (bonfire radius 12)
+        // give a deeper rest: extra HP heal + warmer wakeup. Reads as
+        // "warmer fire = better night's sleep".
         Stats.Stamina = 1f;
-        Stats.Heal(0.15f);
-        Stats.Temperature = MathF.Max(Stats.Temperature, 0.55f);
+        bool bonfireRest = fire.Radius >= 10f;
+        Stats.Heal(bonfireRest ? 0.30f : 0.15f);
+        Stats.Temperature = MathF.Max(Stats.Temperature, bonfireRest ? 0.65f : 0.55f);
+        if (bonfireRest) Hud.Notify("Bonfire rest - deeper recovery");
 
         // Black fade for the time skip so the transition doesn't jump-cut.
         // ScreenOverlay flash uses the same lifetime model as damage / heal
