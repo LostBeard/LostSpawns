@@ -123,14 +123,25 @@ public class EntityService
     {
         int ground = world.GetHeightAt(pos.X, pos.Z);
         float spawnY = kind == EntityKind.Crow ? ground + 5f : ground + 1f;
+        // Day-scaled toughness for wolves: Day 4+ wolves get +30% HP,
+        // Day 7+ wolves get +60% HP. Captures the "alphas are getting
+        // bigger" survival escalation without needing a separate kind.
+        float hp = MaxHealthForKind(kind);
+        if (kind == EntityKind.Wolf)
+        {
+            float mul = DayNumber >= 7 ? 1.6f
+                      : DayNumber >= 4 ? 1.3f
+                                       : 1.0f;
+            hp *= mul;
+        }
         var e = new WanderingEntity
         {
             Id = _nextId++,
             Kind = kind,
             Position = new Vector3(pos.X, spawnY, pos.Z),
             WanderRetargetIn = (float)_rng.NextDouble() * WanderRetargetSeconds,
-            Health = MaxHealthForKind(kind),
-            MaxHealth = MaxHealthForKind(kind),
+            Health = hp,
+            MaxHealth = hp,
             ColorJitter = (float)_rng.NextDouble(),
         };
         PickRandomDirection(e);
