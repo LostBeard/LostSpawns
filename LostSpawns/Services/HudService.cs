@@ -2132,10 +2132,25 @@ public class HudService : IDisposable
             string rain = _weather.RainIntensity > 0.02f
                 ? $"  Rain {(int)(_weather.RainIntensity * 100)}%"
                 : "";
+            int achvCount = (_stats.FirstKillAwarded ? 1 : 0)
+                          + (_stats.FirstFireAwarded ? 1 : 0)
+                          + (_stats.FirstCookAwarded ? 1 : 0)
+                          + (_stats.FirstWolfAwarded ? 1 : 0)
+                          + (_stats.FirstSleepAwarded ? 1 : 0)
+                          + (_stats.VeteranAwarded ? 1 : 0)
+                          + (_stats.CenturionAwarded ? 1 : 0)
+                          + (_stats.SurvivorAwarded ? 1 : 0)
+                          + (_stats.BowmanAwarded ? 1 : 0)
+                          + (_stats.HunterAwarded ? 1 : 0)
+                          + (_stats.GourmetAwarded ? 1 : 0)
+                          + (_stats.ResilientAwarded ? 1 : 0)
+                          + (_stats.FirstAidAwarded ? 1 : 0)
+                          + (_stats.PackHunterAwarded ? 1 : 0)
+                          + (_stats.CompletionistAwarded ? 1 : 0);
             _debugLabel.Text =
                 $"{(int)_fpsSmoothed} fps    " +
                 $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}    " +
-                $"Day {_worldTime.DayNumber}  Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  T {time}  {phase}{rain}";
+                $"Day {_worldTime.DayNumber}  Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  Achv {achvCount}/15  T {time}  {phase}{rain}";
         }
 
         // Update compass bearing from camera yaw
