@@ -1593,6 +1593,14 @@
         // flashes but with a long duration + full-alpha black.
         Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(240, 0, 0, 0), 1.2f);
         Hud.NotifySuccess("Slept through the night");
+        // Small gold-mote burst to mark the rejuvenation moment - reads
+        // as the body's energy returning. 6 motes is a softer celebration
+        // than a level-up (16) but still feels rewarding.
+        var sleepFeet = new System.Numerics.Vector3(
+            Renderer.Camera.Position.X,
+            Renderer.Camera.Position.Y - 1.5f,
+            Renderer.Camera.Position.Z);
+        Hud.ShowGoldBurst(sleepFeet, 6);
         Stats.TryAwardAchievement("First Sleep");
         // Well-rested XP: rewards players who actually camp the night out
         // rather than sprinting through darkness.
