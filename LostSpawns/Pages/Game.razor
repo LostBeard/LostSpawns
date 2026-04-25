@@ -212,6 +212,15 @@
             Hud.LastSaveTime = Save.LastSaveTime;
             Hud.NotifySuccess("Save restored");
         }
+        else
+        {
+            // First-run welcome: no save loaded means this is a brand-new
+            // player. Show three slow tips back-to-back so they have a
+            // pointer to the controls reference + survival basics.
+            Hud.NotifyAchievement("Welcome to Lost Spawns!");
+            Hud.Notify("F1 for controls. Survive the first night.");
+            Hud.Notify("Camp by the fire. Cook your meat. Stay warm.");
+        }
 
         Hud.HideLoadingScreen();
     }
