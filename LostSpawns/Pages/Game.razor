@@ -1136,6 +1136,13 @@
     private const float TerraformRadiusMin = 1.0f;
     private const float TerraformRadiusMax = 5.0f;
     private const float TerraformRadiusStep = 0.5f;
+    // Paint-stroke timing: while LMB or RMB is held in terraform mode,
+    // fire repeated sphere ops at this interval. Slightly slower than the
+    // standard block-action cooldown so a stroke doesn't shred the world
+    // every frame - 6 ops/sec lets the player sculpt smoothly without
+    // grinding the GPU mesh kernel.
+    private DateTime _lastPaintStroke = DateTime.MinValue;
+    private const float PaintStrokeIntervalSeconds = 0.16f;
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
     {
         // Cause attribution drives the death-screen subtitle. Entity kinds
@@ -2475,11 +2482,12 @@
         Wildlife.BearAggroRange = sneaking ? 7.5f : 15f;
         Hud.IsSneaking = sneaking;
 
-        // Terraform brush preview: while B-mode is on, raycast for the
-        // surface under the crosshair and tell HudService to draw the
-        // dotted-sphere indicator there. Cleared (null) any frame the
-        // ray misses or the mode is off, so the preview disappears
-        // cleanly when the player looks at sky.
+        // Terraform brush preview + paint-stroke continuous fire. While
+        // B-mode is on, raycast the surface under the crosshair every
+        // frame for the dotted-sphere preview, then check held mouse
+        // buttons - LMB-held = continuous carve, RMB-held = continuous
+        // build, throttled to PaintStrokeIntervalSeconds (~6Hz) so
+        // strokes feel smooth without grinding the mesh kernel.
         if (_terraformMode && !Hud.IsAnyMenuOpen)
         {
             var phit = World.Raycast(
@@ -2489,6 +2497,25 @@
                 Hud.TerraformPreviewCenter = new System.Numerics.Vector3(
                     phit.BlockX + 0.5f, phit.BlockY + 0.5f, phit.BlockZ + 0.5f);
                 Hud.TerraformPreviewRadius = _terraformRadius;
+
+                // Paint-stroke: hold LMB to keep carving, RMB to keep
+                // building. Skip the first hit (mouse-down handler already
+                // ran a one-shot op) by gating on _lastPaintStroke being
+                // recent enough.
+                var now = DateTime.UtcNow;
+                if ((now - _lastPaintStroke).TotalSeconds >= PaintStrokeIntervalSeconds)
+                {
+                    if (Input.IsLeftButtonDown)
+                    {
+                        ExecuteTerraform(phit, carve: true);
+                        _lastPaintStroke = now;
+                    }
+                    else if (Input.IsRightButtonDown)
+                    {
+                        ExecuteTerraform(phit, carve: false);
+                        _lastPaintStroke = now;
+                    }
+                }
             }
             else
             {

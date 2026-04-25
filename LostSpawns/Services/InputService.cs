@@ -123,6 +123,7 @@ public class InputService : IAsyncDisposable
         _window!.OnKeyUp += OnKeyUp;
         _window!.OnMouseMove += OnMouseMove;
         _window!.OnMouseDown += OnMouseDown;
+        _window!.OnMouseUp += OnMouseUp;
         _window!.OnWheel += OnWheel;
         _document!.OnPointerLockChange += OnPointerLockChange;
     }
@@ -136,6 +137,7 @@ public class InputService : IAsyncDisposable
             _window.OnKeyUp -= OnKeyUp;
             _window.OnMouseMove -= OnMouseMove;
             _window.OnMouseDown -= OnMouseDown;
+            _window.OnMouseUp -= OnMouseUp;
             _window.OnWheel -= OnWheel;
         }
         if (_document != null)
@@ -144,6 +146,12 @@ public class InputService : IAsyncDisposable
         }
     }
 
+    /// <summary>True while LMB is held. Used by terraform paint-stroke.</summary>
+    public bool IsLeftButtonDown { get; private set; }
+
+    /// <summary>True while RMB is held. Used by terraform paint-stroke.</summary>
+    public bool IsRightButtonDown { get; private set; }
+
     private void OnMouseDown(MouseEvent e)
     {
         // Only fire the gameplay click events while pointer is locked - prevents
@@ -151,8 +159,26 @@ public class InputService : IAsyncDisposable
         // world behind the modal. UI widgets get their mouse events through
         // GameUIService's own canvas listener, not this path.
         if (!IsPointerLocked) return;
-        if (e.Button == MouseButton.PrimaryButton) OnLeftClickPressed?.Invoke();
-        else if (e.Button == MouseButton.SecondaryButton) OnRightClickPressed?.Invoke();
+        if (e.Button == MouseButton.PrimaryButton)
+        {
+            IsLeftButtonDown = true;
+            OnLeftClickPressed?.Invoke();
+        }
+        else if (e.Button == MouseButton.SecondaryButton)
+        {
+            IsRightButtonDown = true;
+            OnRightClickPressed?.Invoke();
+        }
+    }
+
+    private void OnMouseUp(MouseEvent e)
+    {
+        // Always clear button state on mouseup, even when not pointer-locked,
+        // so a button held down during a pointer-lock exit doesn't get stuck
+        // "on" until the next click. Browser fires mouseup reliably on
+        // unlock so this stays in sync with reality.
+        if (e.Button == MouseButton.PrimaryButton) IsLeftButtonDown = false;
+        else if (e.Button == MouseButton.SecondaryButton) IsRightButtonDown = false;
     }
 
     private void OnWheel(WheelEvent e)
