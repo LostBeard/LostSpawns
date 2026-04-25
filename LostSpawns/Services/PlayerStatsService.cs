@@ -87,6 +87,15 @@ public class PlayerStatsService
     /// <summary>Cumulative blocks-of-distance walked across all lives. Game.razor adds horizontal frame deltas.</summary>
     public float DistanceTraveled { get; private set; }
 
+    /// <summary>Seconds survived in the current life - reset on respawn, ticked by Tick.</summary>
+    public float CurrentLifeSeconds { get; private set; }
+
+    /// <summary>Longest single-life duration ever, in seconds. Persists across deaths + saves.</summary>
+    public float LongestLifeSeconds { get; private set; }
+
+    /// <summary>Seed longest life from save load.</summary>
+    public void SeedLongestLifeFromSave(float seconds) => LongestLifeSeconds = seconds;
+
     /// <summary>Add a horizontal-distance increment to the lifetime traveled total.</summary>
     public void AddDistance(float blocks)
     {
@@ -130,6 +139,11 @@ public class PlayerStatsService
     public void RecordDeath()
     {
         Deaths++;
+        // Longest-life snapshot taken before reset so a long final run gets
+        // its bragging rights even if the player dies just after a hard win.
+        if (CurrentLifeSeconds > LongestLifeSeconds)
+            LongestLifeSeconds = CurrentLifeSeconds;
+        CurrentLifeSeconds = 0;
         OnStatsChanged?.Invoke();
         if (Deaths == 3) TryAwardAchievement("Resilient");
     }
@@ -500,6 +514,9 @@ public class PlayerStatsService
     {
         if (dt <= 0) return;
         PlayTimeSeconds += dt;
+        // Current-life clock only ticks while alive. Death resets it; the
+        // Longest snapshot is taken at RecordDeath time.
+        if (!IsDead) CurrentLifeSeconds += dt;
         Hunger = _hunger - dt * HungerDecayRate;
         Thirst = _thirst - dt * ThirstDecayRate;
         // Sprint drains stamina; otherwise it regens. Mutually exclusive so the

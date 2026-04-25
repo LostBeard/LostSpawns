@@ -1039,9 +1039,16 @@ public class HudService : IDisposable
             string dist = _stats.DistanceTraveled >= 1000f
                 ? $"{_stats.DistanceTraveled / 1000f:F1} km"
                 : $"{(int)_stats.DistanceTraveled} blk";
+            // Best run: longest single life. Snapshot includes the run that
+            // just ended (RecordDeath updates LongestLifeSeconds before the
+            // death screen pushes). MM:SS for short, H:MM:SS for long runs.
+            int bs = (int)_stats.LongestLifeSeconds;
+            string bestRun = bs >= 3600
+                ? $"{bs / 3600}:{(bs % 3600) / 60:D2}:{bs % 60:D2}"
+                : $"{bs / 60:D2}:{bs % 60:D2}";
             _deathStats.Text =
                 $"Lv {_stats.Level}  XP {_stats.Experience}  T {time}  Deaths {_stats.Deaths}  Best Combo {_stats.BestCombo}x\n" +
-                $"Day {_worldTime.DayNumber}  Walked {dist}  Kills: {_stats.Kills}\n" +
+                $"Day {_worldTime.DayNumber}  Walked {dist}  Best Run {bestRun}  Kills: {_stats.Kills}\n" +
                 $"R:{_stats.RabbitKills}  B:{_stats.BoarKills}  C:{_stats.CrowKills}  W:{_stats.WolfKills}  D:{_stats.DeerKills}  Bear:{_stats.BearKills}\n" +
                 $"Achievements: {achvs} / 17";
         }

@@ -109,6 +109,7 @@ public class SaveService
                 Deaths = _stats.Deaths,
                 PlayTimeSeconds = _stats.PlayTimeSeconds,
                 DistanceTraveled = _stats.DistanceTraveled,
+                LongestLifeSeconds = _stats.LongestLifeSeconds,
                 Hotbar = ToDtoArray(_inventory.Hotbar),
                 Backpack = ToDtoArray(_inventory.Backpack),
                 ActiveHotbarIndex = _inventory.ActiveHotbarIndex,
@@ -201,6 +202,7 @@ public class SaveService
             _stats.SeedBestComboFromSave(state.BestCombo);
             _stats.SeedPlayTimeFromSave(state.PlayTimeSeconds);
             _stats.SeedDistanceFromSave(state.DistanceTraveled);
+            _stats.SeedLongestLifeFromSave(state.LongestLifeSeconds);
 
             // Apply inventory slot by slot. Nulls stay null.
             if (state.Hotbar != null)
@@ -359,6 +361,7 @@ public class SaveService
         public int Deaths { get; set; }
         public float PlayTimeSeconds { get; set; }
         public float DistanceTraveled { get; set; }
+        public float LongestLifeSeconds { get; set; }
         public InventoryItemDto?[]? Hotbar { get; set; }
         public InventoryItemDto?[]? Backpack { get; set; }
         public int ActiveHotbarIndex { get; set; }
