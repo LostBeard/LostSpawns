@@ -206,10 +206,15 @@ public class InputService : IAsyncDisposable
         KeysDown.Add(e.Code);
         if (!e.Repeat && e.Key == "Escape")
             OnEscapePressed?.Invoke();
-        // Inventory toggle: I or Tab. Tab is a common browser focus key so Game.razor
-        // handles the actual open/close logic - this only fires the intent.
+        // Inventory toggle: I or Tab. PreventDefault on Tab is required - without
+        // it the browser cycles focus to the address bar at the same time the
+        // overlay opens, so when the player presses Tab again to close, focus is
+        // already in the URL bar and they end up typing into Chrome's omnibox.
         if (!e.Repeat && (e.Key == "i" || e.Key == "I" || e.Key == "Tab"))
+        {
+            if (e.Key == "Tab") e.PreventDefault();
             OnInventoryTogglePressed?.Invoke();
+        }
 
         // Interact / break block in crosshair on E.
         if (!e.Repeat && (e.Key == "e" || e.Key == "E"))
