@@ -75,6 +75,7 @@ public class SaveService
                 Temperature = _stats.Temperature,
                 Experience = _stats.Experience,
                 Kills = _stats.Kills,
+                FirstKillAwarded = _stats.FirstKillAwarded,
                 Hotbar = ToDtoArray(_inventory.Hotbar),
                 Backpack = ToDtoArray(_inventory.Backpack),
                 ActiveHotbarIndex = _inventory.ActiveHotbarIndex,
@@ -139,7 +140,9 @@ public class SaveService
             _stats.Temperature = state.Temperature;
             if (state.Experience > _stats.Experience)
                 _stats.AwardXp(state.Experience - _stats.Experience);
-            for (int k = _stats.Kills; k < state.Kills; k++) _stats.RecordKill();
+            // Seed kills + achievement flag directly so the FirstKill event
+            // doesn't fire on every save-reload.
+            _stats.SeedKillsFromSave(state.Kills, state.FirstKillAwarded);
 
             // Apply inventory slot by slot. Nulls stay null.
             if (state.Hotbar != null)
@@ -269,6 +272,7 @@ public class SaveService
         public float Temperature { get; set; }
         public int Experience { get; set; }
         public int Kills { get; set; }
+        public bool FirstKillAwarded { get; set; }
         public InventoryItemDto?[]? Hotbar { get; set; }
         public InventoryItemDto?[]? Backpack { get; set; }
         public int ActiveHotbarIndex { get; set; }

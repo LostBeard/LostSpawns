@@ -127,6 +127,7 @@
         Stats.OnLevelUp += HandleLevelUpSound;
         Wildlife.OnEntitySpawned += HandleEntitySpawned;
         Crafter.OnCrafted += HandleCraftedSound;
+        Stats.OnFirstKill += HandleFirstKill;
         Inventory.OnItemConsumed += HandleItemConsumedSound;
         Inventory.OnItemPickedUp += HandleItemPickedUpSound;
         Weather.OnLightningStrike += HandleLightningSound;
@@ -660,6 +661,12 @@
         // Craft success chime - same rising-sine shape as level-up but shorter
         // so the player registers "made something" without feeling gated.
         Audio.PlayBeep(560f, 0.15f, 0.18f, "triangle");
+    }
+
+    private void HandleFirstKill()
+    {
+        Hud.NotifyAchievement("First Kill!");
+        Audio.PlayLevelUp(); // reuse the two-note chime for the milestone
     }
 
     private void HandleLevelUpSound(int newLevel) => Audio.PlayLevelUp();
@@ -1268,6 +1275,7 @@
         Stats.OnLevelUp -= HandleLevelUpSound;
         Wildlife.OnEntitySpawned -= HandleEntitySpawned;
         Crafter.OnCrafted -= HandleCraftedSound;
+        Stats.OnFirstKill -= HandleFirstKill;
         Inventory.OnItemConsumed -= HandleItemConsumedSound;
         Inventory.OnItemPickedUp -= HandleItemPickedUpSound;
         Weather.OnLightningStrike -= HandleLightningSound;

@@ -26,10 +26,29 @@ public class PlayerStatsService
     /// <summary>Lifetime kills tally - incremented once per downed entity.</summary>
     public int Kills { get; private set; }
 
+    /// <summary>True once the player has scored their first kill.</summary>
+    public bool FirstKillAwarded { get; private set; }
+
+    /// <summary>Fires once when the player scores their first kill.</summary>
+    public event Action? OnFirstKill;
+
     /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
     public void RecordKill()
     {
         Kills++;
+        OnStatsChanged?.Invoke();
+        if (!FirstKillAwarded)
+        {
+            FirstKillAwarded = true;
+            OnFirstKill?.Invoke();
+        }
+    }
+
+    /// <summary>Seed state from a loaded save - bypasses the OnFirstKill event so reloads don't spam the toast.</summary>
+    public void SeedKillsFromSave(int kills, bool firstKillAwarded)
+    {
+        Kills = kills;
+        FirstKillAwarded = firstKillAwarded;
         OnStatsChanged?.Invoke();
     }
 
