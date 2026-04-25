@@ -2447,7 +2447,12 @@
                 // mechanic. Water > rain > dry for the audible branches.
                 bool sneakSilent = Input.KeysDown.Contains("ControlLeft")
                                  || Input.KeysDown.Contains("ControlRight");
+                // Exhausted player can't fully stomp - skip every other
+                // footstep below 20% stamina to read as "dragging your
+                // feet". Sneak still wins (full silence).
+                bool exhaustedSkip = Stats.Stamina < 0.20f && _stepAlt;
                 if (sneakSilent) { /* no step sound */ }
+                else if (exhaustedSkip) { /* dragging feet, every other step silent */ }
                 else if (IsInWater()) Audio.PlayWaterStep(_stepAlt);
                 else if (Weather.RainIntensity > 0.25f) Audio.PlayWaterStep(_stepAlt);
                 else             Audio.PlayStep(_stepAlt);
