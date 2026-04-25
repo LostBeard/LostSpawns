@@ -1,6 +1,26 @@
 namespace LostSpawns.Services;
 
 /// <summary>
+/// What killed the player on the most recent damage tick. Frozen onto
+/// LastCauseOfDeath the first frame Health hits 0 so the death screen
+/// can show "Killed by Wolf" / "Fell" / "Starved" instead of generic
+/// "wasteland claimed you" filler.
+/// </summary>
+public enum DamageCause
+{
+    Unknown,
+    Wolf,
+    Bear,
+    Boar,
+    Fall,
+    Starvation,
+    Thirst,
+    Hypothermia,
+    Heatstroke,
+    Bleed,
+}
+
+/// <summary>
 /// Runtime player stats (survival + vitals). Gameplay systems write values here,
 /// HudService reads them to drive the on-screen bars. All values are normalized [0,1].
 ///
@@ -330,14 +350,24 @@ public class PlayerStatsService
         set { if (Set(ref _temperature, value)) OnStatsChanged?.Invoke(); }
     }
 
+    /// <summary>Most recent cause passed to TakeDamage. Reset on respawn.</summary>
+    public DamageCause LastDamageCause { get; private set; } = DamageCause.Unknown;
+
+    /// <summary>The cause of death frozen on the frame Health first hit 0. Read by the death screen.</summary>
+    public DamageCause LastCauseOfDeath { get; private set; } = DamageCause.Unknown;
+
     /// <summary>
     /// Apply damage, clamped at zero. Fires OnStatsChanged if Health actually dropped,
     /// then fires OnDamageTaken with the amount actually applied (0 if already dead).
-    /// Fires OnDied once on the frame Health first hits 0.
+    /// Fires OnDied once on the frame Health first hits 0. The cause is recorded
+    /// in LastDamageCause on every hit and frozen onto LastCauseOfDeath on death.
     /// </summary>
-    public void TakeDamage(float amount)
+    public void TakeDamage(float amount, DamageCause cause = DamageCause.Unknown)
     {
         if (amount <= 0) return;
+        // Always remember the most recent attribution - the death screen reads
+        // whichever cause was active at the moment HP crossed zero.
+        LastDamageCause = cause;
         float before = _health;
         Health = MathF.Max(0f, _health - amount);
         float applied = before - _health;
@@ -345,6 +375,7 @@ public class PlayerStatsService
         if (_health <= 0f && !_deathFired)
         {
             _deathFired = true;
+            LastCauseOfDeath = cause;
             OnDied?.Invoke();
         }
     }
@@ -468,10 +499,10 @@ public class PlayerStatsService
         // Starvation / dehydration / hypothermia / heatstroke HP drain. Multiple
         // conditions stack multiplicatively - if you're starving AND freezing, you
         // die roughly twice as fast.
-        if (_hunger <= 0f) TakeDamage(dt * StarvationDamageRate);
-        if (_thirst <= 0f) TakeDamage(dt * StarvationDamageRate);
-        if (_temperature < 0.15f) TakeDamage(dt * HypothermiaDamageRate);
-        if (_temperature > 0.85f) TakeDamage(dt * HeatstrokeDamageRate);
+        if (_hunger <= 0f) TakeDamage(dt * StarvationDamageRate, DamageCause.Starvation);
+        if (_thirst <= 0f) TakeDamage(dt * StarvationDamageRate, DamageCause.Thirst);
+        if (_temperature < 0.15f) TakeDamage(dt * HypothermiaDamageRate, DamageCause.Hypothermia);
+        if (_temperature > 0.85f) TakeDamage(dt * HeatstrokeDamageRate, DamageCause.Heatstroke);
 
         // Bleed damage-over-time. Active while the timer is positive; bandages
         // clear it. Suppresses passive regen below so a player can't tank a
@@ -480,7 +511,7 @@ public class PlayerStatsService
         if (bleeding)
         {
             BleedSecondsRemaining = MathF.Max(0, BleedSecondsRemaining - dt);
-            TakeDamage(dt * BleedDamageRate);
+            TakeDamage(dt * BleedDamageRate, DamageCause.Bleed);
         }
 
         // Passive HP regen when every survival stat is in its healthy band.
@@ -508,6 +539,11 @@ public class PlayerStatsService
         // unlock new recipes based on total XP earned.
         _deathFired = false;
         BleedSecondsRemaining = 0;
+        // Reset cause attribution so the next death screen doesn't show a
+        // stale label if the player bandages off a wolf bite right before
+        // dying to fall damage.
+        LastDamageCause = DamageCause.Unknown;
+        LastCauseOfDeath = DamageCause.Unknown;
         OnStatsChanged?.Invoke();
     }
 

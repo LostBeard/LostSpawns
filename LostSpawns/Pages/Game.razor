@@ -470,7 +470,7 @@
                 {
                     float excess = _peakFallSpeed - SafeFallSpeed;
                     float dmg = excess * FallDamageScale;
-                    Stats.TakeDamage(dmg);
+                    Stats.TakeDamage(dmg, LostSpawns.Services.DamageCause.Fall);
                 }
                 // Landing audio - gain scales with peak fall speed so big
                 // drops thud harder than hops. Water landings get a splash
@@ -965,7 +965,17 @@
     private readonly Random _hitShakeRng = new();
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
     {
-        Stats.TakeDamage(damage);
+        // Cause attribution drives the death-screen subtitle. Entity kinds
+        // that contact-damage today: Bear, Wolf, Boar. Anything else is a
+        // contact bug; flag as Unknown rather than guess.
+        var cause = e.Kind switch
+        {
+            LostSpawns.Services.EntityKind.Bear => LostSpawns.Services.DamageCause.Bear,
+            LostSpawns.Services.EntityKind.Wolf => LostSpawns.Services.DamageCause.Wolf,
+            LostSpawns.Services.EntityKind.Boar => LostSpawns.Services.DamageCause.Boar,
+            _                                   => LostSpawns.Services.DamageCause.Unknown,
+        };
+        Stats.TakeDamage(damage, cause);
         Hud.NotifyDamage($"{e.Kind} hit you!");
         Audio.PlayDamageAmount(damage);
         // Knockback: shove the camera away from the attacker. Boars get the

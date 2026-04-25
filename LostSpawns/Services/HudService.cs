@@ -957,6 +957,27 @@ public class HudService : IDisposable
         // Refresh the stats summary before pushing so the latest lifetime
         // counts show up. A dedicated label keeps the constructor / push
         // logic cheap - we only recompute on death, not every frame.
+        if (_deathSub is not null)
+        {
+            // Subtitle phrasing per cause. Carnivores get "Killed by X"
+            // since the player can name the killer; environmental causes
+            // get a verb-only phrase. Unknown falls back to the original
+            // "wasteland claimed you" so we never show "Killed by Unknown".
+            _deathSub.Text = _stats.LastCauseOfDeath switch
+            {
+                LostSpawns.Services.DamageCause.Wolf        => "Killed by a Wolf.",
+                LostSpawns.Services.DamageCause.Bear        => "Killed by a Bear.",
+                LostSpawns.Services.DamageCause.Boar        => "Gored by a Boar.",
+                LostSpawns.Services.DamageCause.Fall        => "Fell to your death.",
+                LostSpawns.Services.DamageCause.Starvation  => "Starved to death.",
+                LostSpawns.Services.DamageCause.Thirst      => "Died of thirst.",
+                LostSpawns.Services.DamageCause.Hypothermia => "Froze to death.",
+                LostSpawns.Services.DamageCause.Heatstroke  => "Succumbed to heatstroke.",
+                LostSpawns.Services.DamageCause.Bleed       => "Bled out.",
+                _                                            => "The wasteland claimed you.",
+            };
+        }
+
         if (_deathStats is not null)
         {
             int s = (int)_stats.PlayTimeSeconds;
@@ -991,6 +1012,7 @@ public class HudService : IDisposable
     }
 
     private UILabel? _deathStats;
+    private UILabel? _deathSub;
 
     /// <summary>Pop the death screen and clear the death tint.</summary>
     public void HideDeathScreen()
@@ -1028,7 +1050,10 @@ public class HudService : IDisposable
         };
         panel.AddChild(title);
 
-        var sub = new UILabel
+        // Subtitle text is rewritten on every ShowDeathScreen call to reflect
+        // the actual cause of death. Default placeholder kept here so a stray
+        // construct without a push still has something readable.
+        _deathSub = new UILabel
         {
             Text = "The wasteland claimed you.",
             FontSize = FontSize.Caption,
@@ -1038,7 +1063,7 @@ public class HudService : IDisposable
             Y = 78,
             Align = TextAlign.Center,
         };
-        panel.AddChild(sub);
+        panel.AddChild(_deathSub);
 
         // Lifetime-stats summary. Populated each time ShowDeathScreen runs
         // so the Level / XP / Kills breakdown matches the moment of death.
