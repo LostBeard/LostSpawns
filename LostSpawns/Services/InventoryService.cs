@@ -106,9 +106,11 @@ public class InventoryService
         // yields a bigger piece than rabbit so its bonus is bigger too.
         ["food.rabbit_meat"] = new(Hunger: 0.20f, Health: -0.05f, DisplayVerb: "Ate raw"),
         ["food.boar_meat"]   = new(Hunger: 0.35f, Health: -0.05f, DisplayVerb: "Ate raw"),
+        ["food.deer_meat"]   = new(Hunger: 0.45f, Health: -0.05f, DisplayVerb: "Ate raw"),
         // Cooked meat (campfire output): bigger hunger bonus, small HP heal.
         ["food.rabbit_meat_cooked"] = new(Hunger: 0.35f, Health: 0.05f, DisplayVerb: "Ate"),
         ["food.boar_meat_cooked"]   = new(Hunger: 0.55f, Health: 0.10f, DisplayVerb: "Ate"),
+        ["food.deer_meat_cooked"]   = new(Hunger: 0.65f, Health: 0.12f, DisplayVerb: "Ate"),
     };
 
     /// <summary>Fired whenever any slot changes (set, clear, move).</summary>

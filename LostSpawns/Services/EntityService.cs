@@ -12,6 +12,7 @@ public enum EntityKind
     Boar,
     Crow,
     Wolf,
+    Deer,
 }
 
 /// <summary>
@@ -138,6 +139,7 @@ public class EntityService
         EntityKind.Crow   => 1.0f,
         EntityKind.Boar   => 1.5f,
         EntityKind.Wolf   => 1.8f,
+        EntityKind.Deer   => 1.4f,
         _                 => 1.0f,
     };
 
@@ -278,22 +280,24 @@ public class EntityService
     /// </summary>
     private void RespawnOneNear(Vector3 playerPos, WorldService world, bool isNight)
     {
-        // Day: 40% rabbit, 30% boar, 30% crow (no wolves - they're shade-of-night threats).
-        // Night: 20% rabbit, 15% boar, 15% crow, 50% wolf (wolves dominate night spawns).
+        // Day: 30% rabbit, 25% boar, 20% crow, 25% deer (no wolves).
+        // Night: 15% rabbit, 15% boar, 10% crow, 5% deer, 55% wolf.
         double roll = _rng.NextDouble();
         EntityKind kind;
         if (isNight)
         {
-            kind = roll < 0.20 ? EntityKind.Rabbit
-                 : roll < 0.35 ? EntityKind.Boar
-                 : roll < 0.50 ? EntityKind.Crow
+            kind = roll < 0.15 ? EntityKind.Rabbit
+                 : roll < 0.30 ? EntityKind.Boar
+                 : roll < 0.40 ? EntityKind.Crow
+                 : roll < 0.45 ? EntityKind.Deer
                                : EntityKind.Wolf;
         }
         else
         {
-            kind = roll < 0.40 ? EntityKind.Rabbit
-                 : roll < 0.70 ? EntityKind.Boar
-                               : EntityKind.Crow;
+            kind = roll < 0.30 ? EntityKind.Rabbit
+                 : roll < 0.55 ? EntityKind.Boar
+                 : roll < 0.75 ? EntityKind.Crow
+                               : EntityKind.Deer;
         }
 
         double angle = _rng.NextDouble() * Math.PI * 2;
@@ -316,6 +320,7 @@ public class EntityService
         EntityKind.Rabbit => 2.8f,
         EntityKind.Crow   => 2.4f,
         EntityKind.Wolf   => 3.5f, // wolves are the fastest chasers
+        EntityKind.Deer   => 3.8f, // deer are skittish and FAST when alarmed
         _                 => 2.0f,
     };
 
@@ -330,6 +335,7 @@ public class EntityService
         EntityKind.Rabbit => 0.05f,
         EntityKind.Crow   => 0.05f,
         EntityKind.Wolf   => 0.25f, // wolves bite harder than boars
+        EntityKind.Deer   => 0.0f,  // deer never charge - pure prey
         _                 => 0.05f,
     };
 

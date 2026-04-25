@@ -1418,6 +1418,7 @@ public class HudService : IDisposable
                 EntityKind.Boar   => System.Drawing.Color.FromArgb(230, Math.Clamp(140 + jitter, 80, 200), Math.Clamp(90 + jitter, 50, 150), Math.Clamp(60 + jitter / 2, 30, 110)),
                 EntityKind.Crow   => System.Drawing.Color.FromArgb(230, Math.Clamp(30 + jitter / 2, 10, 80), Math.Clamp(30 + jitter / 2, 10, 80), Math.Clamp(30 + jitter / 2, 10, 80)),
                 EntityKind.Wolf   => System.Drawing.Color.FromArgb(230, Math.Clamp(130 + jitter, 80, 200), Math.Clamp(130 + jitter, 80, 200), Math.Clamp(150 + jitter, 100, 220)),
+                EntityKind.Deer   => System.Drawing.Color.FromArgb(230, Math.Clamp(170 + jitter, 110, 220), Math.Clamp(120 + jitter, 70, 180), Math.Clamp(80 + jitter, 40, 140)),
                 _                 => System.Drawing.Color.FromArgb(230, Math.Clamp(200 + jitter, 140, 240), Math.Clamp(190 + jitter, 130, 230), Math.Clamp(180 + jitter, 120, 220)),
             };
 
@@ -1447,6 +1448,14 @@ public class HudService : IDisposable
                     _ui.Renderer.DrawRect(x + size * 0.3f, y, size * 0.4f, size, color);
                     _ui.Renderer.DrawRect(x, y + size * 0.4f, size * 0.4f, size * 0.3f, color);
                     _ui.Renderer.DrawRect(x + size * 0.6f, y + size * 0.4f, size * 0.4f, size * 0.3f, color);
+                    break;
+                case EntityKind.Deer:
+                    // Tall narrow body + small head on top + two antler prongs.
+                    _ui.Renderer.DrawRect(x + size * 0.15f, y + size * 0.25f, size * 0.7f, size * 0.75f, color);
+                    _ui.Renderer.DrawRect(x + size * 0.30f, y, size * 0.40f, size * 0.30f, color);
+                    // Antlers - thin verticals above head, slightly splayed.
+                    _ui.Renderer.DrawRect(x + size * 0.32f, y - size * 0.25f, size * 0.06f, size * 0.25f, color);
+                    _ui.Renderer.DrawRect(x + size * 0.62f, y - size * 0.25f, size * 0.06f, size * 0.25f, color);
                     break;
                 case EntityKind.Wolf:
                     // Body + head (upper-left block) + tail (upper-right thin).
@@ -1897,6 +1906,7 @@ public class HudService : IDisposable
                 EntityKind.Boar => MapMarkerType.Enemy,       // red-ish, threat-coded
                 EntityKind.Wolf => MapMarkerType.Enemy,       // also threat - night predator
                 EntityKind.Crow => MapMarkerType.POI,         // neutral, passes through
+                EntityKind.Deer => MapMarkerType.OtherPlayer, // peaceful prey
                 _ => MapMarkerType.OtherPlayer,               // Rabbit: friendly-coded
             };
             Minimap.AddMarker(new MapMarker

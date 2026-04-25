@@ -149,6 +149,12 @@ public class CampfireService
             new InventoryItem("food.boar_meat_cooked", "Boar Meat (Cooked)", 1, ItemCategory.Food)))
         {
             OnCooked?.Invoke("Boar Meat (Cooked)");
+            return;
+        }
+        if (inventory.TryConvertOne("food.deer_meat",
+            new InventoryItem("food.deer_meat_cooked", "Deer Meat (Cooked)", 1, ItemCategory.Food)))
+        {
+            OnCooked?.Invoke("Deer Meat (Cooked)");
         }
     }
 
