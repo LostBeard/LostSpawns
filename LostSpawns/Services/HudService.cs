@@ -1597,10 +1597,15 @@ public class HudService : IDisposable
                 float smokeTime = t * 3f + f.Id * 0.7f;
                 // Tint darker as fuel drops. 170 at full fuel, 80 at empty.
                 byte smokeTint = (byte)(80 + (int)(f.Fuel * 90f));
+                // Heavy rain dampens the smoke - droplets weigh down the
+                // particles so the column doesn't rise as far. Reads as
+                // "the fire is fighting the storm" without needing a
+                // separate weather lookup in the renderer pipeline.
+                float rainDamp = 1f - Math.Clamp(_weather.RainIntensity * 0.5f, 0f, 0.5f);
                 for (int s = 0; s < 3; s++)
                 {
                     float phase = (smokeTime + s * 0.33f) % 1f;
-                    float riseY = phase * size * 2.2f;
+                    float riseY = phase * size * 2.2f * rainDamp;
                     float drift = MathF.Sin(phase * 6f + s) * size * 0.15f;
                     // Dying fires smoke more visibly. Multiplier grows as
                     // fuel drops so a low-fuel fire actually smokes MORE.
