@@ -8,11 +8,11 @@ A **WIP**, Lost Spawns is a post-apocalyptic survival game inspired by DayZ. It 
 
 The scope is intentionally ambitious: a full DayZ-scale persistent open world with moldable terrain, dynamic weather, hybrid smooth + blocky environments, flood-fill lighting, and Quest 3S VR native support. All from a single codebase running on WebGPU, WebGL, or Wasm depending on the browser. This is a showcase of what Blazor WASM + SpawnDev.ILGPU can do when pushed hard.
 
-## ✨ Features
+## ✨ Features (Shipped)
 
 ### GPU Pipeline (SpawnDev.ILGPU + WebGPU)
 - **GPU Terrain Generation** — Perlin noise heightmap computed on the GPU via ILGPU compute kernels
-- **GPU Mesh Generation** — Voxel face culling and vertex emission done entirely on the GPU with atomic counters
+- **GPU Mesh Generation** — Voxel face culling and vertex emission done entirely on the GPU with atomic counters via SpawnDev.VoxelEngine binary greedy meshing
 - **GPU→GPU Buffer Copies** — Sub-view peer-to-peer copies for efficient vertex data transfer
 - **WebGPU Render Pipeline** — Custom WGSL shaders with dual-light system, distance fog, and per-block color variation
 
@@ -22,11 +22,22 @@ The scope is intentionally ambitious: a full DayZ-scale persistent open world wi
 - **Distance Fog** — Smooth quadratic falloff blending terrain into the sky
 - **Frustum Culling** — Only visible chunks are drawn
 - **Free-List Vertex Buffer** — Sub-allocated GPU buffer with slot reuse and coalescing (zero-stall grow via GPU copy)
+- **Day/Night Cycle** — Sun, moon, stars, dawn/dusk transitions, golden-hour tint, moonlight tint, mist, fireflies, falling leaves
+- **Weather** — Rain, lightning + delayed thunder, storm gloom, wind ambient, rainwater collection
+- **HUD** — GPU-rendered via SpawnDev.GameUI (no HTML overlays on canvas) - status bars, hotbar, minimap, debug line, toasts, achievements panel, pause/settings, loading screen with tips
 
-### Gameplay
-- **First-Person Camera** — WASD movement + mouse look
-- **Biome-Based Terrain** — Grass, dirt, stone, sand, water, trees
-- **60 FPS** — Smooth, stall-free rendering even while streaming new terrain
+### Survival Gameplay
+- **Stats** — HP, hunger, thirst, stamina, temperature; hunger/thirst gate stamina regen, sprint drains thirst, hypothermia + heatstroke
+- **Combat** — Melee (axe/pick), bow with feather arrows, sneak attack 1.75x bonus, bleed status, knockback
+- **Wildlife** — Rabbit, boar, crow, deer, wolf, bear; pack behavior, herd panic, charging predators, wounded flee
+- **Day-night escalation** — Wolves spawn after dark, density + HP scale per day, dawn break-off
+- **Crafting** — C key, level-gated recipes, tier 2 stone tools, fur coat, bandage, torches, campfire, bonfire
+- **Campfires** — Fuel decay, auto-cook raw meat, warmth aura, sleep-to-dawn, mercy fire on respawn
+- **Inventory** — I key, hotbar (1-9), drag-drop, drop (Q), quick-eat (G), quick-drink (T), quick-bandage (H)
+- **Save/Load** — 10s autosave, F5 manual save, world-diff persistence (chops + placements + carves), tab-out save
+- **Achievements** — 16+ achievements, +25 XP each, J overlay, golden flash, immediate save on earn
+- **NMS-style terrain carving** — B toggles terraform, sphere brush (LMB carve / RMB build), wheel adjusts radius, builds with active-slot block, costs stamina + grants XP
+- **Audio** — Web Audio synthesis: footsteps, combat hits, wolf howls, crows, rain, fire crackle, thunder, heartbeat at low HP, level-up chime, achievement chime, master volume, M to mute
 
 ## 🌍 The Vision
 
@@ -140,15 +151,42 @@ Navigate to `https://localhost:7272/game` and click the canvas to capture mouse 
 
 | Input | Action |
 |-------|--------|
-| **W/A/S/D** | Move forward/left/back/right |
+| **W / A / S / D** | Move forward / left / back / right |
 | **Mouse** | Look around |
 | **Click canvas** | Capture mouse |
-| **Escape** | Release mouse |
+| **Escape** | Pause menu (release mouse) |
+| **Shift** | Sprint (drains stamina + thirst) |
+| **Ctrl** | Sneak (silenced footsteps, halves bear aggro range, +1.75x sneak attack) |
+| **Space** | Jump (height scales with stamina) |
+| **LMB** | Attack / chop / mine (or carve in terraform mode) |
+| **RMB** | Place active hotbar block (or build sphere in terraform mode) |
+| **E** | Break block / interact |
+| **F** | Use / drink water from lake / feed fire |
+| **R** | Reload (bow) |
+| **B** | Toggle terraform mode |
+| **Mouse wheel** | Cycle hotbar (or adjust terraform brush radius in terraform mode) |
+| **1 - 9** | Select hotbar slot |
+| **Q** | Drop active item |
+| **G** | Quick-eat best food |
+| **T** | Quick-drink water |
+| **H** | Quick-bandage |
+| **I** | Inventory |
+| **C** | Crafting |
+| **J** | Achievements |
+| **M** | Mute / unmute audio |
+| **Z** | Sleep at campfire (skips to dawn) |
+| **F1** | Help overlay |
+| **F3** | Debug HUD |
+| **F5** | Manual quick-save |
 
 ## 📦 NuGet Packages Used
 
-- [`SpawnDev.BlazorJS`](https://www.nuget.org/packages/SpawnDev.BlazorJS) — Strongly-typed JS interop for every Web API
-- [`SpawnDev.ILGPU`](https://www.nuget.org/packages/SpawnDev.ILGPU) — GPU compute (ILGPU) with WebGPU, WebGL, CUDA, and OpenCL backends
+- [`SpawnDev.BlazorJS`](https://www.nuget.org/packages/SpawnDev.BlazorJS) — Strongly-typed JS interop for every Web API (transitive via GameUI + VoxelEngine)
+- [`SpawnDev.ILGPU`](https://www.nuget.org/packages/SpawnDev.ILGPU) — GPU compute with WebGPU, WebGL, Wasm, CUDA, OpenCL, and CPU backends (transitive via VoxelEngine)
+- [`SpawnDev.VoxelEngine`](https://www.nuget.org/packages/SpawnDev.VoxelEngine) — GPU-accelerated voxel engine (binary greedy meshing, culling, LOD, terrain carving, physics, SDF, VR)
+- [`SpawnDev.GameUI`](https://www.nuget.org/packages/SpawnDev.GameUI) — GPU-rendered game UI library (no HTML overlays on canvas, unified PC/VR/AR input)
+
+> Currently consumed via `<ProjectReference>` for fast iteration. Switching to `<PackageReference>` for the public NuGet versions when GitHub Actions / GitHub Pages deployment lands.
 
 ## 📄 License
 
