@@ -185,6 +185,14 @@ public class HudService : IDisposable
         _stats.OnLevelUp += HandleLevelUp;
         _weather.OnLightningStrike += HandleLightningStrike;
         _entities.OnEntityKilled += HandleEntityDespawned;
+        _ground.OnPickedUpId += HandleLootPickedUpId;
+    }
+
+    private void HandleLootPickedUpId(int id)
+    {
+        // Clear the minimap marker matching the picked-up loot's id. Without
+        // this the "loot.N" marker would persist until explicitly pruned.
+        Minimap?.RemoveMarker($"loot.{id}");
     }
 
     private void HandleLevelUp(int newLevel)
@@ -1910,6 +1918,20 @@ public class HudService : IDisposable
             });
         }
 
+        // Ground loot markers - one per uncollected drop. Removed once the
+        // ground item is picked up (the player dot hits them), so stale
+        // markers can't accumulate.
+        foreach (var g in _ground.Items)
+        {
+            Minimap.AddMarker(new MapMarker
+            {
+                Id = $"loot.{g.Id}",
+                Label = "Loot",
+                WorldPosition = new Vector2(g.Position.X, g.Position.Z),
+                Type = MapMarkerType.POI,
+            });
+        }
+
         // Warm orange screen tint when the player is inside a fire's warmth
         // aura. Scales intensity with the bonus so a barely-in-range fire
         // gives only a faint glow while sitting in one paints a clear cozy
@@ -2018,6 +2040,7 @@ public class HudService : IDisposable
         _stats.OnLevelUp -= HandleLevelUp;
         _weather.OnLightningStrike -= HandleLightningStrike;
         _entities.OnEntityKilled -= HandleEntityDespawned;
+        _ground.OnPickedUpId -= HandleLootPickedUpId;
         if (_renderer != null)
             _renderer.OnPostRender = null;
     }
