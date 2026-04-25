@@ -415,12 +415,13 @@ public class HudService : IDisposable
             Text =
                 "WASD move  SHIFT sprint  SPACE jump  Scroll change slot\n" +
                 "LMB attack / chop  RMB place / shoot bow\n" +
-                "E interact  F feed fire / drink  Z sleep near fire  Q drop\n" +
+                "E interact  F feed fire / drink  Z sleep near fire\n" +
+                "G quick-eat  Q drop active item\n" +
                 "I inventory  C craft  ESC pause\n" +
                 "F1 help  F3 debug  M mute",
             FontSize = FontSize.Body,
             Width = 560,
-            Height = 120,
+            Height = 140,
             Align = TextAlign.Center,
             Color = System.Drawing.Color.FromArgb(230, 230, 230, 240),
             Visible = false,
