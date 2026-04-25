@@ -1849,6 +1849,10 @@
         _verticalVelocity = 0;
         _peakFallSpeed = 0;
         _grounded = false;
+        // Arrival dust burst at the spawn spot - reads as the player
+        // materializing back in the world. Slightly bigger than a fall
+        // landing because it's a "you arrived" moment.
+        Hud.ShowDustPuff(new System.Numerics.Vector3(0, spawnHeight + 0.5f, 0), 10);
 
         // Respawn cleanup: abandon uncollected ground loot (it's gone with the
         // body) and reset the wandering entity population. Campfires are
