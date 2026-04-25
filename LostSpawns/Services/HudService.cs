@@ -227,6 +227,7 @@ public class HudService : IDisposable
               + (_stats.SurvivorAwarded ? 1 : 0)
               + (_stats.ResilientAwarded ? 1 : 0)
               + (_stats.PackHunterAwarded ? 1 : 0)
+              + (_stats.BearSlayerAwarded ? 1 : 0)
               + (_stats.CompletionistAwarded ? 1 : 0);
         var sb = new System.Text.StringBuilder();
         sb.Append($"ACHIEVEMENTS  {n} / 15  ({n * 100 / 15}%)\n\n");
@@ -244,7 +245,8 @@ public class HudService : IDisposable
         sb.Append((_stats.SurvivorAwarded ? check : lockd)).Append(" Survivor (Day 7)\n");
         sb.Append((_stats.ResilientAwarded ? check : lockd)).Append(" Resilient (3 deaths)\n");
         sb.Append((_stats.PackHunterAwarded ? check : lockd)).Append(" Pack Hunter (5 wolves/night)\n");
-        sb.Append((_stats.CompletionistAwarded ? check : lockd)).Append(" Completionist (all 14)\n");
+        sb.Append((_stats.BearSlayerAwarded ? check : lockd)).Append(" Bear Slayer (kill a bear)\n");
+        sb.Append((_stats.CompletionistAwarded ? check : lockd)).Append(" Completionist (all 15)\n");
         _achievementsLabel.Text = sb.ToString();
     }
 
@@ -751,11 +753,12 @@ public class HudService : IDisposable
                  + (_stats.SurvivorAwarded ? 1 : 0)
                  + (_stats.ResilientAwarded ? 1 : 0)
                  + (_stats.PackHunterAwarded ? 1 : 0)
+                 + (_stats.BearSlayerAwarded ? 1 : 0)
                  + (_stats.CompletionistAwarded ? 1 : 0);
         _pauseStatsLabel.Text =
             $"Day {_worldTime.DayNumber}  Lv {_stats.Level}  XP {_stats.Experience}\n" +
             $"Kills {_stats.Kills}  Deaths {_stats.Deaths}  Best Combo {_stats.BestCombo}x\n" +
-            $"Achievements {achv}/15  Playtime {time}";
+            $"Achievements {achv}/16  Playtime {time}";
     }
 
     /// <summary>Push the pause menu onto the screen stack (dims HUD behind it).</summary>
@@ -963,11 +966,12 @@ public class HudService : IDisposable
                       + (_stats.ResilientAwarded ? 1 : 0)
                       + (_stats.FirstAidAwarded ? 1 : 0)
                       + (_stats.PackHunterAwarded ? 1 : 0)
+                      + (_stats.BearSlayerAwarded ? 1 : 0)
                       + (_stats.CompletionistAwarded ? 1 : 0);
             _deathStats.Text =
                 $"Lv {_stats.Level}  XP {_stats.Experience}  T {time}  Deaths {_stats.Deaths}  Best Combo {_stats.BestCombo}x\n" +
                 $"Day {_worldTime.DayNumber}  Kills: {_stats.Kills}   R:{_stats.RabbitKills}  B:{_stats.BoarKills}  C:{_stats.CrowKills}  W:{_stats.WolfKills}  D:{_stats.DeerKills}\n" +
-                $"Achievements: {achvs} / 15";
+                $"Achievements: {achvs} / 16";
         }
 
         _ui.Screens.Push("death");
@@ -2565,6 +2569,7 @@ public class HudService : IDisposable
                           + (_stats.ResilientAwarded ? 1 : 0)
                           + (_stats.FirstAidAwarded ? 1 : 0)
                           + (_stats.PackHunterAwarded ? 1 : 0)
+                          + (_stats.BearSlayerAwarded ? 1 : 0)
                           + (_stats.CompletionistAwarded ? 1 : 0);
             // Save age: "saved 4s ago" or "never" before first write.
             string savedAge = LastSaveTime == DateTime.MinValue
@@ -2573,7 +2578,7 @@ public class HudService : IDisposable
             _debugLabel.Text =
                 $"{(int)_fpsSmoothed} fps    " +
                 $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}    " +
-                $"D{_worldTime.DayNumber} [{phase}]  Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  Achv {achvCount}/15  T {time}{rain}  saved {savedAge}";
+                $"D{_worldTime.DayNumber} [{phase}]  Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  Achv {achvCount}/16  T {time}{rain}  saved {savedAge}";
         }
 
         // Update compass bearing from camera yaw

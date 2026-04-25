@@ -874,6 +874,8 @@
         }
         if (e.Kind == LostSpawns.Services.EntityKind.Deer)
             Stats.TryAwardAchievement("Hunter");
+        if (e.Kind == LostSpawns.Services.EntityKind.Bear)
+            Stats.TryAwardAchievement("Bear Slayer");
 
         var drop = LootForEntityKind(e.Kind);
         if (drop is null) { Hud.Notify($"Killed {e.Kind} (+{xp} XP)"); return; }

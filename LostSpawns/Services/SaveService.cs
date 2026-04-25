@@ -101,6 +101,7 @@ public class SaveService
                 ResilientAwarded = _stats.ResilientAwarded,
                 FirstAidAwarded = _stats.FirstAidAwarded,
                 PackHunterAwarded = _stats.PackHunterAwarded,
+                BearSlayerAwarded = _stats.BearSlayerAwarded,
                 BestCombo = _stats.BestCombo,
                 CookCount = _stats.CookCount,
                 Deaths = _stats.Deaths,
@@ -190,7 +191,8 @@ public class SaveService
                 state.SurvivorAwarded, state.BowmanAwarded,
                 state.CompletionistAwarded, state.HunterAwarded,
                 state.GourmetAwarded, state.ResilientAwarded,
-                state.FirstAidAwarded, state.PackHunterAwarded);
+                state.FirstAidAwarded, state.PackHunterAwarded,
+                state.BearSlayerAwarded);
             _stats.SeedCookCountFromSave(state.CookCount);
             _stats.SeedDeathsFromSave(state.Deaths);
             _stats.SeedBestComboFromSave(state.BestCombo);
@@ -345,6 +347,7 @@ public class SaveService
         public bool ResilientAwarded { get; set; }
         public bool FirstAidAwarded { get; set; }
         public bool PackHunterAwarded { get; set; }
+        public bool BearSlayerAwarded { get; set; }
         public int BestCombo { get; set; }
         public int CookCount { get; set; }
         public int Deaths { get; set; }

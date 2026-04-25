@@ -152,6 +152,7 @@ public class PlayerStatsService
             "Resilient"     => Fire(ref _resilient),
             "First Aid"     => Fire(ref _firstAid),
             "Pack Hunter"   => Fire(ref _packHunter),
+            "Bear Slayer"   => Fire(ref _bearSlayer),
             "Completionist" => Fire(ref _completionist),
             _               => false,
         };
@@ -164,7 +165,8 @@ public class PlayerStatsService
         if (!_completionist
             && FirstKillAwarded && _firstFire && _firstCook && _firstWolf
             && _firstSleep && _veteran && _centurion && _survivor && _bowman
-            && _hunter && _gourmet && _resilient && _firstAid && _packHunter)
+            && _hunter && _gourmet && _resilient && _firstAid && _packHunter
+            && _bearSlayer)
         {
             TryAwardAchievement("Completionist");
         }
@@ -186,6 +188,7 @@ public class PlayerStatsService
     private bool _resilient;
     private bool _firstAid;
     private bool _packHunter;
+    private bool _bearSlayer;
     private bool _completionist;
 
     public bool VeteranAwarded => _veteran;
@@ -197,6 +200,7 @@ public class PlayerStatsService
     public bool ResilientAwarded => _resilient;
     public bool FirstAidAwarded => _firstAid;
     public bool PackHunterAwarded => _packHunter;
+    public bool BearSlayerAwarded => _bearSlayer;
     public bool CompletionistAwarded => _completionist;
 
     /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
@@ -221,7 +225,7 @@ public class PlayerStatsService
     }
 
     /// <summary>Seed the other achievement flags from save. Bypasses OnAchievement so reloads don't spam.</summary>
-    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false, bool hunter = false, bool gourmet = false, bool resilient = false, bool firstAid = false, bool packHunter = false)
+    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false, bool hunter = false, bool gourmet = false, bool resilient = false, bool firstAid = false, bool packHunter = false, bool bearSlayer = false)
     {
         _firstFire = fire;
         _firstCook = cook;
@@ -237,6 +241,7 @@ public class PlayerStatsService
         _resilient = resilient;
         _firstAid = firstAid;
         _packHunter = packHunter;
+        _bearSlayer = bearSlayer;
         OnStatsChanged?.Invoke();
     }
 
