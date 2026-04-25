@@ -991,6 +991,7 @@
     }
 
     private readonly Random _hitShakeRng = new();
+    private readonly Random _dustTrailRng = new();
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
     {
         // Cause attribution drives the death-screen subtitle. Entity kinds
@@ -1902,6 +1903,20 @@
             dangerIntensity += ent.Kind == LostSpawns.Services.EntityKind.Bear ? 2f : 1f;
         }
         Audio.UpdateDangerDrone(MathF.Min(dangerIntensity / 3f, 1f));
+        // Heavy chargers (Bear, Boar) kick up dust trails as they run.
+        // Random chance per frame per entity keeps the look organic
+        // without flooding the particle buffer. ~25% per frame at 60fps
+        // means ~15 dust spawns per charging bear per second - enough
+        // to read as a continuous trail without drowning out other FX.
+        foreach (var ent in Wildlife.Entities)
+        {
+            if (ent.Alert != LostSpawns.Services.AlertMode.Charge) continue;
+            if (ent.Kind != LostSpawns.Services.EntityKind.Bear
+                && ent.Kind != LostSpawns.Services.EntityKind.Boar) continue;
+            if (_dustTrailRng.NextDouble() > 0.25) continue;
+            Hud.ShowDustPuff(new System.Numerics.Vector3(
+                ent.Position.X, ent.Position.Y - 0.4f, ent.Position.Z), 2);
+        }
         TickThunderQueue(deltaTime);
 
         // Rainwater collection: while it's actively raining hard, fill a
