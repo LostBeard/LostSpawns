@@ -118,6 +118,8 @@ public class HudService : IDisposable
     private UILabel? _loadingStatus;
     private UILabel? _debugLabel;
     private UILabel? _bleedLabel;
+    private UIProgressBar? _xpBar;
+    private UILabel? _xpLabel;
 
     /// <summary>Toggle the debug HUD line (FPS + coords + level). Hot key F3.</summary>
     public void ToggleDebug()
@@ -312,6 +314,28 @@ public class HudService : IDisposable
         SyncStatsToHud();
         root.AddAnchored(StatusHUD, Anchor.BottomLeft, offsetX: 16, offsetY: -16);
 
+        // === XP bar + level label (above status HUD) ===
+        _xpBar = new UIProgressBar
+        {
+            MinValue = 0,
+            MaxValue = 1,
+            Value = 0,
+            ShowPercentage = false,
+            Width = 180,
+            Height = 8,
+        };
+        root.AddAnchored(_xpBar, Anchor.BottomLeft, offsetX: 16, offsetY: -160);
+        _xpLabel = new UILabel
+        {
+            Text = "Lv 1",
+            FontSize = FontSize.Caption,
+            Width = 180,
+            Height = 14,
+            Align = TextAlign.Center,
+            Color = System.Drawing.Color.FromArgb(235, 200, 240, 160),
+        };
+        root.AddAnchored(_xpLabel, Anchor.BottomLeft, offsetX: 16, offsetY: -170);
+
         // === Bleed badge (above status HUD) ===
         // Only visible while bleed is active. Pulses red so the player can't
         // miss it. Game.razor's frame Push pulls from PlayerStatsService.
@@ -325,7 +349,7 @@ public class HudService : IDisposable
             Visible = false,
             Color = System.Drawing.Color.FromArgb(255, 220, 40, 40),
         };
-        root.AddAnchored(_bleedLabel, Anchor.BottomLeft, offsetX: 16, offsetY: -180);
+        root.AddAnchored(_bleedLabel, Anchor.BottomLeft, offsetX: 16, offsetY: -200);
 
         // === Hotbar (bottom-center) ===
         Hotbar = new UIHotbar { SlotCount = InventoryService.HotbarSize };
@@ -1904,6 +1928,19 @@ public class HudService : IDisposable
         StatusHUD.Hunger = _stats.Hunger;
         StatusHUD.Thirst = _stats.Thirst;
         StatusHUD.Temperature = _stats.Temperature;
+
+        // XP progress toward next level. Formula mirrors PlayerStatsService:
+        // level n requires (n-1)^2 * 50 XP. Progress = (xp - prev) / (next - prev).
+        if (_xpBar is not null && _xpLabel is not null)
+        {
+            int lv = _stats.Level;
+            int prev = (lv - 1) * (lv - 1) * 50;
+            int next = lv * lv * 50;
+            int span = Math.Max(1, next - prev);
+            float progress = Math.Clamp((_stats.Experience - prev) / (float)span, 0f, 1f);
+            _xpBar.Value = progress;
+            _xpLabel.Text = $"Lv {lv}   {_stats.Experience - prev} / {span} XP";
+        }
 
         // Persistent low-health vignette. Ramps in from HP 0.3 down to 0 so the
         // effect intensifies as the player bleeds out. SetPersistent replaces the
