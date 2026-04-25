@@ -1408,14 +1408,17 @@ public class HudService : IDisposable
             // Per-kind color. A recent hit (HitFlashTimer > 0) overrides with
             // a bright white flash so the player gets a clear "swing landed"
             // confirmation before the billboard settles back to the kind tint.
+            // Per-instance ColorJitter tweaks RGB by +/- 25 so a herd doesn't
+            // look like clones - one rabbit might be lighter, another darker.
+            int jitter = (int)((e.ColorJitter - 0.5f) * 50f);
             var color = e.HitFlashTimer > 0
                 ? System.Drawing.Color.FromArgb(250, 255, 255, 255)
                 : e.Kind switch
             {
-                EntityKind.Boar   => System.Drawing.Color.FromArgb(230, 140, 90, 60),   // warm brown
-                EntityKind.Crow   => System.Drawing.Color.FromArgb(230, 30, 30, 30),    // near-black
-                EntityKind.Wolf   => System.Drawing.Color.FromArgb(230, 130, 130, 150), // blue-gray predator
-                _                 => System.Drawing.Color.FromArgb(230, 200, 190, 180), // rabbit gray
+                EntityKind.Boar   => System.Drawing.Color.FromArgb(230, Math.Clamp(140 + jitter, 80, 200), Math.Clamp(90 + jitter, 50, 150), Math.Clamp(60 + jitter / 2, 30, 110)),
+                EntityKind.Crow   => System.Drawing.Color.FromArgb(230, Math.Clamp(30 + jitter / 2, 10, 80), Math.Clamp(30 + jitter / 2, 10, 80), Math.Clamp(30 + jitter / 2, 10, 80)),
+                EntityKind.Wolf   => System.Drawing.Color.FromArgb(230, Math.Clamp(130 + jitter, 80, 200), Math.Clamp(130 + jitter, 80, 200), Math.Clamp(150 + jitter, 100, 220)),
+                _                 => System.Drawing.Color.FromArgb(230, Math.Clamp(200 + jitter, 140, 240), Math.Clamp(190 + jitter, 130, 230), Math.Clamp(180 + jitter, 120, 220)),
             };
 
             float x = screenX - size / 2f;

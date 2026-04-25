@@ -45,6 +45,8 @@ public sealed class WanderingEntity
     public float AlertTimer;       // seconds remaining in current alert state
     public Vector3 LastAlertSource; // player pos at time of last hit
     public float HitFlashTimer;    // seconds remaining on the "just got hit" white flash
+    /// <summary>Per-instance random color jitter [0, 1) so a herd doesn't look identical.</summary>
+    public float ColorJitter;
 }
 
 /// <summary>
@@ -115,6 +117,7 @@ public class EntityService
             WanderRetargetIn = (float)_rng.NextDouble() * WanderRetargetSeconds,
             Health = MaxHealthForKind(kind),
             MaxHealth = MaxHealthForKind(kind),
+            ColorJitter = (float)_rng.NextDouble(),
         };
         PickRandomDirection(e);
         Entities.Add(e);
