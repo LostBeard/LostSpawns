@@ -65,7 +65,7 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on F3 key press. Debug HUD toggle.</summary>
     public event Action? OnDebugTogglePressed;
 
-    /// <summary>Fired on F4 key press. Terraform mode toggle (sphere carve/build).</summary>
+    /// <summary>Fired on B key press. Terraform mode toggle (sphere carve/build). Rebound from F4 to avoid browser F-key collisions.</summary>
     public event Action? OnTerraformTogglePressed;
 
     /// <summary>Fired on M key press. Mute / unmute audio.</summary>
@@ -182,30 +182,50 @@ public class InputService : IAsyncDisposable
         if (!e.Repeat && (e.Key == "z" || e.Key == "Z"))
             OnSleepPressed?.Invoke();
 
-        // Debug HUD toggle on F3 - Minecraft convention.
-        if (!e.Repeat && e.Key == "F3")
-            OnDebugTogglePressed?.Invoke();
+        // F-key bindings call PreventDefault so the browser's built-in
+        // F-key actions (Help on F1, Find on F3, Refresh on F5, DevTools-
+        // adjacent F10 menu in Firefox, etc.) don't fire alongside our
+        // handler. F11/F12 are intentionally NOT bound - those are
+        // browser-reserved at the OS level on most platforms.
 
-        // Terraform mode toggle on F4 - sphere carve/build per click.
-        if (!e.Repeat && e.Key == "F4")
+        // Debug HUD toggle on F3 - was Minecraft convention but Chrome's
+        // "Find in page" uses F3 too; PreventDefault stops the find bar.
+        if (!e.Repeat && e.Key == "F3")
+        {
+            e.PreventDefault();
+            OnDebugTogglePressed?.Invoke();
+        }
+
+        // Terraform mode toggle on B (rebound from F4 to avoid Edge
+        // collision with address-bar focus + the general F-key footgun).
+        if (!e.Repeat && (e.Key == "b" || e.Key == "B"))
             OnTerraformTogglePressed?.Invoke();
 
         // Mute toggle on M.
         if (!e.Repeat && (e.Key == "m" || e.Key == "M"))
             OnMuteTogglePressed?.Invoke();
 
-        // Help overlay on F1.
+        // Help overlay on F1. Some browsers open their own Help on F1;
+        // PreventDefault keeps the in-game overlay as the only response.
         if (!e.Repeat && e.Key == "F1")
+        {
+            e.PreventDefault();
             OnHelpTogglePressed?.Invoke();
+        }
 
         // Achievement-list overlay on J.
         if (!e.Repeat && (e.Key == "j" || e.Key == "J"))
             OnAchievementsTogglePressed?.Invoke();
 
-        // Manual quick-save on F5 (Minecraft-ish convention; auto-save still
-        // runs in the background every 10s).
+        // Manual quick-save on F5 - PreventDefault is critical here:
+        // F5 is the universal browser refresh shortcut, and refreshing
+        // mid-game blows away in-flight state. Our handler still saves
+        // first, but suppressing the refresh keeps the player in the run.
         if (!e.Repeat && e.Key == "F5")
+        {
+            e.PreventDefault();
             OnQuickSavePressed?.Invoke();
+        }
 
         // Drop active item on Q.
         if (!e.Repeat && (e.Key == "q" || e.Key == "Q"))
@@ -226,10 +246,18 @@ public class InputService : IAsyncDisposable
             OnQuickHealPressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
+        // F10 toggles the Firefox menu bar; PreventDefault on both for
+        // consistency with the rest of our F-key bindings.
         if (!e.Repeat && e.Key == "F9")
+        {
+            e.PreventDefault();
             OnDebugDamagePressed?.Invoke();
+        }
         if (!e.Repeat && e.Key == "F10")
+        {
+            e.PreventDefault();
             OnDebugHealPressed?.Invoke();
+        }
     }
 
     private void OnKeyUp(KeyboardEvent e)

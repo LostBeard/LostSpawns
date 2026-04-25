@@ -628,9 +628,10 @@
     };
 
     /// <summary>
-    /// F4 toggle handler. Flips terraform mode + announces it. The mode
+    /// B toggle handler. Flips terraform mode + announces it. The mode
     /// changes how LMB and RMB behave: LMB carves a sphere, RMB builds
     /// one. While disabled, both fall back to standard block break/place.
+    /// Rebound from F4 to avoid browser F-key collisions.
     /// </summary>
     private void HandleTerraformToggle()
     {
