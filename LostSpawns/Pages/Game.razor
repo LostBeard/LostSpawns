@@ -694,6 +694,13 @@
 
     private readonly Random _leafRng = new();
 
+    // Forage respawn tick. Drops a new mushroom/berry near the player at
+    // ~60s intervals if the ground item count is low (under 6 items
+    // total). Keeps the world feeling lived-in across long runs without
+    // overwhelming the inventory or the renderer.
+    private float _forageRespawnTimer;
+    private readonly Random _forageRng = new();
+
     /// <summary>
     /// True if the active item belongs to the same tool family as the required
     /// item - covers tier upgrades (stone_axe satisfies axe). Null active
@@ -1714,6 +1721,29 @@
         Weather.Tick(deltaTime);
         Audio.UpdateRainAmbient(Weather.RainIntensity);
         TickThunderQueue(deltaTime);
+
+        // Forage respawn: every 60s of active play, if total ground items
+        // are below 6, drop one new mushroom/berry in the player's
+        // walking radius. World feels foraged-from-nature instead of
+        // a one-shot starter.
+        _forageRespawnTimer += deltaTime;
+        if (_forageRespawnTimer >= 60f)
+        {
+            _forageRespawnTimer = 0;
+            if (Ground.Items.Count < 6)
+            {
+                float angle = (float)(_forageRng.NextDouble() * Math.PI * 2);
+                float dist = 10f + (float)_forageRng.NextDouble() * 20f;
+                float fx = Renderer.Camera.Position.X + MathF.Cos(angle) * dist;
+                float fz = Renderer.Camera.Position.Z + MathF.Sin(angle) * dist;
+                int fy = World.GetHeightAt(fx, fz) + 1;
+                bool isMushroom = _forageRng.NextDouble() < 0.5;
+                var item = isMushroom
+                    ? new LostSpawns.Services.InventoryItem("food.mushroom", "Mushroom", 1, LostSpawns.Services.ItemCategory.Food)
+                    : new LostSpawns.Services.InventoryItem("food.berry",    "Berries",  1, LostSpawns.Services.ItemCategory.Food);
+                Ground.Drop(new System.Numerics.Vector3(fx, fy, fz), item);
+            }
+        }
         // Wind ambient: a baseline 0.3 intensity always runs so the world
         // never feels sonically dead, plus rain adds on top so storms howl.
         Audio.UpdateWindAmbient(0.3f + Weather.RainIntensity * 0.6f, deltaTime);
