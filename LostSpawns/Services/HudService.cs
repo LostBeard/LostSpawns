@@ -222,6 +222,14 @@ public class HudService : IDisposable
     /// <summary>Set true while CTRL is held so HUD can show a sneak indicator. Game.razor pushes this each frame.</summary>
     public bool IsSneaking { get; set; }
 
+    /// <summary>
+    /// Current threat intensity [0,1]. Game.razor pushes this every frame
+    /// based on charging entities within sense range. Drives a red screen-
+    /// edge vignette so the player gets peripheral threat awareness even
+    /// when the threat is behind them.
+    /// </summary>
+    public float DangerIntensity { get; set; }
+
     /// <summary>Current kill-streak; Game.razor pushes this each frame so HudService can render the live combo badge.</summary>
     public int CurrentCombo { get; set; }
 
@@ -2705,6 +2713,21 @@ public class HudService : IDisposable
         else
         {
             ScreenOverlay?.ClearPersistent("hot");
+        }
+
+        // Danger vignette: red edge tint that ramps with charging entities
+        // nearby. Lets the player feel the threat even when it's behind
+        // them, complementing the audio danger drone. Capped at 80 alpha
+        // so it never dominates the screen.
+        if (DangerIntensity > 0.05f)
+        {
+            int alpha = Math.Clamp((int)(DangerIntensity * 70f), 15, 80);
+            ScreenOverlay?.SetPersistent("danger",
+                System.Drawing.Color.FromArgb(alpha, 200, 30, 30));
+        }
+        else
+        {
+            ScreenOverlay?.ClearPersistent("danger");
         }
 
         // Threshold-cross toasts for hunger + thirst + temperature + stamina. Fires

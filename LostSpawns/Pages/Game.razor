@@ -1910,7 +1910,11 @@
             if (ddx * ddx + ddz * ddz > 20f * 20f) continue;
             dangerIntensity += ent.Kind == LostSpawns.Services.EntityKind.Bear ? 2f : 1f;
         }
-        Audio.UpdateDangerDrone(MathF.Min(dangerIntensity / 3f, 1f));
+        float dangerNorm = MathF.Min(dangerIntensity / 3f, 1f);
+        Audio.UpdateDangerDrone(dangerNorm);
+        // Push the same normalized intensity to the HUD so the red edge
+        // vignette tracks the audio drone in lockstep.
+        Hud.DangerIntensity = dangerNorm;
 
         // New-record celebration: fires once per life when CurrentLife
         // first exceeds the previous LongestLife. Two-beep ding + toast.
