@@ -26,6 +26,35 @@ public class PlayerStatsService
     /// <summary>Lifetime kills tally - incremented once per downed entity.</summary>
     public int Kills { get; private set; }
 
+    /// <summary>Per-kind kill tallies for detailed lifetime stats.</summary>
+    public int RabbitKills { get; private set; }
+    public int BoarKills { get; private set; }
+    public int CrowKills { get; private set; }
+    public int WolfKills { get; private set; }
+
+    /// <summary>Record a kill by kind name for per-kind tallies. Kind strings match EntityKind.ToString().</summary>
+    public void RecordKindKill(string kind)
+    {
+        switch (kind)
+        {
+            case "Rabbit": RabbitKills++; break;
+            case "Boar":   BoarKills++;   break;
+            case "Crow":   CrowKills++;   break;
+            case "Wolf":   WolfKills++;   break;
+        }
+        OnStatsChanged?.Invoke();
+    }
+
+    /// <summary>Seed per-kind kills directly - used by save load.</summary>
+    public void SeedKindKillsFromSave(int rabbit, int boar, int crow, int wolf)
+    {
+        RabbitKills = rabbit;
+        BoarKills = boar;
+        CrowKills = crow;
+        WolfKills = wolf;
+        OnStatsChanged?.Invoke();
+    }
+
     /// <summary>Cumulative seconds played across all lives. Tick increments this by dt.</summary>
     public float PlayTimeSeconds { get; private set; }
 

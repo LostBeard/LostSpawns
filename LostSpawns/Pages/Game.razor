@@ -645,6 +645,7 @@
         };
         Stats.AwardXp(xp);
         Stats.RecordKill();
+        Stats.RecordKindKill(e.Kind.ToString());
         if (e.Kind == LostSpawns.Services.EntityKind.Wolf)
             Stats.TryAwardAchievement("First Wolf");
 

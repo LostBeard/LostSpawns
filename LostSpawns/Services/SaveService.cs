@@ -75,6 +75,10 @@ public class SaveService
                 Temperature = _stats.Temperature,
                 Experience = _stats.Experience,
                 Kills = _stats.Kills,
+                RabbitKills = _stats.RabbitKills,
+                BoarKills = _stats.BoarKills,
+                CrowKills = _stats.CrowKills,
+                WolfKills = _stats.WolfKills,
                 FirstKillAwarded = _stats.FirstKillAwarded,
                 FirstFireAwarded = _stats.FirstFireAwarded,
                 FirstCookAwarded = _stats.FirstCookAwarded,
@@ -148,6 +152,8 @@ public class SaveService
             // Seed kills + achievement flag directly so the FirstKill event
             // doesn't fire on every save-reload.
             _stats.SeedKillsFromSave(state.Kills, state.FirstKillAwarded);
+            _stats.SeedKindKillsFromSave(
+                state.RabbitKills, state.BoarKills, state.CrowKills, state.WolfKills);
             _stats.SeedAchievementsFromSave(
                 state.FirstFireAwarded, state.FirstCookAwarded,
                 state.FirstWolfAwarded, state.FirstSleepAwarded);
@@ -281,6 +287,10 @@ public class SaveService
         public float Temperature { get; set; }
         public int Experience { get; set; }
         public int Kills { get; set; }
+        public int RabbitKills { get; set; }
+        public int BoarKills { get; set; }
+        public int CrowKills { get; set; }
+        public int WolfKills { get; set; }
         public bool FirstKillAwarded { get; set; }
         public bool FirstFireAwarded { get; set; }
         public bool FirstCookAwarded { get; set; }
