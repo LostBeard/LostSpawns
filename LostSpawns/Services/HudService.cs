@@ -317,12 +317,19 @@ public class HudService : IDisposable
         sb.Append((_stats.FirstAidAwarded ? check : lockd)).Append(" First Aid\n");
         sb.Append((_stats.GourmetAwarded ? check : lockd)).Append(" Gourmet (10 cooks)\n");
         sb.Append((_stats.VeteranAwarded ? check : lockd)).Append(" Veteran (Lv 5)\n");
-        sb.Append((_stats.CenturionAwarded ? check : lockd)).Append(" Centurion (100 kills)\n");
+        // Centurion / Marathon are incremental - show running count so the
+        // player can see how far off they are. Other achievements are
+        // one-shots that don't benefit from a counter.
+        sb.Append((_stats.CenturionAwarded ? check : lockd))
+            .Append(" Centurion (100 kills)")
+            .Append(_stats.CenturionAwarded ? "\n" : $"  [{_stats.Kills}/100]\n");
         sb.Append((_stats.SurvivorAwarded ? check : lockd)).Append(" Survivor (Day 7)\n");
         sb.Append((_stats.ResilientAwarded ? check : lockd)).Append(" Resilient (3 deaths)\n");
         sb.Append((_stats.PackHunterAwarded ? check : lockd)).Append(" Pack Hunter (5 wolves/night)\n");
         sb.Append((_stats.BearSlayerAwarded ? check : lockd)).Append(" Bear Slayer (kill a bear)\n");
-        sb.Append((_stats.MarathonAwarded ? check : lockd)).Append(" Marathon (10 km traveled)\n");
+        sb.Append((_stats.MarathonAwarded ? check : lockd))
+            .Append(" Marathon (10 km traveled)")
+            .Append(_stats.MarathonAwarded ? "\n" : $"  [{(_stats.DistanceTraveled / 1000f):F1} km]\n");
         sb.Append((_stats.CompletionistAwarded ? check : lockd)).Append(" Completionist (all 16)\n");
         _achievementsLabel.Text = sb.ToString();
     }
