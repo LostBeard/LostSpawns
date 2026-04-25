@@ -1005,6 +1005,8 @@
     private readonly Random _hitShakeRng = new();
     private readonly Random _dustTrailRng = new();
     private bool _newRecordPinged;
+    private bool _packWarningArmed = true;
+    private DateTime _lastPackWarn = DateTime.MinValue;
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
     {
         // Cause attribution drives the death-screen subtitle. Entity kinds
@@ -2013,6 +2015,30 @@
         // Push the same normalized intensity to the HUD so the red edge
         // vignette tracks the audio drone in lockstep.
         Hud.DangerIntensity = dangerNorm;
+
+        // Pack warning: 3+ wolves charging within range = real trouble.
+        // Toast fires once with a 30s cooldown so we don't spam during
+        // a sustained pack fight. Re-arms when the pack falls below 3.
+        int chargingWolves = 0;
+        foreach (var ent in Wildlife.Entities)
+        {
+            if (ent.Alert != LostSpawns.Services.AlertMode.Charge) continue;
+            if (ent.Kind != LostSpawns.Services.EntityKind.Wolf) continue;
+            float wdx = ent.Position.X - Renderer.Camera.Position.X;
+            float wdz = ent.Position.Z - Renderer.Camera.Position.Z;
+            if (wdx * wdx + wdz * wdz <= 25f * 25f) chargingWolves++;
+        }
+        if (chargingWolves >= 3 && _packWarningArmed
+            && (DateTime.UtcNow - _lastPackWarn).TotalSeconds >= 30)
+        {
+            Hud.NotifyDamage($"Pack closing! {chargingWolves} wolves");
+            _lastPackWarn = DateTime.UtcNow;
+            _packWarningArmed = false;
+        }
+        else if (chargingWolves < 3)
+        {
+            _packWarningArmed = true;
+        }
 
         // New-record celebration: fires once per life when CurrentLife
         // first exceeds the previous LongestLife. Two-beep ding + toast.
