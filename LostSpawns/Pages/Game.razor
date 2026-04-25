@@ -706,6 +706,18 @@
         ConsumeBlockActionCost();
         ApplyCameraKick(carve ? 3.0f : 2.5f);
         Audio.PlayMine();
+
+        // Terraform costs stamina proportional to volume moved - sculpting
+        // big slabs of rock should leave you winded. Capped so a max-radius
+        // carve can't fully drain you in one click. ~0.005 per cell means
+        // a default radius-2.5 carve (~65 cells) costs ~0.32 stamina.
+        float staminaCost = MathF.Min(0.5f, totalCells * 0.005f);
+        Stats.Stamina = MathF.Max(0f, Stats.Stamina - staminaCost);
+
+        // XP reward: carving is harder than building (you're prying material
+        // free vs depositing it). Scales with cells affected.
+        int xp = carve ? Math.Max(1, totalCells / 5) : Math.Max(1, totalCells / 10);
+        Stats.AwardXp(xp);
         // Big dust burst at the operation center - particle count scales
         // with how much terrain actually moved, so a near-empty carve puffs
         // a few specks while a full sphere kicks up a cloud.
