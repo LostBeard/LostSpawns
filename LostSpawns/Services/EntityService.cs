@@ -13,6 +13,8 @@ public enum EntityKind
     Crow,
     Wolf,
     Deer,
+    /// <summary>Heavy-hitting alpha that spawns rarely past Day 4. Tough, slow, charges hard. Drops triple meat + double pelt.</summary>
+    Bear,
 }
 
 /// <summary>
@@ -164,6 +166,7 @@ public class EntityService
         EntityKind.Boar   => 1.5f,
         EntityKind.Wolf   => 1.8f,
         EntityKind.Deer   => 1.4f,
+        EntityKind.Bear   => 4.0f, // tank: 7+ axe swings to drop, 4+ bow shots
         _                 => 1.0f,
     };
 
@@ -215,6 +218,20 @@ public class EntityService
                     // wolf (not the player) joins the charge. Lets a lone
                     // sighting drag the whole pack down on you.
                     AlertPackmates(e, playerPos);
+                }
+            }
+            // Bears auto-aggro at longer range than wolves (15 vs 10) and
+            // do so day OR night. Their slow speed is the only thing that
+            // makes them survivable - sneak (CTRL) past or commit hard.
+            if (e.Kind == EntityKind.Bear && e.Alert == AlertMode.Idle)
+            {
+                float dx = playerPos.X - e.Position.X;
+                float dz = playerPos.Z - e.Position.Z;
+                if (dx * dx + dz * dz <= 15f * 15f)
+                {
+                    e.Alert = AlertMode.Charge;
+                    e.AlertTimer = 8f;
+                    e.LastAlertSource = playerPos;
                 }
             }
 
@@ -342,10 +359,22 @@ public class EntityService
         }
         else
         {
-            kind = roll < 0.30 ? EntityKind.Rabbit
-                 : roll < 0.55 ? EntityKind.Boar
-                 : roll < 0.75 ? EntityKind.Crow
-                               : EntityKind.Deer;
+            // Past Day 4 introduce a rare daytime bear roll (~5%). Bears are
+            // ambush predators that aren't tied to night - encountering one
+            // changes the day-feels-safe rhythm.
+            if (DayNumber >= 4 && roll < 0.05)
+            {
+                kind = EntityKind.Bear;
+            }
+            else
+            {
+                // Rebase remaining probability across normal kinds.
+                double r2 = DayNumber >= 4 ? (roll - 0.05) / 0.95 : roll;
+                kind = r2 < 0.30 ? EntityKind.Rabbit
+                     : r2 < 0.55 ? EntityKind.Boar
+                     : r2 < 0.75 ? EntityKind.Crow
+                                 : EntityKind.Deer;
+            }
         }
 
         double angle = _rng.NextDouble() * Math.PI * 2;
@@ -393,6 +422,7 @@ public class EntityService
         EntityKind.Crow   => 2.4f,
         EntityKind.Wolf   => 3.5f, // wolves are the fastest chasers
         EntityKind.Deer   => 3.8f, // deer are skittish and FAST when alarmed
+        EntityKind.Bear   => 2.6f, // slow but inevitable
         _                 => 2.0f,
     };
 
@@ -408,6 +438,7 @@ public class EntityService
         EntityKind.Crow   => 0.05f,
         EntityKind.Wolf   => 0.25f, // wolves bite harder than boars
         EntityKind.Deer   => 0.0f,  // deer never charge - pure prey
+        EntityKind.Bear   => 0.40f, // bears hit hardest - one swipe is half HP
         _                 => 0.05f,
     };
 

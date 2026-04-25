@@ -791,6 +791,7 @@
         LostSpawns.Services.EntityKind.Crow   => new("material.feather", "Feather",     2, LostSpawns.Services.ItemCategory.Material),
         LostSpawns.Services.EntityKind.Wolf   => new("material.pelt",    "Wolf Pelt",   1, LostSpawns.Services.ItemCategory.Material),
         LostSpawns.Services.EntityKind.Deer   => new("food.deer_meat",   "Deer Meat",   3, LostSpawns.Services.ItemCategory.Food),
+        LostSpawns.Services.EntityKind.Bear   => new("material.pelt",    "Bear Pelt",   3, LostSpawns.Services.ItemCategory.Material),
         _ => null,
     };
 
@@ -800,6 +801,7 @@
         // PlayerStatsService's ResetToDefaults contract.
         int baseXp = e.Kind switch
         {
+            LostSpawns.Services.EntityKind.Bear   => 50, // tank kill = big payday
             LostSpawns.Services.EntityKind.Wolf   => 15,
             LostSpawns.Services.EntityKind.Boar   => 10,
             LostSpawns.Services.EntityKind.Rabbit => 5,
@@ -839,7 +841,8 @@
         // Other kinds stay on the default PlayHit since they're unremarkable
         // kills that don't need a "fanfare".
         if (e.Kind == LostSpawns.Services.EntityKind.Wolf
-            || e.Kind == LostSpawns.Services.EntityKind.Boar)
+            || e.Kind == LostSpawns.Services.EntityKind.Boar
+            || e.Kind == LostSpawns.Services.EntityKind.Bear)
             Audio.PlayBeastFell();
         if (e.Kind == LostSpawns.Services.EntityKind.Wolf)
         {

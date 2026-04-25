@@ -1856,6 +1856,9 @@ public class HudService : IDisposable
                 float hpScale = MathF.Min(e.MaxHealth / 1.8f, 1.6f);
                 size *= hpScale;
             }
+            // Bears are massive - 1.7x baseline so a charging silhouette
+            // reads "oh no" before the player hits the HP bar.
+            if (e.Kind == EntityKind.Bear) size *= 1.7f;
 
             // Per-kind color. A recent hit (HitFlashTimer > 0) overrides with
             // a bright white flash so the player gets a clear "swing landed"
@@ -1871,6 +1874,7 @@ public class HudService : IDisposable
                 EntityKind.Crow   => System.Drawing.Color.FromArgb(230, Math.Clamp(30 + jitter / 2, 10, 80), Math.Clamp(30 + jitter / 2, 10, 80), Math.Clamp(30 + jitter / 2, 10, 80)),
                 EntityKind.Wolf   => System.Drawing.Color.FromArgb(230, Math.Clamp(130 + jitter, 80, 200), Math.Clamp(130 + jitter, 80, 200), Math.Clamp(150 + jitter, 100, 220)),
                 EntityKind.Deer   => System.Drawing.Color.FromArgb(230, Math.Clamp(170 + jitter, 110, 220), Math.Clamp(120 + jitter, 70, 180), Math.Clamp(80 + jitter, 40, 140)),
+                EntityKind.Bear   => System.Drawing.Color.FromArgb(230, Math.Clamp(95 + jitter / 2, 60, 140), Math.Clamp(60 + jitter / 2, 35, 100), Math.Clamp(35 + jitter / 2, 15, 80)),
                 _                 => System.Drawing.Color.FromArgb(230, Math.Clamp(200 + jitter, 140, 240), Math.Clamp(190 + jitter, 130, 230), Math.Clamp(180 + jitter, 120, 220)),
             };
 
