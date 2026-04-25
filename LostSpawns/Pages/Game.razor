@@ -797,6 +797,20 @@
         Stats.TakeDamage(damage);
         Hud.NotifyDamage($"{e.Kind} hit you!");
         Audio.PlayDamage();
+        // Knockback: shove the camera away from the attacker. Boars get the
+        // biggest push because their gimmick is "aggressive tusk charge";
+        // wolves get a smaller nudge since they're a bite-and-run pattern.
+        var fromAttacker = Renderer.Camera.Position - e.Position;
+        fromAttacker.Y = 0;
+        float dist = fromAttacker.Length();
+        if (dist > 0.01f)
+        {
+            var push = fromAttacker / dist;
+            float mag = e.Kind == LostSpawns.Services.EntityKind.Boar ? 2.0f
+                      : e.Kind == LostSpawns.Services.EntityKind.Wolf ? 1.0f
+                                                                       : 0.6f;
+            Renderer.Camera.Position += push * mag;
+        }
         // Hit shake: small random yaw + pitch nudge scaled by damage. Reads
         // as the bite "jarring" the player. Mouse-look snaps back on the
         // next frame so the shake is a one-frame impact not lingering input
