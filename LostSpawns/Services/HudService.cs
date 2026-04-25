@@ -2144,8 +2144,20 @@ public class HudService : IDisposable
         SyncStatsToHud();
 
         // Refresh the clock label from WorldTimeService (cheap string format).
+        // Tint the text by phase so day/night reads at a glance from the
+        // top-left corner without needing to parse the string.
         if (_clockLabel != null)
+        {
             _clockLabel.Text = $"{_worldTime.ClockString}  {_worldTime.PhaseName}";
+            _clockLabel.Color = _worldTime.PhaseName switch
+            {
+                "Dawn"  => System.Drawing.Color.FromArgb(240, 255, 190, 120),
+                "Day"   => System.Drawing.Color.FromArgb(240, 240, 240, 230),
+                "Dusk"  => System.Drawing.Color.FromArgb(240, 255, 150, 110),
+                "Night" => System.Drawing.Color.FromArgb(240, 140, 180, 235),
+                _       => System.Drawing.Color.FromArgb(240, 220, 220, 220),
+            };
+        }
 
         // FPS smoothing: low-pass over ~0.5s. Updates the debug line only a few
         // times a second so the text doesn't flicker on every frame.
