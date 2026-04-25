@@ -237,6 +237,11 @@
     private float _distantHowlTimer;
     private readonly Random _howlRng = new();
 
+    // Owl hoots at deep night (0.72-0.88 day fraction). Rare ambient call
+    // with a jittered interval so it doesn't loop obviously.
+    private float _owlTimer;
+    private readonly Random _owlRng = new();
+
     // Heartbeat cadence - pulses accelerate as HP drops, silences when the
     // player recovers past the low-HP threshold.
     private float _heartbeatTimer;
@@ -1411,6 +1416,20 @@
             {
                 Audio.PlayWolfHowl();
                 _distantHowlTimer = 15f + (float)_howlRng.NextDouble() * 30f;
+            }
+
+            // Owl hoots during deep night (0.72-0.88 day fraction). Longer
+            // interval than the wolf howl so the two ambients don't step on
+            // each other.
+            float frac = Time.DayFraction;
+            if (frac >= 0.72f && frac <= 0.88f)
+            {
+                _owlTimer -= deltaTime;
+                if (_owlTimer <= 0f)
+                {
+                    Audio.PlayOwlHoot();
+                    _owlTimer = 20f + (float)_owlRng.NextDouble() * 35f;
+                }
             }
         }
         else

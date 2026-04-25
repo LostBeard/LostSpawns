@@ -526,6 +526,39 @@ public class AudioService : IDisposable
     }
 
     /// <summary>
+    /// Two-note owl hoot - low sine pair with the second a perfect fifth
+    /// above the first. Plays near midnight as atmosphere.
+    /// </summary>
+    public void PlayOwlHoot()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            double t = _ctx.CurrentTime;
+            float[] freqs = { 220f, 330f };
+            for (int i = 0; i < 2; i++)
+            {
+                double start = t + i * 0.45;
+                using var osc = _ctx.CreateOscillator();
+                using var gain = _ctx.CreateGain();
+                osc.Type = "sine";
+                osc.Frequency.SetValueAtTime(freqs[i], start);
+                gain.Gain.SetValueAtTime(0, start);
+                gain.Gain.LinearRampToValueAtTime(0.12f, start + 0.06);
+                gain.Gain.ExponentialRampToValueAtTime(0.0001f, start + 0.35);
+                osc.Connect(gain);
+                gain.Connect(Destination);
+                osc.Start((float)start);
+                osc.Stop((float)(start + 0.35));
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayOwlHoot failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Crow caw - two quick rising square blips, classic cartoon crow cry.
     /// Plays when a crow takes damage and flees.
     /// </summary>
