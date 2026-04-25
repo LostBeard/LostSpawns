@@ -1636,6 +1636,22 @@ public class HudService : IDisposable
             float textY = (e.Health < maxHp ? y - 24f : y - 16f);
             _ui.Renderer.DrawText(label, textX, textY, textPx,
                 System.Drawing.Color.FromArgb(230, 235, 235, 240));
+
+            // Aggro indicator: red pulsing "!" above charging entities.
+            // Lets the player spot incoming threats from far away before the
+            // billboard grows large enough to read body language.
+            if (e.Alert == AlertMode.Charge)
+            {
+                double t = (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
+                int alpha = 200 + (int)(MathF.Sin((float)t * 8f) * 55f);
+                alpha = Math.Clamp(alpha, 150, 255);
+                string alert = "!";
+                float alertPx = Math.Clamp(32f * (size / 40f), 14f, 36f);
+                float alertW = _ui.Renderer.MeasureText(alert, alertPx);
+                _ui.Renderer.DrawText(alert,
+                    screenX - alertW / 2f, textY - alertPx - 2f, alertPx,
+                    System.Drawing.Color.FromArgb(alpha, 240, 60, 60));
+            }
         }
     }
 
