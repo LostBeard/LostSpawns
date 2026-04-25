@@ -1885,7 +1885,13 @@
             if (_cricketTimer <= 0f)
             {
                 Audio.PlayCricket();
-                _cricketTimer = 1.0f + (float)_cricketRng.NextDouble() * 2.0f;
+                // Cadence faster at deep night (DayFraction near 0.8) and
+                // slower at the dusk/dawn edges. Reads as "the night is
+                // alive at peak" instead of a flat chirp interval.
+                // Distance from peak night (0.80). Closer = shorter interval.
+                float cricketDist = MathF.Abs(Time.DayFraction - 0.80f);
+                float jitterScale = 1.0f + cricketDist * 4f;     // 1x at midnight, 1.8x at edges
+                _cricketTimer = jitterScale * (0.8f + (float)_cricketRng.NextDouble() * 1.6f);
             }
 
             // Distant wolf howls at sparse random intervals. Purely
