@@ -1324,9 +1324,12 @@
         Stats.Hunger = MathF.Max(0, Stats.Hunger - 0.15f);
         Stats.Thirst = MathF.Max(0, Stats.Thirst - 0.15f);
 
-        // Rest restores stamina fully and gives a small HP bump.
+        // Rest restores stamina fully and gives a small HP bump. Warmth
+        // bumps to comfortable since the player slept by an active fire -
+        // wake up cozy, not freezing.
         Stats.Stamina = 1f;
         Stats.Heal(0.15f);
+        Stats.Temperature = MathF.Max(Stats.Temperature, 0.55f);
 
         // Black fade for the time skip so the transition doesn't jump-cut.
         // ScreenOverlay flash uses the same lifetime model as damage / heal
