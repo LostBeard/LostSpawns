@@ -142,6 +142,7 @@
         Save.OnSaved += HandleSaved;
         Time.OnDayAdvanced += HandleDayAdvanced;
         Ground.OnPickedUp += HandleGroundPickup;
+        Ground.OnPickedUpAt += HandleGroundPickupAt;
         Stats.OnLevelUp += HandleLevelUpSound;
         Stats.OnHealed += HandleHealSound;
         Wildlife.OnEntitySpawned += HandleEntitySpawned;
@@ -1109,6 +1110,14 @@
         // Audio fires from HandleItemPickedUpSound (subscribed to the
         // InventoryService event) so ground loot + block-drop + crafted
         // items all make the same sound without a double-play path.
+    }
+
+    private void HandleGroundPickupAt(LostSpawns.Services.InventoryItem payload, System.Numerics.Vector3 pos)
+    {
+        // Tiny dust burst at the pickup site - reads as "you grabbed it"
+        // without needing a separate particle system. Two particles is
+        // enough to register at a glance.
+        Hud.ShowDustPuff(pos, 2);
     }
 
     private void HandleItemPickedUpSound(LostSpawns.Services.InventoryItem item)
@@ -2530,6 +2539,7 @@
         Save.OnSaved -= HandleSaved;
         Time.OnDayAdvanced -= HandleDayAdvanced;
         Ground.OnPickedUp -= HandleGroundPickup;
+        Ground.OnPickedUpAt -= HandleGroundPickupAt;
         Stats.OnLevelUp -= HandleLevelUpSound;
         Stats.OnHealed -= HandleHealSound;
         Wildlife.OnEntitySpawned -= HandleEntitySpawned;

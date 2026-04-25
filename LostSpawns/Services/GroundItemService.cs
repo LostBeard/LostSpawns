@@ -36,6 +36,9 @@ public class GroundItemService
     /// <summary>Fired after a successful pickup. Payload = picked-up item.</summary>
     public event Action<InventoryItem>? OnPickedUp;
 
+    /// <summary>Fired after a successful pickup with the world-space position of the picked item.</summary>
+    public event Action<InventoryItem, Vector3>? OnPickedUpAt;
+
     /// <summary>Fired after a successful pickup with the ground item id so UI can clean up per-id state (minimap markers, etc).</summary>
     public event Action<int>? OnPickedUpId;
 
@@ -68,9 +71,12 @@ public class GroundItemService
             if (inventory.TryAdd(g.Payload))
             {
                 int id = g.Id;
+                var pickupPos = g.Position;
+                var payload = g.Payload;
                 Items.RemoveAt(i);
-                OnPickedUp?.Invoke(g.Payload);
+                OnPickedUp?.Invoke(payload);
                 OnPickedUpId?.Invoke(id);
+                OnPickedUpAt?.Invoke(payload, pickupPos);
             }
             // else: inventory full, leave the item for next pass.
         }
