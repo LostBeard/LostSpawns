@@ -68,6 +68,13 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on B key press. Terraform mode toggle (sphere carve/build). Rebound from F4 to avoid browser F-key collisions.</summary>
     public event Action? OnTerraformTogglePressed;
 
+    /// <summary>
+    /// Fired on mouse wheel scroll. Arg = sign of deltaY (+1 = scroll down,
+    /// -1 = scroll up). Used by terraform mode to adjust brush radius;
+    /// Game.razor decides whether to consume or let the hotbar handle it.
+    /// </summary>
+    public event Action<int>? OnWheelScrolled;
+
     /// <summary>Fired on M key press. Mute / unmute audio.</summary>
     public event Action? OnMuteTogglePressed;
 
@@ -116,6 +123,7 @@ public class InputService : IAsyncDisposable
         _window!.OnKeyUp += OnKeyUp;
         _window!.OnMouseMove += OnMouseMove;
         _window!.OnMouseDown += OnMouseDown;
+        _window!.OnWheel += OnWheel;
         _document!.OnPointerLockChange += OnPointerLockChange;
     }
 
@@ -128,6 +136,7 @@ public class InputService : IAsyncDisposable
             _window.OnKeyUp -= OnKeyUp;
             _window.OnMouseMove -= OnMouseMove;
             _window.OnMouseDown -= OnMouseDown;
+            _window.OnWheel -= OnWheel;
         }
         if (_document != null)
         {
@@ -144,6 +153,16 @@ public class InputService : IAsyncDisposable
         if (!IsPointerLocked) return;
         if (e.Button == MouseButton.PrimaryButton) OnLeftClickPressed?.Invoke();
         else if (e.Button == MouseButton.SecondaryButton) OnRightClickPressed?.Invoke();
+    }
+
+    private void OnWheel(WheelEvent e)
+    {
+        // Only fire while pointer is locked so wheel scrolling pages outside
+        // the canvas (settings overlay, browser) doesn't trigger gameplay
+        // wheel handlers. Direction = sign(deltaY); positive = scroll down.
+        if (!IsPointerLocked) return;
+        if (e.DeltaY == 0) return;
+        OnWheelScrolled?.Invoke(e.DeltaY > 0 ? 1 : -1);
     }
 
     /// <summary>Call once per frame to consume accumulated mouse deltas.</summary>

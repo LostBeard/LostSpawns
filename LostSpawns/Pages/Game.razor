@@ -118,6 +118,7 @@
         Input.OnQuickDrinkPressed += HandleQuickDrink;
         Input.OnQuickHealPressed += HandleQuickHeal;
         Input.OnTerraformTogglePressed += HandleTerraformToggle;
+        Input.OnWheelScrolled += HandleWheelScrolled;
         Input.OnAchievementsTogglePressed += () => Hud.ToggleAchievements();
         Input.OnQuickSavePressed += HandleQuickSave;
 
@@ -628,6 +629,29 @@
     };
 
     /// <summary>
+    /// Mouse wheel handler - direction = +1 (scroll down) or -1 (scroll up).
+    /// In terraform mode, wheel adjusts the brush radius by half-block
+    /// steps clamped to [1.0, 5.0] and toasts the new value. Outside
+    /// terraform mode this is a no-op (hotbar widget handles its own
+    /// wheel listener for slot-cycle).
+    /// </summary>
+    private void HandleWheelScrolled(int direction)
+    {
+        if (Hud.IsAnyMenuOpen) return;
+        if (!_terraformMode) return;
+        // Scroll-up grows the brush, scroll-down shrinks it - matches the
+        // expectation that "more scroll" means more material moved.
+        float prev = _terraformRadius;
+        _terraformRadius = Math.Clamp(
+            _terraformRadius - direction * TerraformRadiusStep,
+            TerraformRadiusMin, TerraformRadiusMax);
+        if (_terraformRadius == prev) return; // hit a clamp; no toast
+        Hud.Notify($"Brush: {_terraformRadius:F1}");
+        // Tiny tick audio - higher pitch on grow, lower on shrink.
+        Audio.PlayBeep(direction < 0 ? 880f : 660f, 0.05f, 0.10f, "triangle");
+    }
+
+    /// <summary>
     /// B toggle handler. Flips terraform mode + announces it. The mode
     /// changes how LMB and RMB behave: LMB carves a sphere, RMB builds
     /// one. While disabled, both fall back to standard block break/place.
@@ -656,8 +680,8 @@
             : new System.Numerics.Vector3(hit.AdjacentX + 0.5f, hit.AdjacentY + 0.5f, hit.AdjacentZ + 0.5f);
 
         var changed = carve
-            ? World.CarveSphere(center, TerraformRadius)
-            : World.BuildSphere(center, TerraformRadius, LostSpawns.Models.BlockType.Stone);
+            ? World.CarveSphere(center, _terraformRadius)
+            : World.BuildSphere(center, _terraformRadius, LostSpawns.Models.BlockType.Stone);
 
         int totalCells = 0;
         foreach (var (_, count) in changed) totalCells += count;
@@ -1089,12 +1113,17 @@
     private bool _packWarningArmed = true;
     private DateTime _lastPackWarn = DateTime.MinValue;
 
-    // Terraform mode (F4): LMB carves a sphere of terrain, RMB builds one.
-    // Sphere radius is fixed for the first cut; mouse-wheel adjustment is a
-    // future iteration. Build material is hardcoded to Stone for now -
-    // future passes will read from the held inventory item.
+    // Terraform mode (B): LMB carves a sphere of terrain, RMB builds one.
+    // Mouse wheel adjusts brush radius while terraform mode is active;
+    // hotbar still gets the wheel event but slot-cycle is harmless during
+    // terraform since we don't consume held items. Build material is
+    // hardcoded to Stone for now - future passes will read from the held
+    // inventory item.
     private bool _terraformMode;
-    private const float TerraformRadius = 2.5f;
+    private float _terraformRadius = 2.5f;
+    private const float TerraformRadiusMin = 1.0f;
+    private const float TerraformRadiusMax = 5.0f;
+    private const float TerraformRadiusStep = 0.5f;
     private void HandleEntityContactAttack(LostSpawns.Services.WanderingEntity e, float damage)
     {
         // Cause attribution drives the death-screen subtitle. Entity kinds
@@ -2447,7 +2476,7 @@
             {
                 Hud.TerraformPreviewCenter = new System.Numerics.Vector3(
                     phit.BlockX + 0.5f, phit.BlockY + 0.5f, phit.BlockZ + 0.5f);
-                Hud.TerraformPreviewRadius = TerraformRadius;
+                Hud.TerraformPreviewRadius = _terraformRadius;
             }
             else
             {
@@ -2758,6 +2787,7 @@
         Input.OnQuickDrinkPressed -= HandleQuickDrink;
         Input.OnQuickHealPressed -= HandleQuickHeal;
         Input.OnTerraformTogglePressed -= HandleTerraformToggle;
+        Input.OnWheelScrolled -= HandleWheelScrolled;
         if (_doc is not null) _doc.OnVisibilityChange -= HandleVisibilityChange;
         _doc?.Dispose();
         _doc = null;
