@@ -681,12 +681,13 @@ public class HudService : IDisposable
                 "E interact  F feed fire / drink  Z sleep near fire\n" +
                 "CTRL sneak (slower + halves wolf sensing)\n" +
                 "G quick-eat  T quick-drink  H quick-bandage  Q drop\n" +
-                "I inventory  J achievements  C craft  B terraform  ESC pause\n" +
+                "I inventory  J achievements  C craft  ESC pause\n" +
+                "B terraform - LMB carve sphere, RMB build sphere, Wheel = radius\n" +
                 "F1 help  F3 debug  F5 save  M mute\n" +
                 "* on Life clock = past your best run",
             FontSize = FontSize.Body,
-            Width = 560,
-            Height = 160,
+            Width = 580,
+            Height = 180,
             Align = TextAlign.Center,
             Color = System.Drawing.Color.FromArgb(230, 230, 230, 240),
             Visible = false,
@@ -1338,6 +1339,14 @@ public class HudService : IDisposable
             "Cooked meat also warms you. Water cools you.",
             "Lightning strikes during storms take 10% off every fire.",
             "Pack Hunter: kill 5 wolves in one night for the achievement.",
+            "B toggles terraform mode - LMB carves, RMB builds spheres.",
+            "In terraform mode the mouse wheel adjusts your brush radius.",
+            "Build mode uses your active hotbar block for material.",
+            "Hold LMB / RMB in terraform mode to paint a continuous stroke.",
+            "Carving costs stamina, so big slabs leave you winded.",
+            "Sneak (Ctrl) silences footsteps + 1.75x sneak attack damage.",
+            "T quick-drinks water, H quick-bandages.",
+            "F5 saves manually. The game also auto-saves every 10 seconds.",
         };
         var tipLabel = new UILabel
         {
