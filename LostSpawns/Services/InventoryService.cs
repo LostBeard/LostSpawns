@@ -329,6 +329,23 @@ public class InventoryService
     /// <summary>True if any slot holds at least one item with the given Id.</summary>
     public bool HasItem(string id) => FindSlotById(id) >= 0;
 
+    /// <summary>
+    /// Consume a single unit of the given item id from inventory. Decrements
+    /// the first matching slot's count; clears the slot when count hits zero.
+    /// Returns true on success, false if the item isn't in inventory.
+    /// </summary>
+    public bool TryConsumeOne(string id)
+    {
+        int slot = FindSlotById(id);
+        if (slot < 0) return false;
+        var arr = slot < HotbarSize ? _hotbar : _backpack;
+        int idx = slot < HotbarSize ? slot : slot - HotbarSize;
+        var it = arr[idx]!;
+        arr[idx] = it.Count > 1 ? it with { Count = it.Count - 1 } : null;
+        OnInventoryChanged?.Invoke();
+        return true;
+    }
+
     private int FindSlotById(string id)
     {
         for (int i = 0; i < HotbarSize; i++)

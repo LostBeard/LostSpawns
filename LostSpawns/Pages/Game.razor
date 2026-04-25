@@ -834,6 +834,11 @@
             HandlePlaceTorch(item);
             return;
         }
+        if (item.Id == "tool.bow")
+        {
+            HandleShootBow(item);
+            return;
+        }
 
         var blockType = BlockTypeForItemId(item.Id);
         if (blockType is null) return; // active slot isn't a placeable material
@@ -882,6 +887,42 @@
 
         Hud.NotifySuccess("Placed Campfire");
         Stats.TryAwardAchievement("First Fire");
+    }
+
+    private void HandleShootBow(LostSpawns.Services.InventoryItem bow)
+    {
+        // Need at least one feather-arrow in inventory. Consume one per shot.
+        if (!Inventory.HasItem("material.feather"))
+        {
+            Hud.NotifyWarning("Need feathers for arrows");
+            return;
+        }
+        if (!BlockActionReady()) return;
+
+        // Longer range + tighter cone than melee swing. Bow aims like a
+        // scoped weapon - you have to line up the shot but the hit carries
+        // more damage (0.7 vs 0.55 axe, drops rabbit in one shot).
+        var origin = Renderer.Camera.Position;
+        var dir = Renderer.Camera.Front;
+        var target = Wildlife.FindTargetInCone(origin, dir, maxDist: 20f, minDot: 0.99f);
+
+        // Always consume an arrow + charge the cooldown, even on a miss -
+        // you loosed it, it's gone.
+        Inventory.TryConsumeOne("material.feather");
+        ConsumeBlockActionCost();
+        ApplyCameraKick();
+
+        if (target is not null)
+        {
+            Wildlife.ApplyDamage(target, 0.7f, origin);
+            Audio.PlayHit();
+            // Bow durability decays per hit, not per shot.
+            Inventory.DegradeActiveTool();
+        }
+        else
+        {
+            Audio.PlayWhoosh();
+        }
     }
 
     private void HandlePlaceTorch(LostSpawns.Services.InventoryItem item)

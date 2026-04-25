@@ -67,6 +67,10 @@ public class CraftingService
                 new[] { ("material.pelt", 2), ("material.rope", 1) },
                 new InventoryItem("gear.fur_coat", "Fur Coat", 1, ItemCategory.Tool),
                 RequiredLevel: 2),
+            new CraftingRecipe(
+                "Bow",
+                new[] { ("material.wood", 2), ("material.rope", 1) },
+                new InventoryItem("tool.bow", "Bow", 1, ItemCategory.Tool, UsesRemaining: 50)),
         };
 
         // Register effects for any new outputs the crafting system introduces.
