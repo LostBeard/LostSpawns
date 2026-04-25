@@ -1939,6 +1939,15 @@ public class HudService : IDisposable
                     _ui.Renderer.DrawRect(x + size * 0.32f, y - size * 0.25f, size * 0.06f, size * 0.25f, color);
                     _ui.Renderer.DrawRect(x + size * 0.62f, y - size * 0.25f, size * 0.06f, size * 0.25f, color);
                     break;
+                case EntityKind.Bear:
+                    // Wide body + small rounded head + small ears + low stance.
+                    // Bears read as bulky low-slung threats compared to wolves.
+                    _ui.Renderer.DrawRect(x, y + size * 0.30f, size, size * 0.70f, color);
+                    _ui.Renderer.DrawRect(x + size * 0.30f, y + size * 0.05f, size * 0.40f, size * 0.40f, color);
+                    // Two tiny ears poking up from the head.
+                    _ui.Renderer.DrawRect(x + size * 0.30f, y, size * 0.10f, size * 0.10f, color);
+                    _ui.Renderer.DrawRect(x + size * 0.60f, y, size * 0.10f, size * 0.10f, color);
+                    break;
                 case EntityKind.Wolf:
                     // Body + head (upper-left block) + tail (upper-right thin).
                     _ui.Renderer.DrawRect(x, y + size * 0.2f, size, size * 0.8f, color);
@@ -2656,6 +2665,7 @@ public class HudService : IDisposable
             {
                 EntityKind.Boar => MapMarkerType.Enemy,       // red-ish, threat-coded
                 EntityKind.Wolf => MapMarkerType.Enemy,       // also threat - night predator
+                EntityKind.Bear => MapMarkerType.Enemy,       // apex - rare daytime threat
                 EntityKind.Crow => MapMarkerType.POI,         // neutral, passes through
                 EntityKind.Deer => MapMarkerType.OtherPlayer, // peaceful prey
                 _ => MapMarkerType.OtherPlayer,               // Rabbit: friendly-coded
