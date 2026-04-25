@@ -173,11 +173,25 @@ public class EntityService
         {
             if (e.HitFlashTimer > 0) e.HitFlashTimer = MathF.Max(0, e.HitFlashTimer - dt);
 
+            // Daylight retreat: wolves break off when the night ends. Any
+            // wolf currently charging flips to Flee + abandons contact, and
+            // idle-wolf aggro is suppressed while the sun is up. Rewards the
+            // player for surviving until dawn without forcing a mass despawn.
+            if (e.Kind == EntityKind.Wolf && !isNight)
+            {
+                if (e.Alert == AlertMode.Charge)
+                {
+                    e.Alert = AlertMode.Flee;
+                    e.AlertTimer = 5f;
+                    e.LastAlertSource = playerPos;
+                }
+            }
             // Wolves auto-aggro when the player enters their sensing range,
             // even without being hit first. Once charging they follow the
             // normal charge logic below - chase the live player position,
-            // drop back to Idle after a contact hit.
-            if (e.Kind == EntityKind.Wolf && e.Alert == AlertMode.Idle)
+            // drop back to Idle after a contact hit. Suppressed in daylight
+            // per the daylight-retreat rule above.
+            else if (e.Kind == EntityKind.Wolf && e.Alert == AlertMode.Idle && isNight)
             {
                 float dx = playerPos.X - e.Position.X;
                 float dz = playerPos.Z - e.Position.Z;
