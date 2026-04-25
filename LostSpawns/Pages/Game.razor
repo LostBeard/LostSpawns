@@ -788,6 +788,21 @@
         if (e.Kind == LostSpawns.Services.EntityKind.Wolf)
         {
             Stats.TryAwardAchievement("First Wolf");
+            // Pack mourning: if another wolf is still alive within 16
+            // blocks of the killed one, that survivor howls. Emergent
+            // atmosphere from the kill path. Short-circuit on first hit
+            // so a downed alpha doesn't stack 3 overlapping howls.
+            foreach (var other in Wildlife.Entities)
+            {
+                if (other.Kind != LostSpawns.Services.EntityKind.Wolf) continue;
+                float dx = other.Position.X - e.Position.X;
+                float dz = other.Position.Z - e.Position.Z;
+                if (dx * dx + dz * dz <= 16f * 16f)
+                {
+                    Audio.PlayWolfHowl();
+                    break;
+                }
+            }
             // Pack Hunter: drop 5 wolves in one night. Counter resets at dawn
             // via the _wasNight latch in OnGameUpdate. Night-only increments
             // so a dusk/daytime cleanup doesn't count toward it.
