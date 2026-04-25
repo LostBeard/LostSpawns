@@ -1503,7 +1503,11 @@
             Input.KeysDown.Contains("KeyA") || Input.KeysDown.Contains("KeyD");
         bool shiftHeld =
             Input.KeysDown.Contains("ShiftLeft") || Input.KeysDown.Contains("ShiftRight");
-        bool sprinting = shiftHeld && movingKey && Stats.Stamina > 0.05f;
+        // Sprint requires stamina AND not bleeding - a wound drops the
+        // player's stride. Pairs with the bleed-blocks-sleep rule so the
+        // punishment for ignoring a wolf bite has real movement cost.
+        bool sprinting = shiftHeld && movingKey && Stats.Stamina > 0.05f
+                         && Stats.BleedSecondsRemaining <= 0;
 
         // Gameplay simulation: time advances, survival stats decay, etc. Paused /
         // inventory / settings / loading all short-circuit above this point so the
