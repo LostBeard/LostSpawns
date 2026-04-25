@@ -2318,6 +2318,17 @@
                 else if (IsInWater()) Audio.PlayWaterStep(_stepAlt);
                 else if (Weather.RainIntensity > 0.25f) Audio.PlayWaterStep(_stepAlt);
                 else             Audio.PlayStep(_stepAlt);
+                // Sprint kicks up small dust puffs at the player's feet.
+                // Skip if sneaking (silent stealth = no visual tell either),
+                // wading (water already splashes), or in heavy rain (mud,
+                // not dust). Tiny 1-particle puff per footfall keeps it
+                // subtle - hard to notice unless the player is sprinting.
+                if (sprinting && !sneakSilent && !IsInWater() && Weather.RainIntensity < 0.25f)
+                {
+                    var camPos = Renderer.Camera.Position;
+                    var feet = new System.Numerics.Vector3(camPos.X, camPos.Y - 1.6f, camPos.Z);
+                    Hud.ShowDustPuff(feet, 1);
+                }
             }
         }
         else
