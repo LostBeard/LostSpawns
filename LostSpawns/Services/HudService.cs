@@ -846,6 +846,34 @@ public class HudService : IDisposable
         };
         panel.AddChild(_loadingStatus);
 
+        // Random tip from a small pool. Picked once per loading screen
+        // construction; the screen builds fresh each Init so each game
+        // launch sees a different tip.
+        var tips = new[]
+        {
+            "F1 shows the controls reference.",
+            "Z near a fueled fire skips you to dawn.",
+            "Wolves only spawn at night - stay near a fire.",
+            "Cooked meat heals + fills hunger more than raw.",
+            "Q drops the active hotbar item to the ground.",
+            "Boars charge if you damage them - back off or commit.",
+            "Feathers from crows are arrows for the bow.",
+            "Fur Coat gives passive warmth wherever you are.",
+            "Stone Axe / Pick at Level 3 doubles your durability.",
+        };
+        var tipLabel = new UILabel
+        {
+            Text = "Tip: " + tips[new Random().Next(tips.Length)],
+            FontSize = FontSize.Caption,
+            Width = 520,
+            Height = 20,
+            X = 0,
+            Y = 168,
+            Align = TextAlign.Center,
+            Color = System.Drawing.Color.FromArgb(220, 200, 220, 240),
+        };
+        panel.AddChild(tipLabel);
+
         anchor.AddAnchored(panel, Anchor.Center);
         return anchor;
     }
