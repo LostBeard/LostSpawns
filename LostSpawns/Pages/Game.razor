@@ -920,7 +920,15 @@
         Save.SaveNow(Renderer.Camera.Position, Renderer.Camera.Yaw, Renderer.Camera.Pitch);
     }
 
-    private void HandleLevelUpSound(int newLevel) => Audio.PlayLevelUp();
+    private void HandleLevelUpSound(int newLevel)
+    {
+        Audio.PlayLevelUp();
+        // Level-up celebratory overlay: green flash announces the new tier
+        // without blocking the screen. Matches the dawn-flash pattern so
+        // victory moments all feel the same.
+        Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(110, 100, 220, 120), 0.8f);
+        Hud.NotifyAchievement($"Level {newLevel}");
+    }
 
     private void HandleHealSound(float amount)
     {
