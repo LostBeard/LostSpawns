@@ -985,6 +985,14 @@
         // victory moments all feel the same.
         Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(110, 100, 220, 120), 0.8f);
         Hud.NotifyAchievement($"Level {newLevel}");
+        // Unlock toasts: surface recipes that just became craftable at this
+        // level. Scans CraftingService for RequiredLevel == newLevel so
+        // players know exactly what progression this tier earned them.
+        foreach (var recipe in Crafter.Recipes)
+        {
+            if (recipe.RequiredLevel == newLevel)
+                Hud.NotifySuccess($"Unlocked: {recipe.DisplayName}");
+        }
     }
 
     private void HandleHealSound(float amount)
