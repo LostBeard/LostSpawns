@@ -701,6 +701,10 @@
     private float _forageRespawnTimer;
     private readonly Random _forageRng = new();
 
+    // Rainwater collection: each 90s of heavy rain (>0.5 intensity) adds
+    // a Water bottle to inventory. The body's catching what falls.
+    private float _rainCollectTimer;
+
     /// <summary>
     /// True if the active item belongs to the same tool family as the required
     /// item - covers tier upgrades (stone_axe satisfies axe). Null active
@@ -1753,6 +1757,26 @@
         Weather.Tick(deltaTime);
         Audio.UpdateRainAmbient(Weather.RainIntensity);
         TickThunderQueue(deltaTime);
+
+        // Rainwater collection: while it's actively raining hard, fill a
+        // bottle every 90s and slot it into inventory. The body catches
+        // what falls. No-op when rain is light / dry or inventory is full.
+        if (Weather.RainIntensity > 0.5f)
+        {
+            _rainCollectTimer += deltaTime;
+            if (_rainCollectTimer >= 90f)
+            {
+                _rainCollectTimer = 0;
+                var bottle = new LostSpawns.Services.InventoryItem(
+                    "consume.water", "Water", 1, LostSpawns.Services.ItemCategory.Drink);
+                if (Inventory.TryAdd(bottle))
+                    Hud.NotifySuccess("+1 Water (rainwater)");
+            }
+        }
+        else
+        {
+            _rainCollectTimer = 0;
+        }
 
         // Forage respawn: every 60s of active play, if total ground items
         // are below 6, drop one new mushroom/berry in the player's
