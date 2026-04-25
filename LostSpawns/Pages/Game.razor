@@ -1778,9 +1778,13 @@
         // player "falls". Mouse-look snapback restores it on respawn click;
         // until then it's a strong "you're on the floor" read.
         Renderer.Camera.Pitch = Math.Clamp(Renderer.Camera.Pitch - 70f, -89f, 89f);
+        // Record the death FIRST so the death screen reads the up-to-date
+        // LongestLifeSeconds (which RecordDeath snapshots from CurrentLife
+        // before zeroing). Otherwise the just-finished run never shows on
+        // its own death screen.
+        Stats.RecordDeath();
         Hud.ShowDeathScreen();
         Audio.PlayDeath();
-        Stats.RecordDeath();
     }
 
     private void HandleRespawnClicked()
