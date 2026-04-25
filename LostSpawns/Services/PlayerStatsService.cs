@@ -322,7 +322,12 @@ public class PlayerStatsService
         // Sprint drains stamina; otherwise it regens. Mutually exclusive so the
         // player can't cheese a fractional-frame micro-sprint to keep regen going.
         if (sprinting)
+        {
             Stamina = _stamina - dt * SprintDrainRate;
+            // Extra thirst drain during sprint: running hot sweats water out
+            // faster than walking. Small per-tick but adds up over a chase.
+            Thirst = _thirst - dt * ThirstDecayRate * 1.5f;
+        }
         else if (!StaminaRegenBlocked)
             Stamina = _stamina + dt * StaminaRegenRate;
 
