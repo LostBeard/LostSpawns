@@ -1513,6 +1513,10 @@
         // on the player's first mouse move during death screen to release lock.
         Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(180, 180, 20, 20), 0.8f);
         Hud.NotifyDamage("You died");
+        // Camera collapse: pitch the view downward toward the ground as the
+        // player "falls". Mouse-look snapback restores it on respawn click;
+        // until then it's a strong "you're on the floor" read.
+        Renderer.Camera.Pitch = Math.Clamp(Renderer.Camera.Pitch - 70f, -89f, 89f);
         Hud.ShowDeathScreen();
         Audio.PlayDeath();
         Stats.RecordDeath();
