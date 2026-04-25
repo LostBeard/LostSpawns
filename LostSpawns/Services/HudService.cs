@@ -2240,6 +2240,23 @@ public class HudService : IDisposable
             ScreenOverlay?.ClearPersistent("fireglow");
         }
 
+        // Storm gloom: a dim slate-blue overlay during heavy rain so bad
+        // weather actually darkens the world. Gentle at light drizzle,
+        // noticeable at downpour. Kicks in past 0.30 intensity so clear
+        // skies don't tint.
+        float stormRain = _weather.RainIntensity;
+        if (stormRain > 0.30f)
+        {
+            // 0.30 rain -> alpha 10, 1.0 rain -> alpha 80.
+            int alpha = Math.Clamp((int)((stormRain - 0.30f) / 0.70f * 70f) + 10, 10, 80);
+            ScreenOverlay?.SetPersistent("stormgloom",
+                System.Drawing.Color.FromArgb(alpha, 30, 40, 60));
+        }
+        else
+        {
+            ScreenOverlay?.ClearPersistent("stormgloom");
+        }
+
         // Update screen overlay effects
         ScreenOverlay.Update(deltaTime);
 
