@@ -492,6 +492,35 @@ public class EntityService
             ? AlertMode.Charge
             : AlertMode.Flee;
         e.AlertTimer = 3.0f;
+        // Herd panic: when one prey flees, nearby same-kind entities also
+        // bolt. Mirrors the wolf pack call but for Rabbit / Deer / Crow so
+        // scaring one rabbit empties the clearing.
+        if (e.Alert == AlertMode.Flee)
+            AlertHerdmates(e, attackerPos);
         return false;
+    }
+
+    /// <summary>
+    /// Same-kind flee propagation. Any idle entity of the caller's kind
+    /// within HerdPanicRange of the fleeing entity also flees from the
+    /// attacker. Wolves use AlertPackmates instead for their charge-out
+    /// aggression pattern.
+    /// </summary>
+    private void AlertHerdmates(WanderingEntity caller, Vector3 attackerPos)
+    {
+        const float HerdPanicRange = 10f;
+        float r2 = HerdPanicRange * HerdPanicRange;
+        foreach (var other in Entities)
+        {
+            if (other == caller) continue;
+            if (other.Kind != caller.Kind) continue;
+            if (other.Alert != AlertMode.Idle) continue;
+            float dx = caller.Position.X - other.Position.X;
+            float dz = caller.Position.Z - other.Position.Z;
+            if (dx * dx + dz * dz > r2) continue;
+            other.Alert = AlertMode.Flee;
+            other.AlertTimer = 3f;
+            other.LastAlertSource = attackerPos;
+        }
     }
 }
