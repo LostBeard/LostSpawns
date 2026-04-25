@@ -291,9 +291,14 @@
         // When the tab is hidden, push the pause menu so the player isn't
         // bleeding hunger / thirst while AFK in a background tab. When the
         // tab returns we leave it paused - they'll click through the menu
-        // intentionally to resume.
-        if (_doc is not null && _doc.Hidden && !Hud.IsPaused && !Hud.IsDead)
-            Hud.ShowPauseMenu();
+        // intentionally to resume. Also fire an immediate save so a
+        // browser-tab-close-while-tabbed-out can't lose progress between
+        // 10s auto-saves.
+        if (_doc is not null && _doc.Hidden && !Hud.IsDead)
+        {
+            Save.SaveNow(Renderer.Camera.Position, Renderer.Camera.Yaw, Renderer.Camera.Pitch);
+            if (!Hud.IsPaused) Hud.ShowPauseMenu();
+        }
     }
 
     // Cricket chirps - random-jittered cadence while it's dark so the world
