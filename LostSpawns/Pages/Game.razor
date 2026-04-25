@@ -125,6 +125,7 @@
         Fires.OnCooked += HandleCooked;
         Ground.OnPickedUp += HandleGroundPickup;
         Stats.OnLevelUp += HandleLevelUpSound;
+        Stats.OnHealed += HandleHealSound;
         Wildlife.OnEntitySpawned += HandleEntitySpawned;
         Crafter.OnCrafted += HandleCraftedSound;
         Stats.OnFirstKill += HandleFirstKill;
@@ -680,6 +681,14 @@
     }
 
     private void HandleLevelUpSound(int newLevel) => Audio.PlayLevelUp();
+
+    private void HandleHealSound(float amount)
+    {
+        // Skip passive regen drips (tiny amount per frame) so the sound only
+        // fires on actual consume / bandage pulses. Threshold picks up 0.05+
+        // heals which matches the smallest intended heal (raw rabbit meat).
+        if (amount >= 0.04f) Audio.PlayHeal();
+    }
 
     private void HandleEntitySpawned(LostSpawns.Services.WanderingEntity e)
     {
@@ -1285,6 +1294,7 @@
         Fires.OnCooked -= HandleCooked;
         Ground.OnPickedUp -= HandleGroundPickup;
         Stats.OnLevelUp -= HandleLevelUpSound;
+        Stats.OnHealed -= HandleHealSound;
         Wildlife.OnEntitySpawned -= HandleEntitySpawned;
         Crafter.OnCrafted -= HandleCraftedSound;
         Stats.OnFirstKill -= HandleFirstKill;

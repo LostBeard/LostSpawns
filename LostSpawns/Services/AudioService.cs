@@ -216,6 +216,32 @@ public class AudioService : IDisposable
         PlayBeep(220f, 0.18f, 0.25f, "sawtooth");
     }
 
+    /// <summary>Gentle descending pair for HP restored from food/heal.</summary>
+    public void PlayHeal()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "sine";
+            double t = _ctx.CurrentTime;
+            osc.Frequency.SetValueAtTime(660f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(880f, t + 0.18);
+            gain.Gain.SetValueAtTime(0f, t);
+            gain.Gain.LinearRampToValueAtTime(0.12f, t + 0.02);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.22);
+            osc.Connect(gain);
+            gain.Connect(_ctx.Destination);
+            osc.Start();
+            osc.Stop((float)(t + 0.22));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayHeal failed: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Quiet low-pitched thump for each footstep. Alternating high/low
     /// phase keeps two consecutive steps from sounding identical.
