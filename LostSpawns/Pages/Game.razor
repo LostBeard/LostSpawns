@@ -671,7 +671,9 @@
     /// Run a sphere carve or build at the raycast hit point. Carves center
     /// on the hit block; builds center on the adjacent (face-out) block.
     /// Carved cell types roll up into a drop dictionary so we can credit
-    /// inventory; build pulls hardcoded Stone for now (future: held item).
+    /// inventory. Build reads block type from the active hotbar slot
+    /// (Wood/Stone/Dirt/Sand/Leaves); falls back to Stone if the slot
+    /// holds something non-buildable or is empty.
     /// </summary>
     private void ExecuteTerraform(SpawnDev.VoxelEngine.RaycastHit hit, bool carve)
     {
@@ -679,9 +681,19 @@
             ? new System.Numerics.Vector3(hit.BlockX + 0.5f, hit.BlockY + 0.5f, hit.BlockZ + 0.5f)
             : new System.Numerics.Vector3(hit.AdjacentX + 0.5f, hit.AdjacentY + 0.5f, hit.AdjacentZ + 0.5f);
 
+        // Build type comes from the held material if it maps to a placeable
+        // block, else default to Stone. Lets the player swap "paint colors"
+        // by changing slots without leaving terraform mode.
+        var buildType = LostSpawns.Models.BlockType.Stone;
+        if (!carve && Inventory.ActiveItem is not null)
+        {
+            var mapped = BlockTypeForItemId(Inventory.ActiveItem.Id);
+            if (mapped is not null) buildType = mapped.Value;
+        }
+
         var changed = carve
             ? World.CarveSphere(center, _terraformRadius)
-            : World.BuildSphere(center, _terraformRadius, LostSpawns.Models.BlockType.Stone);
+            : World.BuildSphere(center, _terraformRadius, buildType);
 
         int totalCells = 0;
         foreach (var (_, count) in changed) totalCells += count;
@@ -718,7 +730,7 @@
         }
         Hud.NotifySuccess(carve
             ? $"Carved {totalCells} cells"
-            : $"Built {totalCells} cells");
+            : $"Built {totalCells} {buildType}");
     }
 
     /// <summary>
