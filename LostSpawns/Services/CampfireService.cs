@@ -17,6 +17,8 @@ public sealed class Campfire
     public float Intensity = 1f;
     /// <summary>Fuel level [0, 1]. Fire extinguishes at 0; feeding pushes it up to 1.</summary>
     public float Fuel = 1f;
+    /// <summary>True after low-fuel warning fired so subsequent frames don't re-toast.</summary>
+    internal bool LowFuelWarned;
 }
 
 /// <summary>
@@ -52,6 +54,9 @@ public class CampfireService
 
     /// <summary>Fired each time one raw item is converted to its cooked variant.</summary>
     public event Action<string>? OnCooked; // payload = cooked item display name
+
+    /// <summary>Fires once when a campfire's fuel dips below 0.15 and hasn't warned yet.</summary>
+    public event Action<Campfire>? OnLowFuel;
 
     public Campfire Spawn(Vector3 position, float radius = 6f)
     {
@@ -108,7 +113,18 @@ public class CampfireService
         // warmth but stay in the list so the player can re-feed them.
         float decay = dt / FuelLifetimeSeconds;
         foreach (var f in Fires)
+        {
             f.Fuel = MathF.Max(0f, f.Fuel - decay);
+            if (f.Fuel < 0.15f && !f.LowFuelWarned)
+            {
+                f.LowFuelWarned = true;
+                OnLowFuel?.Invoke(f);
+            }
+            // Re-feeding past the threshold re-arms the warning for the
+            // next time fuel drops - players who keep feeding get fresh
+            // warnings on each cycle.
+            if (f.Fuel > 0.5f) f.LowFuelWarned = false;
+        }
 
         if (GetWarmthBonusAt(playerPos) <= 0f)
         {

@@ -124,6 +124,7 @@
         Wildlife.OnEntityKilled += HandleEntityKilled;
         Wildlife.OnContactAttack += HandleEntityContactAttack;
         Fires.OnCooked += HandleCooked;
+        Fires.OnLowFuel += HandleLowFuel;
         Ground.OnPickedUp += HandleGroundPickup;
         Stats.OnLevelUp += HandleLevelUpSound;
         Stats.OnHealed += HandleHealSound;
@@ -682,6 +683,11 @@
     {
         Hud.NotifySuccess($"Cooked {cookedName}");
         Stats.TryAwardAchievement("First Cook");
+    }
+
+    private void HandleLowFuel(LostSpawns.Services.Campfire fire)
+    {
+        Hud.NotifyWarning("Fire is burning low - feed it Wood");
     }
 
     private void HandleGroundPickup(LostSpawns.Services.InventoryItem payload)
@@ -1432,6 +1438,7 @@
         Wildlife.OnEntityKilled -= HandleEntityKilled;
         Wildlife.OnContactAttack -= HandleEntityContactAttack;
         Fires.OnCooked -= HandleCooked;
+        Fires.OnLowFuel -= HandleLowFuel;
         Ground.OnPickedUp -= HandleGroundPickup;
         Stats.OnLevelUp -= HandleLevelUpSound;
         Stats.OnHealed -= HandleHealSound;
