@@ -1624,6 +1624,11 @@
         // PlayBeep frequency is lower for the "thunk" feel.
         Audio.PlayBeep(blockType.Value == LostSpawns.Models.BlockType.Stone ? 90f : 140f,
                        0.10f, 0.18f, "square");
+        // Tiny dust puff at the placed block's center - 3 particles for a
+        // satisfying "thunk" cue paired with the audio. Smaller than break
+        // since you're depositing material, not shattering it.
+        Hud.ShowDustPuff(new System.Numerics.Vector3(
+            hit.AdjacentX + 0.5f, hit.AdjacentY + 0.5f, hit.AdjacentZ + 0.5f), 3);
 
         // Decrement active hotbar slot. Clearing at 0 leaves the slot empty so the
         // player can't keep placing out of thin air.
