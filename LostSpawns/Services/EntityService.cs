@@ -173,6 +173,10 @@ public class EntityService
                     e.Alert = AlertMode.Charge;
                     e.AlertTimer = 6f; // long enough to actually reach the player
                     e.LastAlertSource = playerPos;
+                    // Pack call: any other idle wolf within ~14 blocks of THIS
+                    // wolf (not the player) joins the charge. Lets a lone
+                    // sighting drag the whole pack down on you.
+                    AlertPackmates(e, playerPos);
                 }
             }
 
@@ -307,6 +311,30 @@ public class EntityService
         float dz = (float)Math.Sin(angle) * dist;
         var pos = new Vector3(playerPos.X + dx, 0, playerPos.Z + dz);
         Spawn(kind, pos, world);
+    }
+
+    /// <summary>
+    /// When one wolf aggros, find every other idle wolf within PackCallRange
+    /// of the alerting wolf and switch them to Charge as well. Player position
+    /// becomes their charge target. Wolves outside the radius stay idle so
+    /// you can isolate one if you find a lone scout.
+    /// </summary>
+    private void AlertPackmates(WanderingEntity caller, Vector3 playerPos)
+    {
+        const float PackCallRange = 14f;
+        float r2 = PackCallRange * PackCallRange;
+        foreach (var other in Entities)
+        {
+            if (other == caller) continue;
+            if (other.Kind != EntityKind.Wolf) continue;
+            if (other.Alert != AlertMode.Idle) continue;
+            float dx = caller.Position.X - other.Position.X;
+            float dz = caller.Position.Z - other.Position.Z;
+            if (dx * dx + dz * dz > r2) continue;
+            other.Alert = AlertMode.Charge;
+            other.AlertTimer = 6f;
+            other.LastAlertSource = playerPos;
+        }
     }
 
     /// <summary>
