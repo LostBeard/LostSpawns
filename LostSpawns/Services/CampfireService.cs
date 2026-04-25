@@ -143,7 +143,20 @@ public class CampfireService
             return;
         }
 
-        _cookProgress += dt;
+        // Bigger fires cook faster. Bonfires (radius 12) get 2x the cook
+        // rate vs a campfire (radius 6); torches (2.5) cook at half rate.
+        // Find the nearest fire whose aura the player is in and scale by
+        // its radius. Linear scale to keep it predictable.
+        var nearest = FindNearest(playerPos);
+        float cookSpeed = 1f;
+        if (nearest is not null)
+        {
+            float dx2 = nearest.Position.X - playerPos.X;
+            float dz2 = nearest.Position.Z - playerPos.Z;
+            if (dx2 * dx2 + dz2 * dz2 <= nearest.Radius * nearest.Radius)
+                cookSpeed = nearest.Radius / 6f; // 6 = baseline campfire radius
+        }
+        _cookProgress += dt * cookSpeed;
         if (_cookProgress < CookSeconds) return;
         _cookProgress = 0;
 
