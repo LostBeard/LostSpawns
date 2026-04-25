@@ -584,7 +584,9 @@
         Renderer.Camera.Pitch = Math.Clamp(Renderer.Camera.Pitch + magnitude, -89f, 89f);
         // Viewmodel swing pairs with every kick - same trigger point, same
         // success conditions. Both feel like "the tool just landed / loosed".
-        Hud.TriggerSwing();
+        // Strength normalized off 2.5 baseline so default magnitude => 1.0
+        // strength; Bear (4.0) => 1.6, bow (1.5) => 0.6.
+        Hud.TriggerSwing(magnitude / 2.5f);
     }
 
     /// <summary>

@@ -1724,8 +1724,11 @@ public class HudService : IDisposable
             float t = swingAge / 0.22f;           // 0..1
             // Ease-out: fast outbound, slow return. Parabola peak at t=0.4.
             float arc = MathF.Sin(t * MathF.PI);  // 0->1->0 across 0..1
-            bobX -= arc * 40f;
-            bobY -= arc * 60f;
+            // Strength multiplier scales how far the viewmodel travels.
+            // Heavier hits throw the tool further off rest; bow release
+            // barely twitches.
+            bobX -= arc * 40f * _swingStrength;
+            bobY -= arc * 60f * _swingStrength;
         }
 
         // Main tool body. Different silhouette per item id so the player
@@ -1777,8 +1780,17 @@ public class HudService : IDisposable
     // Viewmodel swing offset - timestamp-driven so the animation runs on
     // wall clock (same pattern as impact marks) without extra tick plumbing.
     private DateTime _swingStart;
-    /// <summary>Trigger a one-shot viewmodel swing animation. Duration ~220ms.</summary>
-    public void TriggerSwing() => _swingStart = DateTime.UtcNow;
+    private float _swingStrength = 1f;
+    /// <summary>
+    /// Trigger a one-shot viewmodel swing animation. Strength scales the arc
+    /// distance - 1.0 is a normal swing, 1.5 is a Bear-class hit, 0.6 is a
+    /// bow string release. Duration stays ~220ms regardless.
+    /// </summary>
+    public void TriggerSwing(float strength = 1f)
+    {
+        _swingStart = DateTime.UtcNow;
+        _swingStrength = Math.Clamp(strength, 0.4f, 1.8f);
+    }
 
     /// <summary>
     /// Render rising floating damage numbers above hit positions. Each number
