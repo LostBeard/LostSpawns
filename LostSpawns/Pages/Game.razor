@@ -579,13 +579,40 @@
     /// recovers the view, so no separate decay channel or timer is needed.
     /// Feels like the tool weight kicked the camera back.
     /// </summary>
-    private void ApplyCameraKick()
+    private void ApplyCameraKick(float magnitude = 2.5f)
     {
-        Renderer.Camera.Pitch = Math.Clamp(Renderer.Camera.Pitch + 2.5f, -89f, 89f);
+        Renderer.Camera.Pitch = Math.Clamp(Renderer.Camera.Pitch + magnitude, -89f, 89f);
         // Viewmodel swing pairs with every kick - same trigger point, same
         // success conditions. Both feel like "the tool just landed / loosed".
         Hud.TriggerSwing();
     }
+
+    /// <summary>
+    /// Pitch-flinch magnitude per entity kind. Big animals (Bear) shove the
+    /// camera harder than rabbits when the swing connects - feels like the
+    /// tool hit a heavier target. Pure cosmetic; no gameplay impact beyond
+    /// the next aim shot needing a tiny re-tilt.
+    /// </summary>
+    private static float KickMagnitudeFor(LostSpawns.Services.EntityKind kind) => kind switch
+    {
+        LostSpawns.Services.EntityKind.Bear   => 4.0f,
+        LostSpawns.Services.EntityKind.Boar   => 3.5f,
+        LostSpawns.Services.EntityKind.Wolf   => 3.0f,
+        LostSpawns.Services.EntityKind.Deer   => 2.5f,
+        _                                     => 2.0f,
+    };
+
+    /// <summary>
+    /// Pitch-flinch magnitude per block type. Mirrors the XP curve - stone
+    /// is harder to break than wood is harder than grass, so the recoil
+    /// scales the same way.
+    /// </summary>
+    private static float KickMagnitudeForBlock(LostSpawns.Models.BlockType type) => type switch
+    {
+        LostSpawns.Models.BlockType.Stone => 3.5f,
+        LostSpawns.Models.BlockType.Wood  => 3.0f,
+        _                                 => 2.0f,
+    };
 
     /// <summary>
     /// Tick the active tool's durability once per successful swing and toast
@@ -621,7 +648,7 @@
             float dmg = DamageForEquippedTool();
             Wildlife.ApplyDamage(target, dmg, origin);
             ConsumeBlockActionCost();
-            ApplyCameraKick();
+            ApplyCameraKick(KickMagnitudeFor(target.Kind));
             DegradeActiveToolWithFeedback();
             Audio.PlayHit();
             Hud.ShowDamageNumber(target.Position, dmg);
@@ -650,7 +677,7 @@
         // Successful swing charges the cooldown + stamina cost. Missed swings (air,
         // out of range, wrong tool) don't cost anything so the player can re-aim.
         ConsumeBlockActionCost();
-        ApplyCameraKick();
+        ApplyCameraKick(KickMagnitudeForBlock(brokenType));
         DegradeActiveToolWithFeedback();
         // XP scales with block hardness - stone is harder to break than
         // grass so it should reward more progression per swing.
@@ -1589,7 +1616,10 @@
         Inventory.TryConsumeOne("material.feather");
         ConsumeBlockActionCost();
         DegradeActiveToolWithFeedback();
-        ApplyCameraKick();
+        // Bow release is a smaller wrist motion than a club swing - 1.5deg
+        // pitch kick rather than the default 2.5. Keeps the next aim shot
+        // feeling tight even after a string release.
+        ApplyCameraKick(1.5f);
         Audio.PlayBowShot();
 
         if (target is not null)
