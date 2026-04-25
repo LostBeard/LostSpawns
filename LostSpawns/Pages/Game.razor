@@ -606,7 +606,15 @@
         ConsumeBlockActionCost();
         ApplyCameraKick();
         DegradeActiveToolWithFeedback();
-        Stats.AwardXp(1);
+        // XP scales with block hardness - stone is harder to break than
+        // grass so it should reward more progression per swing.
+        int blockXp = brokenType switch
+        {
+            LostSpawns.Models.BlockType.Stone  => 3,
+            LostSpawns.Models.BlockType.Wood   => 2,
+            _                                  => 1,
+        };
+        Stats.AwardXp(blockXp);
         // Tool-specific hit sound: wood-chop for axe-breakable blocks,
         // stone-mine for pick-breakable, generic thud for anything else.
         var req = RequiredToolForBlockType(brokenType);
