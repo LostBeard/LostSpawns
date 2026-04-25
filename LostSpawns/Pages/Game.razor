@@ -1299,6 +1299,19 @@
             Hud.NotifyWarning("Can't sleep while bleeding - apply a bandage");
             return;
         }
+        // Starving / dehydrated bodies can't actually sleep - your body
+        // wakes you up. Realism + adds a fail-state where the player
+        // must eat/drink before camping.
+        if (Stats.Hunger < 0.10f)
+        {
+            Hud.NotifyWarning("Too hungry to sleep - eat something");
+            return;
+        }
+        if (Stats.Thirst < 0.10f)
+        {
+            Hud.NotifyWarning("Too thirsty to sleep - find water");
+            return;
+        }
 
         // Advance time to early dawn. If we're already past dawn this
         // rolls the clock forward a full cycle which is fine - the player
