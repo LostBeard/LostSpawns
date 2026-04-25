@@ -622,11 +622,26 @@ public class HudService : IDisposable
     public void ShowDeathScreen()
     {
         if (_ui.Screens.ActiveScreen == "death") return;
+
+        // Refresh the stats summary before pushing so the latest lifetime
+        // counts show up. A dedicated label keeps the constructor / push
+        // logic cheap - we only recompute on death, not every frame.
+        if (_deathStats is not null)
+        {
+            int s = (int)_stats.PlayTimeSeconds;
+            string time = $"{s / 3600:D2}:{(s % 3600) / 60:D2}:{s % 60:D2}";
+            _deathStats.Text =
+                $"Lv {_stats.Level}  XP {_stats.Experience}  T {time}\n" +
+                $"Kills: {_stats.Kills}   R:{_stats.RabbitKills}  B:{_stats.BoarKills}  C:{_stats.CrowKills}  W:{_stats.WolfKills}";
+        }
+
         _ui.Screens.Push("death");
         // Monochrome tint so the world behind is visibly frozen.
         ScreenOverlay?.SetPersistent("death",
             System.Drawing.Color.FromArgb(100, 30, 10, 10));
     }
+
+    private UILabel? _deathStats;
 
     /// <summary>Pop the death screen and clear the death tint.</summary>
     public void HideDeathScreen()
@@ -646,8 +661,8 @@ public class HudService : IDisposable
 
         var panel = new UIPanel
         {
-            Width = 320,
-            Height = 220,
+            Width = 360,
+            Height = 300,
             CornerRadius = 10,
         };
 
@@ -655,10 +670,10 @@ public class HudService : IDisposable
         {
             Text = "YOU DIED",
             FontSize = FontSize.Title,
-            Width = 320,
+            Width = 360,
             Height = 48,
             X = 0,
-            Y = 28,
+            Y = 24,
             Align = TextAlign.Center,
             Color = System.Drawing.Color.FromArgb(255, 240, 60, 60),
         };
@@ -668,21 +683,36 @@ public class HudService : IDisposable
         {
             Text = "The wasteland claimed you.",
             FontSize = FontSize.Caption,
-            Width = 320,
+            Width = 360,
             Height = 20,
             X = 0,
-            Y = 86,
+            Y = 78,
             Align = TextAlign.Center,
         };
         panel.AddChild(sub);
+
+        // Lifetime-stats summary. Populated each time ShowDeathScreen runs
+        // so the Level / XP / Kills breakdown matches the moment of death.
+        _deathStats = new UILabel
+        {
+            Text = "",
+            FontSize = FontSize.Body,
+            Width = 360,
+            Height = 56,
+            X = 0,
+            Y = 110,
+            Align = TextAlign.Center,
+            Color = System.Drawing.Color.FromArgb(230, 220, 210, 200),
+        };
+        panel.AddChild(_deathStats);
 
         var respawn = new UIButton
         {
             Text = "Respawn",
             Width = 220,
             Height = 48,
-            X = 50,
-            Y = 140,
+            X = 70,
+            Y = 220,
         };
         respawn.OnClick = () => OnRespawnClicked?.Invoke();
         panel.AddChild(respawn);
