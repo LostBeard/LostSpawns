@@ -2779,7 +2779,18 @@ public class HudService : IDisposable
         // top-left corner without needing to parse the string.
         if (_clockLabel != null)
         {
-            _clockLabel.Text = $"{_worldTime.ClockString}  {_worldTime.PhaseName}  Day {_worldTime.DayNumber}";
+            // Current-life clock: MM:SS or H:MM:SS for marathon runs.
+            // Tagged with a star when we're already past the previous best
+            // so the player can see the moment they set a new record live.
+            int ls = (int)_stats.CurrentLifeSeconds;
+            string lifeStr = ls >= 3600
+                ? $"{ls / 3600}:{(ls % 3600) / 60:D2}:{ls % 60:D2}"
+                : $"{ls / 60:D2}:{ls % 60:D2}";
+            string newBest = _stats.CurrentLifeSeconds > _stats.LongestLifeSeconds
+                && _stats.LongestLifeSeconds > 0
+                ? " *"
+                : "";
+            _clockLabel.Text = $"{_worldTime.ClockString}  {_worldTime.PhaseName}  Day {_worldTime.DayNumber}  Life {lifeStr}{newBest}";
             _clockLabel.Color = _worldTime.PhaseName switch
             {
                 "Dawn"  => System.Drawing.Color.FromArgb(240, 255, 190, 120),
