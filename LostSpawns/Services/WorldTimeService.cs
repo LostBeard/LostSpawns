@@ -22,12 +22,21 @@ public class WorldTimeService
     /// <summary>Fraction of day [0,1). 0 = midnight-ish (start of dawn), 0.5 = late afternoon.</summary>
     public float DayFraction { get; private set; } = 0.10f; // start at dawn so first load looks nice
 
-    /// <summary>Advance time by `dt` real-world seconds. Wraps at 1.0.</summary>
+    /// <summary>Day counter - increments each time DayFraction wraps 1 -> 0.</summary>
+    public int DayNumber { get; private set; } = 1;
+
+    /// <summary>Seed DayNumber from save. Skips the wrap-count path so loading doesn't desync.</summary>
+    public void SetDayNumber(int day) => DayNumber = Math.Max(1, day);
+
+    /// <summary>Advance time by `dt` real-world seconds. Wraps at 1.0 and bumps DayNumber.</summary>
     public void Tick(float dt)
     {
         if (dt <= 0 || DayLengthSeconds <= 0) return;
-        DayFraction = (DayFraction + dt / DayLengthSeconds) % 1f;
+        float prev = DayFraction;
+        DayFraction = (prev + dt / DayLengthSeconds) % 1f;
         if (DayFraction < 0) DayFraction += 1f;
+        // Wrap detection: any frame where DayFraction < prev means a day passed.
+        if (DayFraction < prev) DayNumber++;
     }
 
     /// <summary>

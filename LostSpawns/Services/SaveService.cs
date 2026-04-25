@@ -94,6 +94,7 @@ public class SaveService
                 Backpack = ToDtoArray(_inventory.Backpack),
                 ActiveHotbarIndex = _inventory.ActiveHotbarIndex,
                 DayFraction = _worldTime.DayFraction,
+                DayNumber = _worldTime.DayNumber,
                 WorldEdits = _world.GetEditsSnapshot(),
                 Campfires = _fires.Fires.Select(f => new CampfireDto
                 {
@@ -185,6 +186,7 @@ public class SaveService
             // Simpler: just overwrite via reflection? No - add a setter. See
             // note in WorldTimeService.
             _worldTime.SetDayFraction(state.DayFraction);
+            _worldTime.SetDayNumber(state.DayNumber > 0 ? state.DayNumber : 1);
 
             // Apply world edits ONTO already-loaded chunks; columns not yet cached
             // will get the overlay when they later generate (see
@@ -310,6 +312,7 @@ public class SaveService
         public InventoryItemDto?[]? Backpack { get; set; }
         public int ActiveHotbarIndex { get; set; }
         public float DayFraction { get; set; }
+        public int DayNumber { get; set; }
         /// <summary>Sparse block edits per chunk. Key = "cx,cz"; inner dict = byte-index -> new block byte.</summary>
         public Dictionary<string, Dictionary<int, byte>>? WorldEdits { get; set; }
         public CampfireDto[]? Campfires { get; set; }
