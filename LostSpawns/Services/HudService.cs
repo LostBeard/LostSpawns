@@ -2179,7 +2179,7 @@ public class HudService : IDisposable
             _debugLabel.Text =
                 $"{(int)_fpsSmoothed} fps    " +
                 $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}    " +
-                $"Day {_worldTime.DayNumber}  Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  Achv {achvCount}/15  T {time}  {phase}{rain}  saved {savedAge}";
+                $"D{_worldTime.DayNumber} [{phase}]  Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  Achv {achvCount}/15  T {time}{rain}  saved {savedAge}";
         }
 
         // Update compass bearing from camera yaw
