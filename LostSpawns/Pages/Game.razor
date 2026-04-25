@@ -739,6 +739,16 @@
         Stats.TakeDamage(damage);
         Hud.NotifyDamage($"{e.Kind} hit you!");
         Audio.PlayDamage();
+        // Wolves have toothy bite -> bleed DoT. 6s base lets the player escape
+        // and bandage in time without trivializing the encounter. Boar tusks
+        // bleed a smaller window because gore-then-flee is the boar pattern.
+        // Toast only when the bleed wasn't already active so we don't spam
+        // every frame of pack contact damage.
+        bool wasBleeding = Stats.BleedSecondsRemaining > 0;
+        if (e.Kind == LostSpawns.Services.EntityKind.Wolf) Stats.ApplyBleed(6f);
+        else if (e.Kind == LostSpawns.Services.EntityKind.Boar) Stats.ApplyBleed(3f);
+        if (!wasBleeding && Stats.BleedSecondsRemaining > 0)
+            Hud.NotifyWarning("Bleeding! Apply a bandage");
     }
 
     private void HandleCooked(string cookedName)
@@ -817,6 +827,17 @@
     private void HandleItemConsumedSound(string name, string verb, LostSpawns.Services.ItemEffect effect)
     {
         Audio.PlayConsume();
+        // Bandages stop bleeding. Painkillers also clear it (they treat the
+        // wound, not just the pain). Match by name since the inventory event
+        // doesn't carry the item Id.
+        if (name == "Bandage" || name == "Painkiller")
+        {
+            if (Stats.BleedSecondsRemaining > 0)
+            {
+                Stats.ClearBleed();
+                Hud.NotifySuccess("Bleeding stopped");
+            }
+        }
     }
 
     private void HandleLightningSound() => Audio.PlayThunder();

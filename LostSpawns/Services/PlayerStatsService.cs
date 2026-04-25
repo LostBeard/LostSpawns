@@ -363,6 +363,26 @@ public class PlayerStatsService
     public bool StaminaRegenBlocked { get; set; }
 
     /// <summary>
+    /// Seconds of bleed remaining. While &gt; 0 the player loses HP at
+    /// BleedDamageRate per second AND HP regen is suppressed. Cleared by
+    /// applying a bandage. Wolves apply ~6s on contact bite.
+    /// </summary>
+    public float BleedSecondsRemaining { get; private set; }
+
+    /// <summary>HP drained per second of bleed. Slow enough that bandages aren't mandatory but a clean fight matters.</summary>
+    public float BleedDamageRate { get; set; } = 0.02f;
+
+    /// <summary>Apply (or extend) a bleed for the given duration. Takes the max of current vs requested so a fresh wolf bite never shortens an active bleed.</summary>
+    public void ApplyBleed(float seconds)
+    {
+        if (seconds <= 0) return;
+        if (BleedSecondsRemaining < seconds) BleedSecondsRemaining = seconds;
+    }
+
+    /// <summary>Clear any active bleed (bandage / painkiller use).</summary>
+    public void ClearBleed() => BleedSecondsRemaining = 0;
+
+    /// <summary>
     /// How fast body temperature drifts toward its ambient target. Lower = slower
     /// response; warm clothing / gear effectively reduces this on the consuming side.
     /// </summary>
@@ -413,11 +433,21 @@ public class PlayerStatsService
         if (_temperature < 0.15f) TakeDamage(dt * HypothermiaDamageRate);
         if (_temperature > 0.85f) TakeDamage(dt * HeatstrokeDamageRate);
 
+        // Bleed damage-over-time. Active while the timer is positive; bandages
+        // clear it. Suppresses passive regen below so a player can't tank a
+        // fresh wolf bite by sitting on full hunger/thirst.
+        bool bleeding = BleedSecondsRemaining > 0;
+        if (bleeding)
+        {
+            BleedSecondsRemaining = MathF.Max(0, BleedSecondsRemaining - dt);
+            TakeDamage(dt * BleedDamageRate);
+        }
+
         // Passive HP regen when every survival stat is in its healthy band.
         // Gives the player a reason to maintain hunger/thirst/warmth beyond
         // avoiding immediate death - recovery from damage flows through food
         // + water + shelter instead of requiring scarce bandages.
-        if (_health < 1f &&
+        if (!bleeding && _health < 1f &&
             _hunger > 0.5f && _thirst > 0.5f && _stamina > 0.5f &&
             _temperature > 0.30f && _temperature < 0.75f)
         {
@@ -437,6 +467,7 @@ public class PlayerStatsService
         // progress, not current-life vitality. A future "tier" system will
         // unlock new recipes based on total XP earned.
         _deathFired = false;
+        BleedSecondsRemaining = 0;
         OnStatsChanged?.Invoke();
     }
 
