@@ -1005,11 +1005,15 @@
 
         if (target is not null)
         {
-            Wildlife.ApplyDamage(target, 0.7f, origin);
+            bool killed = Wildlife.ApplyDamage(target, 0.7f, origin);
             Audio.PlayHit();
             Hud.ShowImpactMark(target.Position);
             // Bow durability decays per hit, not per shot.
             Inventory.DegradeActiveTool();
+            // Any bow-kill lands the Bowman achievement, not only the first
+            // attempt - so a miss-then-hit sequence on the same shot still
+            // counts.
+            if (killed) Stats.TryAwardAchievement("Bowman");
         }
     }
 
