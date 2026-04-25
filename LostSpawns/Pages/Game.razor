@@ -2224,10 +2224,14 @@
             // Hostile tint for entity aim - the crosshair goes red so the
             // player sees "this is a kill swing" at a glance. Prompt includes
             // HP % so the player can tell if the next swing will finish the
-            // kill without having to squint at the billboard bar.
+            // kill without having to squint at the billboard bar. A
+            // charging entity gets a "[CHARGING]" suffix as a tactical
+            // warning.
             Hud.Crosshair.TargetType = SpawnDev.GameUI.Elements.CrosshairTarget.Hostile;
             int hpPct = (int)(100f * targetEntity.Health / Math.Max(0.001f, targetEntity.MaxHealth));
-            Hud.InteractionPrompt.Text = $"[LMB] Attack {targetEntity.Kind} ({hpPct}%)";
+            string charging = targetEntity.Alert == LostSpawns.Services.AlertMode.Charge
+                ? "  [CHARGING]" : "";
+            Hud.InteractionPrompt.Text = $"[LMB] Attack {targetEntity.Kind} ({hpPct}%){charging}";
         }
         else if (targetHit.DidHit)
         {
