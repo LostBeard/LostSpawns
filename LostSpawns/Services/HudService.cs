@@ -1162,12 +1162,20 @@ public class HudService : IDisposable
         _ui.Renderer.DrawRect(barX, barY, barW, barH,
             System.Drawing.Color.FromArgb(200, 30, 30, 30));
 
-        // Color ramps green -> yellow -> red as durability drops.
-        var full = ratio > 0.6f
-            ? System.Drawing.Color.FromArgb(230, 80, 220, 120)
-            : ratio > 0.3f
-                ? System.Drawing.Color.FromArgb(230, 220, 200, 80)
-                : System.Drawing.Color.FromArgb(230, 230, 80, 80);
+        // Color ramps green -> yellow -> red as durability drops; below
+        // ~15% the red also pulses so imminent breakage is impossible to
+        // miss in peripheral vision.
+        System.Drawing.Color full;
+        if (ratio > 0.6f) full = System.Drawing.Color.FromArgb(230, 80, 220, 120);
+        else if (ratio > 0.3f) full = System.Drawing.Color.FromArgb(230, 220, 200, 80);
+        else if (ratio > 0.15f) full = System.Drawing.Color.FromArgb(230, 230, 80, 80);
+        else
+        {
+            float pulse = 0.55f + 0.45f * MathF.Sin(
+                (float)Environment.TickCount * 0.012f);
+            int a = (int)(255 * pulse);
+            full = System.Drawing.Color.FromArgb(a, 255, 40, 40);
+        }
         _ui.Renderer.DrawRect(barX, barY, barW * ratio, barH, full);
     }
 
