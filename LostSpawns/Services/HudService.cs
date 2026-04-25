@@ -180,12 +180,28 @@ public class HudService : IDisposable
     private void RefreshAchievementsList()
     {
         if (_achievementsLabel is null) return;
-        // Each row: ✔ unlocked or • locked. Format kept short so the panel
-        // height (180) doesn't overflow.
+        // Each row: [X] unlocked or [ ] locked. Format kept short so the
+        // panel doesn't overflow.
         string check = "[X]";
         string lockd = "[ ]";
+        // Compute count for header.
+        int n = (_stats.FirstKillAwarded ? 1 : 0)
+              + (_stats.FirstFireAwarded ? 1 : 0)
+              + (_stats.FirstCookAwarded ? 1 : 0)
+              + (_stats.FirstWolfAwarded ? 1 : 0)
+              + (_stats.FirstSleepAwarded ? 1 : 0)
+              + (_stats.HunterAwarded ? 1 : 0)
+              + (_stats.BowmanAwarded ? 1 : 0)
+              + (_stats.FirstAidAwarded ? 1 : 0)
+              + (_stats.GourmetAwarded ? 1 : 0)
+              + (_stats.VeteranAwarded ? 1 : 0)
+              + (_stats.CenturionAwarded ? 1 : 0)
+              + (_stats.SurvivorAwarded ? 1 : 0)
+              + (_stats.ResilientAwarded ? 1 : 0)
+              + (_stats.PackHunterAwarded ? 1 : 0)
+              + (_stats.CompletionistAwarded ? 1 : 0);
         var sb = new System.Text.StringBuilder();
-        sb.Append("ACHIEVEMENTS\n\n");
+        sb.Append($"ACHIEVEMENTS  {n} / 15  ({n * 100 / 15}%)\n\n");
         sb.Append((_stats.FirstKillAwarded ? check : lockd)).Append(" First Kill\n");
         sb.Append((_stats.FirstFireAwarded ? check : lockd)).Append(" First Fire\n");
         sb.Append((_stats.FirstCookAwarded ? check : lockd)).Append(" First Cook\n");
