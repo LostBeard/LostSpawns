@@ -837,7 +837,7 @@
     {
         Stats.TakeDamage(damage);
         Hud.NotifyDamage($"{e.Kind} hit you!");
-        Audio.PlayDamage();
+        Audio.PlayDamageAmount(damage);
         // Knockback: shove the camera away from the attacker. Boars get the
         // biggest push because their gimmick is "aggressive tusk charge";
         // wolves get a smaller nudge since they're a bite-and-run pattern.

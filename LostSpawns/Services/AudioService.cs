@@ -344,10 +344,22 @@ public class AudioService : IDisposable
         }
     }
 
-    /// <summary>Sharp rising tone for damage taken.</summary>
+    /// <summary>Sharp rising tone for damage taken. Base variant.</summary>
     public void PlayDamage()
     {
         PlayBeep(220f, 0.18f, 0.25f, "sawtooth");
+    }
+
+    /// <summary>Pitch-scaled damage sound. Small nips pitch up, heavy hits
+    /// pitch down + longer duration so the player's ear tracks magnitude.</summary>
+    public void PlayDamageAmount(float amount)
+    {
+        // amount is HP delta in [0,1]. Light bite: 0.05. Wolf hit: 0.18. Lethal:
+        // 0.3+. Pitch 320 Hz for the lightest, dropping to 140 Hz at heavy.
+        float norm = Math.Clamp(amount / 0.30f, 0f, 1f);
+        float freq = 320f - norm * 180f;
+        float dur = 0.14f + norm * 0.18f;
+        PlayBeep(freq, dur, 0.25f, "sawtooth");
     }
 
     /// <summary>Gentle descending pair for HP restored from food/heal.</summary>
