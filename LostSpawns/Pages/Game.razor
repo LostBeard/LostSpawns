@@ -1678,6 +1678,13 @@
         }
         else if (Stats.Stamina > 0.25f)
         {
+            // First time we cross above the recovery threshold after a low
+            // bout, fire a brief "caught my breath" sigh - inverted-pitch
+            // version of the gasp so the player's ear marks the recovery.
+            if (_wasStaminaLow)
+            {
+                Audio.PlayBeep(180f, 0.20f, 0.08f, "triangle");
+            }
             _wasStaminaLow = false;
             _gaspTimer = 0f;
         }
