@@ -1722,10 +1722,32 @@ public class HudService : IDisposable
             bobY -= arc * 60f;
         }
 
-        // Main tool body (rotated-looking via an offset rect)
-        _ui.Renderer.DrawRect(baseX + bobX + 20, baseY + bobY, 80, 120, tint);
-        _ui.Renderer.DrawRect(baseX + bobX + 10, baseY + bobY + 30, 100, 18,
-            System.Drawing.Color.FromArgb(240, 90, 60, 30)); // wood haft crossbar
+        // Main tool body. Different silhouette per item id so the player
+        // can tell at a glance what's equipped: axe is the default rect +
+        // crossbar; bow is a tall arc + string; pick has the same crossbar
+        // but a metal head on top.
+        if (item.Id == "tool.bow")
+        {
+            // Tall thin bow body + diagonal "string" line.
+            _ui.Renderer.DrawRect(baseX + bobX + 50, baseY + bobY, 12, 130,
+                System.Drawing.Color.FromArgb(240, 130, 90, 50));
+            _ui.Renderer.DrawRect(baseX + bobX + 40, baseY + bobY + 20, 8, 100,
+                System.Drawing.Color.FromArgb(180, 230, 230, 230)); // string approx
+        }
+        else if (item.Id == "tool.pick" || item.Id == "tool.stone_pick")
+        {
+            // Pick: shaft + small dark metal head spanning across the top.
+            _ui.Renderer.DrawRect(baseX + bobX + 55, baseY + bobY + 10, 14, 110, tint);
+            _ui.Renderer.DrawRect(baseX + bobX + 30, baseY + bobY,        65, 16,
+                System.Drawing.Color.FromArgb(240, 120, 120, 130)); // pick head
+        }
+        else
+        {
+            // Default: axe / generic tool body + wood haft crossbar.
+            _ui.Renderer.DrawRect(baseX + bobX + 20, baseY + bobY, 80, 120, tint);
+            _ui.Renderer.DrawRect(baseX + bobX + 10, baseY + bobY + 30, 100, 18,
+                System.Drawing.Color.FromArgb(240, 90, 60, 30));
+        }
 
         // Item label above the viewmodel rect
         float textPx = 16f;
