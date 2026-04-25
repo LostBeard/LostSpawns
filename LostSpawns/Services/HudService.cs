@@ -1955,6 +1955,39 @@ public class HudService : IDisposable
     }
 
     /// <summary>
+    /// Render the sun + moon as small bright circles that arc across the
+    /// sky based on DayFraction. Rough projection: x sweeps left-to-right
+    /// over the day, y dips lowest at noon (midpoint) and apex matches.
+    /// Day fraction 0.0-0.5 = sun visible. 0.5-1.0 = moon visible.
+    /// </summary>
+    private void DrawSunMoon(int viewportWidth, int viewportHeight)
+    {
+        float t = _worldTime.DayFraction;
+        // Sun arc: rises at 0.05, sets at 0.55. Parabolic Y so noon (0.30)
+        // is highest in the sky.
+        if (t > 0.05f && t < 0.55f)
+        {
+            float u = (t - 0.05f) / 0.50f;          // 0..1 across the arc
+            float x = u * viewportWidth;
+            float y = viewportHeight * 0.30f * (1f - 4f * (u - 0.5f) * (u - 0.5f)); // peak at u=0.5
+            float size = 28f;
+            _ui.Renderer.DrawRect(x - size * 0.5f, y, size, size,
+                System.Drawing.Color.FromArgb(220, 255, 220, 130));
+        }
+        // Moon arc: rises at 0.55, sets at 1.05 (wraps to 0.05).
+        else if (t > 0.55f || t < 0.05f)
+        {
+            float tt = t > 0.55f ? t : t + 1f;
+            float u = (tt - 0.55f) / 0.50f;
+            float x = u * viewportWidth;
+            float y = viewportHeight * 0.30f * (1f - 4f * (u - 0.5f) * (u - 0.5f));
+            float size = 22f;
+            _ui.Renderer.DrawRect(x - size * 0.5f, y, size, size,
+                System.Drawing.Color.FromArgb(220, 230, 235, 255));
+        }
+    }
+
+    /// <summary>
     /// When the player is cold enough their breath should fog - emit small
     /// rising puffs near screen-center (the camera direction). Age each
     /// puff toward 1 (dead). No cap check needed: we re-use the oldest
@@ -2518,6 +2551,7 @@ public class HudService : IDisposable
             // drawn, UI screens, fires, entities) sits on top. Only visible
             // at night + twilight; during day the draw is a cheap no-op.
             DrawStars(viewportWidth, viewportHeight);
+            DrawSunMoon(viewportWidth, viewportHeight);
 
             // Campfires render first so entity billboards paint on top - a
             // critter standing in front of the fire occludes it naturally.
