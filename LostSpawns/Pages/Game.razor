@@ -1163,6 +1163,14 @@
         // achievements happen mid-action.
         Hud.ScreenOverlay.Flash(
             System.Drawing.Color.FromArgb(90, 240, 200, 80), 0.7f);
+        // Gold-mote celebration burst at the player's feet so the moment
+        // also has a visible particle component the player can see in
+        // their world view, not just the screen-edge flash.
+        var feet = new System.Numerics.Vector3(
+            Renderer.Camera.Position.X,
+            Renderer.Camera.Position.Y - 1.5f,
+            Renderer.Camera.Position.Z);
+        Hud.ShowGoldBurst(feet, 12);
         // Immediate save on achievement so progress isn't lost to a browser
         // crash between 10s auto-saves. Achievements are rare + high-value
         // so the cost of one extra localStorage write is negligible.
@@ -1177,6 +1185,14 @@
         // victory moments all feel the same. Also fully restores stamina
         // + heals 20% HP - the "second wind" buff for hitting a milestone.
         Hud.ScreenOverlay.Flash(System.Drawing.Color.FromArgb(110, 100, 220, 120), 0.8f);
+        // Gold-mote burst rises from the player's feet on level-up - same
+        // celebration motif used for achievements. Larger count (16) since
+        // level-ups are bigger moments than individual achievements.
+        var lvFeet = new System.Numerics.Vector3(
+            Renderer.Camera.Position.X,
+            Renderer.Camera.Position.Y - 1.5f,
+            Renderer.Camera.Position.Z);
+        Hud.ShowGoldBurst(lvFeet, 16);
         Stats.Stamina = 1f;
         Stats.Heal(0.20f);
         // Level-up second wind also closes any active bleed - the rush of

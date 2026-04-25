@@ -186,6 +186,32 @@ public class HudService : IDisposable
             _dustIdx = (_dustIdx + 1) % DustMax;
         }
     }
+
+    // Gold motes for celebration moments (level-up, achievement). Different
+    // ring buffer than dust so they don't collide visually + can use a
+    // distinct render color.
+    private const int GoldMax = 12;
+    private readonly System.Numerics.Vector3[] _goldPos = new System.Numerics.Vector3[GoldMax];
+    private readonly System.Numerics.Vector3[] _goldVel = new System.Numerics.Vector3[GoldMax];
+    private readonly DateTime[] _goldSpawned = new DateTime[GoldMax];
+    private int _goldIdx;
+
+    /// <summary>Spawn a burst of golden upward-rising motes (level-up celebration).</summary>
+    public void ShowGoldBurst(System.Numerics.Vector3 worldPos, int count = 10)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            double angle = _dustRng.NextDouble() * Math.PI * 2;
+            float speed = 0.6f + (float)_dustRng.NextDouble() * 0.6f;
+            _goldPos[_goldIdx] = worldPos;
+            _goldVel[_goldIdx] = new System.Numerics.Vector3(
+                (float)Math.Cos(angle) * speed,
+                2.5f + (float)_dustRng.NextDouble() * 1.5f, // strong upward
+                (float)Math.Sin(angle) * speed);
+            _goldSpawned[_goldIdx] = DateTime.UtcNow;
+            _goldIdx = (_goldIdx + 1) % GoldMax;
+        }
+    }
     private bool _rainSeeded;
     private readonly Random _rainRng = new();
     private RenderService? _renderer;
@@ -1955,6 +1981,43 @@ public class HudService : IDisposable
         }
     }
 
+    private void DrawGoldMotes(int viewportWidth, int viewportHeight)
+    {
+        if (_renderer == null) return;
+        float aspect = (float)viewportWidth / viewportHeight;
+        var vp = _renderer.Camera.GetVpMatrix(aspect);
+        var now = DateTime.UtcNow;
+        const float Lifetime = 1.4f;
+        for (int i = 0; i < GoldMax; i++)
+        {
+            if (_goldSpawned[i] == default) continue;
+            float age = (float)(now - _goldSpawned[i]).TotalSeconds;
+            if (age >= Lifetime) continue;
+
+            var p = _goldPos[i];
+            var v = _goldVel[i];
+            float wx = p.X + v.X * age;
+            // Lighter gravity than dust; gold motes hang in the air longer.
+            float wy = p.Y + v.Y * age - 1.5f * age * age * 0.5f;
+            float wz = p.Z + v.Z * age;
+
+            var clip = System.Numerics.Vector4.Transform(
+                new System.Numerics.Vector4(wx, wy, wz, 1f), vp);
+            if (clip.W <= 0.001f) continue;
+            float ndcX = clip.X / clip.W;
+            float ndcY = clip.Y / clip.W;
+            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
+
+            float life = age / Lifetime;
+            int alpha = (int)(220 * (1f - life));
+            float size = Math.Clamp(8f / MathF.Max(0.1f, clip.W), 2.5f, 6f);
+            _ui.Renderer.DrawRect(
+                screenX - size * 0.5f, screenY - size * 0.5f, size, size,
+                System.Drawing.Color.FromArgb(alpha, 250, 220, 100));
+        }
+    }
+
     private void DrawDustPuffs(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null) return;
@@ -3179,6 +3242,7 @@ public class HudService : IDisposable
             // the number stays legible on top of the splatter.
             DrawBloodSplatters(viewportWidth, viewportHeight);
             DrawDustPuffs(viewportWidth, viewportHeight);
+            DrawGoldMotes(viewportWidth, viewportHeight);
 
             // Floating damage numbers rise above the hit point - rendered
             // last so they sit on top of all world geometry.
