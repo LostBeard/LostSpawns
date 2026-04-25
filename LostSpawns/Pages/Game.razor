@@ -1897,8 +1897,14 @@
         _bobAppliedXOffset = right.X * _bobCurrentX;
         _bobAppliedZOffset = right.Z * _bobCurrentX;
         _bobAppliedX = _bobCurrentX;
-        _bobAppliedY = _bobCurrentY;
-        Hud.SetBobOffset(_bobCurrentX, _bobCurrentY);
+        // Sneak crouch: drop the camera 0.4 blocks while CTRL is held so
+        // the player visibly ducks. Applied as part of the bob offset so
+        // it gets stripped + re-added cleanly each frame and doesn't
+        // confuse the gravity/collision checks.
+        bool ctrlHeld = Input.KeysDown.Contains("ControlLeft") || Input.KeysDown.Contains("ControlRight");
+        float crouchOffset = ctrlHeld ? -0.4f : 0f;
+        _bobAppliedY = _bobCurrentY + crouchOffset;
+        Hud.SetBobOffset(_bobCurrentX, _bobAppliedY);
         Renderer.Camera.Position = new System.Numerics.Vector3(
             camNow.X + _bobAppliedXOffset,
             camNow.Y + _bobAppliedY,
