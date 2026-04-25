@@ -1045,14 +1045,41 @@
         }
     }
 
+    // Queued thunder delays. Each lightning strike pushes a random 0.5-2.0s
+    // delay onto this list; OnGameUpdate decrements them and fires the
+    // PlayThunder call on the frame the timer hits zero. Real-world
+    // thunder lags the bolt because sound travels slower than light.
+    private readonly System.Collections.Generic.List<float> _thunderQueue = new();
+    private readonly Random _thunderRng = new();
+
     private void HandleLightningSound()
     {
-        Audio.PlayThunder();
+        // Schedule the thunder rumble to land 0.5-2.0s after the visual
+        // flash so close strikes "boom" almost immediately and far ones
+        // have an unsettling delay.
+        _thunderQueue.Add(0.5f + (float)_thunderRng.NextDouble() * 1.5f);
         // Storms drain fuel off every fire - the lightning itself doesn't
         // strike each fire, but the gust + rain that comes with it takes
         // a bite out of exposed wood. 10% per strike.
         foreach (var f in Fires.Fires)
             f.Fuel = MathF.Max(0f, f.Fuel - 0.10f);
+    }
+
+    private void TickThunderQueue(float dt)
+    {
+        for (int i = _thunderQueue.Count - 1; i >= 0; i--)
+        {
+            float t = _thunderQueue[i] - dt;
+            if (t <= 0f)
+            {
+                Audio.PlayThunder();
+                _thunderQueue.RemoveAt(i);
+            }
+            else
+            {
+                _thunderQueue[i] = t;
+            }
+        }
     }
 
     private void HandleFeedFire()
@@ -1583,6 +1610,7 @@
         Time.Tick(deltaTime);
         Weather.Tick(deltaTime);
         Audio.UpdateRainAmbient(Weather.RainIntensity);
+        TickThunderQueue(deltaTime);
         // Wind ambient: a baseline 0.3 intensity always runs so the world
         // never feels sonically dead, plus rain adds on top so storms howl.
         Audio.UpdateWindAmbient(0.3f + Weather.RainIntensity * 0.6f, deltaTime);
