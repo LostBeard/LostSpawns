@@ -114,6 +114,7 @@
         Input.OnMuteTogglePressed += HandleMuteToggle;
         Input.OnHelpTogglePressed += HandleHelpToggle;
         Input.OnDropPressed += HandleDropActive;
+        Input.OnQuickEatPressed += HandleQuickEat;
 
         // Auto-pause when the player tabs away. Browser fires visibilitychange
         // on document; SpawnDev.BlazorJS wraps it as a typed ActionEvent so we
@@ -964,6 +965,43 @@
     private void HandleDebugToggle() => Hud.ToggleDebug();
     private void HandleHelpToggle() => Hud.ToggleHelp();
 
+    private void HandleQuickEat()
+    {
+        if (Hud.IsAnyMenuOpen) return;
+        if (Hud.IsLoading || Hud.IsDead) return;
+        // Priority order: cooked meats first (best hunger + positive HP),
+        // then raw meats, then beans. Pick the first match found by
+        // scanning hotbar then backpack. Uses TryUseSlot to route through
+        // the normal consume event (toast / audio / bleed-clear hooks).
+        string[] priority = new[]
+        {
+            "food.deer_meat_cooked", "food.boar_meat_cooked", "food.rabbit_meat_cooked",
+            "craft.stew",
+            "food.deer_meat", "food.boar_meat", "food.rabbit_meat",
+            "consume.beans",
+        };
+        foreach (var id in priority)
+        {
+            for (int i = 0; i < LostSpawns.Services.InventoryService.HotbarSize; i++)
+            {
+                var item = Inventory.Hotbar[i];
+                if (item?.Id == id)
+                {
+                    if (Inventory.TryUseSlot(fromHotbar: true, index: i)) return;
+                }
+            }
+            for (int i = 0; i < LostSpawns.Services.InventoryService.BackpackSize; i++)
+            {
+                var item = Inventory.Backpack[i];
+                if (item?.Id == id)
+                {
+                    if (Inventory.TryUseSlot(fromHotbar: false, index: i)) return;
+                }
+            }
+        }
+        Hud.NotifyWarning("No food to eat");
+    }
+
     private void HandleDropActive()
     {
         if (Hud.IsAnyMenuOpen) return;
@@ -1764,6 +1802,7 @@
         Input.OnMuteTogglePressed -= HandleMuteToggle;
         Input.OnHelpTogglePressed -= HandleHelpToggle;
         Input.OnDropPressed -= HandleDropActive;
+        Input.OnQuickEatPressed -= HandleQuickEat;
         if (_doc is not null) _doc.OnVisibilityChange -= HandleVisibilityChange;
         _doc?.Dispose();
         _doc = null;

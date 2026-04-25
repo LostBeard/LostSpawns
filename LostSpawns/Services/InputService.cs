@@ -53,6 +53,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on Z key press. Sleep / rest action (context-sensitive).</summary>
     public event Action? OnSleepPressed;
 
+    /// <summary>Fired on G key press. Quick-eat the best food in inventory.</summary>
+    public event Action? OnQuickEatPressed;
+
     /// <summary>Fired on F3 key press. Debug HUD toggle.</summary>
     public event Action? OnDebugTogglePressed;
 
@@ -179,6 +182,10 @@ public class InputService : IAsyncDisposable
         // Drop active item on Q.
         if (!e.Repeat && (e.Key == "q" || e.Key == "Q"))
             OnDropPressed?.Invoke();
+
+        // Quick-eat best food in inventory on G.
+        if (!e.Repeat && (e.Key == "g" || e.Key == "G"))
+            OnQuickEatPressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
         if (!e.Repeat && e.Key == "F9")
