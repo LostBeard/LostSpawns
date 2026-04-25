@@ -1675,6 +1675,20 @@ public class HudService : IDisposable
             float x = screenX - size / 2f;
             float y = screenY - size / 2f;
 
+            // Ground shadow: a dark translucent oval beneath the billboard
+            // that helps the entity read as "standing on terrain" rather
+            // than "floating". Crows skip this because they ARE floating.
+            if (e.Kind != EntityKind.Crow)
+            {
+                float shadowY = y + size + size * 0.05f;
+                float shadowW = size * 0.9f;
+                float shadowH = size * 0.15f;
+                _ui.Renderer.DrawRect(
+                    x + (size - shadowW) * 0.5f, shadowY,
+                    shadowW, shadowH,
+                    System.Drawing.Color.FromArgb(110, 10, 10, 10));
+            }
+
             // Per-kind silhouette: extra rects that stick out above / below
             // the body to suggest ears, snout, wings, etc. All decorations
             // use the same body color so hit flashes apply uniformly.
