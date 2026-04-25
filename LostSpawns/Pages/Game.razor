@@ -211,7 +211,9 @@
             // "saved Xs ago" immediately instead of "never" until the first
             // auto-save fires.
             Hud.LastSaveTime = Save.LastSaveTime;
-            Hud.NotifySuccess("Save restored");
+            // Toast shows quick run summary so the player sees their
+            // continuity at a glance instead of generic "Save restored".
+            Hud.NotifySuccess($"Save restored - Day {Time.DayNumber}, Lv {Stats.Level}, {Stats.Kills} kills");
         }
         else
         {
