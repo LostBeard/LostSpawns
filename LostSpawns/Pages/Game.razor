@@ -112,6 +112,7 @@
         Input.OnSleepPressed += HandleSleep;
         Input.OnDebugTogglePressed += HandleDebugToggle;
         Input.OnMuteTogglePressed += HandleMuteToggle;
+        Input.OnHelpTogglePressed += HandleHelpToggle;
         Input.OnInteractPressed += HandleInteract;
         Input.OnLeftClickPressed += HandleInteract;       // L-click = break, same as E
         Input.OnRightClickPressed += HandlePlaceBlock;    // R-click = place active hotbar material
@@ -789,6 +790,7 @@
     }
 
     private void HandleDebugToggle() => Hud.ToggleDebug();
+    private void HandleHelpToggle() => Hud.ToggleHelp();
 
     private float _preMuteVolume = 1f;
     private bool _muted;
@@ -1430,6 +1432,7 @@
         Input.OnSleepPressed -= HandleSleep;
         Input.OnDebugTogglePressed -= HandleDebugToggle;
         Input.OnMuteTogglePressed -= HandleMuteToggle;
+        Input.OnHelpTogglePressed -= HandleHelpToggle;
         Input.OnInteractPressed -= HandleInteract;
         Input.OnLeftClickPressed -= HandleInteract;
         Input.OnRightClickPressed -= HandlePlaceBlock;

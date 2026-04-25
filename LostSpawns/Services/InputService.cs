@@ -59,6 +59,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on M key press. Mute / unmute audio.</summary>
     public event Action? OnMuteTogglePressed;
 
+    /// <summary>Fired on F1 key press. Toggles the help overlay.</summary>
+    public event Action? OnHelpTogglePressed;
+
     /// <summary>Fired on left mouse-down while pointer is locked (in-game). Break-block action.</summary>
     public event Action? OnLeftClickPressed;
 
@@ -165,6 +168,10 @@ public class InputService : IAsyncDisposable
         // Mute toggle on M.
         if (!e.Repeat && (e.Key == "m" || e.Key == "M"))
             OnMuteTogglePressed?.Invoke();
+
+        // Help overlay on F1.
+        if (!e.Repeat && e.Key == "F1")
+            OnHelpTogglePressed?.Invoke();
 
         // Dev hooks until real damage / healing sources exist.
         if (!e.Repeat && e.Key == "F9")

@@ -108,6 +108,15 @@ public class HudService : IDisposable
         if (_debugLabel is null) return;
         _debugLabel.Visible = !_debugLabel.Visible;
     }
+
+    private UILabel? _helpLabel;
+
+    /// <summary>Toggle the F1 controls reference overlay.</summary>
+    public void ToggleHelp()
+    {
+        if (_helpLabel is null) return;
+        _helpLabel.Visible = !_helpLabel.Visible;
+    }
     private float _fpsSmoothed;
     private float _fpsAccumTime;
 
@@ -304,6 +313,24 @@ public class HudService : IDisposable
             Color = System.Drawing.Color.FromArgb(220, 230, 230, 240),
         };
         root.AddAnchored(InteractionPrompt, Anchor.Center, offsetY: 28);
+
+        // F1 help overlay - hidden by default; ToggleHelp flips visibility.
+        _helpLabel = new UILabel
+        {
+            Text =
+                "WASD move  SHIFT sprint  SPACE jump  Scroll change slot\n" +
+                "LMB attack / chop  RMB place / shoot bow\n" +
+                "E interact  F feed fire / drink  Z sleep near fire\n" +
+                "I inventory  C craft  ESC pause\n" +
+                "F1 help  F3 debug  M mute",
+            FontSize = FontSize.Body,
+            Width = 560,
+            Height = 120,
+            Align = TextAlign.Center,
+            Color = System.Drawing.Color.FromArgb(230, 230, 230, 240),
+            Visible = false,
+        };
+        root.AddAnchored(_helpLabel, Anchor.Center, offsetY: 60);
 
         // === Compass (top-center) ===
         Compass = new UICompass { Width = 200 };
