@@ -700,6 +700,15 @@
         ConsumeBlockActionCost();
         ApplyCameraKick(KickMagnitudeForBlock(brokenType));
         DegradeActiveToolWithFeedback();
+        // Dust puff at the broken block's center. Stone/dirt blocks
+        // throw the most visual debris; wood is a smaller chip but still
+        // reads as "something just broke here". Block-center coords are
+        // the integer hit + 0.5 offset.
+        int dustCount = brokenType == LostSpawns.Models.BlockType.Stone ? 8
+                      : brokenType == LostSpawns.Models.BlockType.Wood  ? 4
+                                                                        : 6;
+        Hud.ShowDustPuff(new System.Numerics.Vector3(
+            hit.BlockX + 0.5f, hit.BlockY + 0.5f, hit.BlockZ + 0.5f), dustCount);
         // XP scales with block hardness - stone is harder to break than
         // grass so it should reward more progression per swing.
         int blockXp = brokenType switch
