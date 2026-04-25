@@ -1637,6 +1637,11 @@
         // wolf bias + entity cap. Cheap assignment; computed EffectiveCap
         // refers to it each tick.
         Wildlife.DayNumber = Time.DayNumber;
+        // Fire-as-deterrent: halve wolf sensing range while player is inside a
+        // campfire's warmth aura. Rewards setting up a camp + staying near
+        // the fire at night. Default 10 blocks; halves to 5 when warm.
+        Wildlife.WolfAggroRange =
+            Fires.GetWarmthBonusAt(Renderer.Camera.Position) > 0.01f ? 5f : 10f;
         Wildlife.Tick(deltaTime, World, Renderer.Camera.Position, Time.IsNight);
 
         // Day/night transition latch. On falling edge (night->day) reset the
