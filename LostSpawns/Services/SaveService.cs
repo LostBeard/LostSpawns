@@ -107,6 +107,7 @@ public class SaveService
                 CookCount = _stats.CookCount,
                 Deaths = _stats.Deaths,
                 PlayTimeSeconds = _stats.PlayTimeSeconds,
+                DistanceTraveled = _stats.DistanceTraveled,
                 Hotbar = ToDtoArray(_inventory.Hotbar),
                 Backpack = ToDtoArray(_inventory.Backpack),
                 ActiveHotbarIndex = _inventory.ActiveHotbarIndex,
@@ -198,6 +199,7 @@ public class SaveService
             _stats.SeedDeathsFromSave(state.Deaths);
             _stats.SeedBestComboFromSave(state.BestCombo);
             _stats.SeedPlayTimeFromSave(state.PlayTimeSeconds);
+            _stats.SeedDistanceFromSave(state.DistanceTraveled);
 
             // Apply inventory slot by slot. Nulls stay null.
             if (state.Hotbar != null)
@@ -354,6 +356,7 @@ public class SaveService
         public int CookCount { get; set; }
         public int Deaths { get; set; }
         public float PlayTimeSeconds { get; set; }
+        public float DistanceTraveled { get; set; }
         public InventoryItemDto?[]? Hotbar { get; set; }
         public InventoryItemDto?[]? Backpack { get; set; }
         public int ActiveHotbarIndex { get; set; }

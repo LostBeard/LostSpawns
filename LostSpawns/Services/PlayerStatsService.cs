@@ -84,6 +84,24 @@ public class PlayerStatsService
     /// <summary>Cumulative seconds played across all lives. Tick increments this by dt.</summary>
     public float PlayTimeSeconds { get; private set; }
 
+    /// <summary>Cumulative blocks-of-distance walked across all lives. Game.razor adds horizontal frame deltas.</summary>
+    public float DistanceTraveled { get; private set; }
+
+    /// <summary>Add a horizontal-distance increment to the lifetime traveled total.</summary>
+    public void AddDistance(float blocks)
+    {
+        if (blocks <= 0) return;
+        DistanceTraveled += blocks;
+        OnStatsChanged?.Invoke();
+    }
+
+    /// <summary>Seed lifetime distance from save load.</summary>
+    public void SeedDistanceFromSave(float blocks)
+    {
+        DistanceTraveled = blocks;
+        OnStatsChanged?.Invoke();
+    }
+
     /// <summary>Total successful raw-to-cooked conversions across all lives.</summary>
     public int CookCount { get; private set; }
 
