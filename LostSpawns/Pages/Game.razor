@@ -1468,6 +1468,10 @@
         // Campfire cook tick - converts raw meat to cooked while the player
         // loiters inside the warmth radius. Reset logic lives in the service
         // so we don't have to track proximity state here too.
+        // Rain drowns fires faster: 1x at dry, up to 2.5x during downpour.
+        // Cap so light drizzle barely changes anything and heavy storms
+        // force the player to either cover the fire or stockpile wood.
+        Fires.FuelDecayMultiplier = 1f + Weather.RainIntensity * 1.5f;
         Fires.Tick(deltaTime, Renderer.Camera.Position, Inventory);
         Ground.Tick(Renderer.Camera.Position, Inventory);
 

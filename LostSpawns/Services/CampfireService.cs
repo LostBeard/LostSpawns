@@ -106,12 +106,20 @@ public class CampfireService
     /// Timer resets on a successful cook AND on losing proximity, so
     /// walking away mid-cook doesn't bank progress.
     /// </summary>
+    /// <summary>
+    /// Multiplier applied to fuel decay this tick. Game.razor sets this to
+    /// ~2.5 during heavy rain so open fires burn out visibly faster in bad
+    /// weather. Reset by the caller each frame (no hysteresis in-service).
+    /// </summary>
+    public float FuelDecayMultiplier { get; set; } = 1f;
+
     public void Tick(float dt, Vector3 playerPos, InventoryService inventory)
     {
         // Fuel decay runs regardless of player proximity - fires burn even
         // when you walk away. Extinguished fires (Fuel <= 0) skip cook and
         // warmth but stay in the list so the player can re-feed them.
-        float decay = dt / FuelLifetimeSeconds;
+        // FuelDecayMultiplier from callers (e.g. rain) scales the rate.
+        float decay = dt / FuelLifetimeSeconds * FuelDecayMultiplier;
         foreach (var f in Fires)
         {
             f.Fuel = MathF.Max(0f, f.Fuel - decay);
