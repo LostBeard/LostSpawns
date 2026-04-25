@@ -919,7 +919,14 @@
         if (Fires.FindNearest(Renderer.Camera.Position) is not null)
         {
             if (Fires.TryFeedNearest(Renderer.Camera.Position, Inventory, out var reason))
-                Hud.NotifySuccess("Fed the fire");
+            {
+                // Post-feed fuel % so the player can see the fire's new
+                // state at a glance. Uses the nearest fire right after
+                // feed since TryFeedNearest mutates it in place.
+                var near = Fires.FindNearest(Renderer.Camera.Position);
+                int pct = near is null ? 100 : (int)(near.Fuel * 100);
+                Hud.NotifySuccess($"Fed the fire ({pct}%)");
+            }
             else if (!string.IsNullOrEmpty(reason))
                 Hud.NotifyWarning(reason);
             return;
