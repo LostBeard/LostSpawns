@@ -307,7 +307,12 @@ public class EntityService
             }
             else
             {
-                y = groundY + 1;
+                // Idle breathing bob: a small per-entity sin offset so
+                // billboards "breathe" rather than being statue-still
+                // when the entity isn't moving. Phase keyed off Id so
+                // herds don't bob in unison.
+                float idleBob = 0.06f * MathF.Sin((float)Environment.TickCount * 0.002f + e.Id * 0.7f);
+                y = groundY + 1 + idleBob;
             }
             e.Position = new Vector3(e.Position.X, y, e.Position.Z);
         }
