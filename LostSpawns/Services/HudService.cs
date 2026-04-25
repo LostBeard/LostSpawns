@@ -785,7 +785,7 @@ public class HudService : IDisposable
                       + (_stats.PackHunterAwarded ? 1 : 0)
                       + (_stats.CompletionistAwarded ? 1 : 0);
             _deathStats.Text =
-                $"Lv {_stats.Level}  XP {_stats.Experience}  T {time}  Deaths {_stats.Deaths}\n" +
+                $"Lv {_stats.Level}  XP {_stats.Experience}  T {time}  Deaths {_stats.Deaths}  Best Combo {_stats.BestCombo}x\n" +
                 $"Day {_worldTime.DayNumber}  Kills: {_stats.Kills}   R:{_stats.RabbitKills}  B:{_stats.BoarKills}  C:{_stats.CrowKills}  W:{_stats.WolfKills}  D:{_stats.DeerKills}\n" +
                 $"Achievements: {achvs} / 15";
         }

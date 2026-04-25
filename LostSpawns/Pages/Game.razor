@@ -748,6 +748,8 @@
             Hud.NotifySuccess($"{_killStreak}x COMBO! +{xp} XP");
             Audio.PlayLevelUp();
         }
+        // Record best combo so the death screen can show a personal record.
+        Stats.RecordCombo(_killStreak);
         Stats.AwardXp(xp);
         Stats.RecordKill();
         Stats.RecordKindKill(e.Kind.ToString());

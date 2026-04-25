@@ -101,6 +101,7 @@ public class SaveService
                 ResilientAwarded = _stats.ResilientAwarded,
                 FirstAidAwarded = _stats.FirstAidAwarded,
                 PackHunterAwarded = _stats.PackHunterAwarded,
+                BestCombo = _stats.BestCombo,
                 CookCount = _stats.CookCount,
                 Deaths = _stats.Deaths,
                 PlayTimeSeconds = _stats.PlayTimeSeconds,
@@ -192,6 +193,7 @@ public class SaveService
                 state.FirstAidAwarded, state.PackHunterAwarded);
             _stats.SeedCookCountFromSave(state.CookCount);
             _stats.SeedDeathsFromSave(state.Deaths);
+            _stats.SeedBestComboFromSave(state.BestCombo);
             _stats.SeedPlayTimeFromSave(state.PlayTimeSeconds);
 
             // Apply inventory slot by slot. Nulls stay null.
@@ -343,6 +345,7 @@ public class SaveService
         public bool ResilientAwarded { get; set; }
         public bool FirstAidAwarded { get; set; }
         public bool PackHunterAwarded { get; set; }
+        public int BestCombo { get; set; }
         public int CookCount { get; set; }
         public int Deaths { get; set; }
         public float PlayTimeSeconds { get; set; }

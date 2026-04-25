@@ -67,6 +67,22 @@ public class PlayerStatsService
     /// <summary>Total deaths across all lives. Bumped from HudService on OnDied.</summary>
     public int Deaths { get; private set; }
 
+    /// <summary>Highest kill-streak combo ever reached. Persists across deaths + loads.</summary>
+    public int BestCombo { get; private set; }
+
+    /// <summary>Update BestCombo if the current streak exceeds it. Idempotent.</summary>
+    public void RecordCombo(int streak)
+    {
+        if (streak > BestCombo)
+        {
+            BestCombo = streak;
+            OnStatsChanged?.Invoke();
+        }
+    }
+
+    /// <summary>Seed BestCombo from save.</summary>
+    public void SeedBestComboFromSave(int best) => BestCombo = best;
+
     /// <summary>Increment death count + check for the Resilient achievement at 3.</summary>
     public void RecordDeath()
     {
