@@ -2065,7 +2065,13 @@ public class HudService : IDisposable
 
         for (int i = 0; i < StarCount; i++)
         {
-            int alpha = Math.Clamp(baseAlpha - (_starSize[i] < 3 ? 50 : 0), 0, 255);
+            // Twinkle: per-star sin offset on alpha so the field shimmers
+            // rather than holding a flat brightness. Phase derived from
+            // the star's X so neighbors twinkle out of sync.
+            double now = (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
+            float twinkle = 0.7f + 0.3f * MathF.Sin((float)now * 1.5f + _starX[i] * 0.05f);
+            int alpha = Math.Clamp(
+                (int)((baseAlpha - (_starSize[i] < 3 ? 50 : 0)) * twinkle), 0, 255);
             _ui.Renderer.DrawRect(_starX[i], _starY[i], _starSize[i], _starSize[i],
                 System.Drawing.Color.FromArgb(alpha, 240, 240, 230));
         }
