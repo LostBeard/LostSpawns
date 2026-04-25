@@ -1808,15 +1808,23 @@ public class HudService : IDisposable
             float life = age / 0.9f;
             int alpha = (int)(255 * (1f - life));
             float rise = life * 30f;
-            string txt = $"-{(int)(_dmgValue[i] * 100)}";
-            float pixelSize = 18f;
+            // Heavy hits (HP delta >= 0.5 = killing-blow on most prey)
+            // render in bright orange and at a larger size; normal hits
+            // stay reddish at standard size. Visual punch on big damage.
+            float dmgVal = _dmgValue[i];
+            bool heavy = dmgVal >= 0.5f;
+            string txt = $"-{(int)(dmgVal * 100)}";
+            float pixelSize = heavy ? 26f : 18f;
+            var color = heavy
+                ? System.Drawing.Color.FromArgb(alpha, 255, 180, 60)
+                : System.Drawing.Color.FromArgb(alpha, 240, 80, 70);
             float tw = _ui.Renderer.MeasureText(txt, pixelSize);
             _ui.Renderer.DrawText(
                 txt,
                 screenX - tw * 0.5f,
                 screenY - rise,
                 pixelSize,
-                System.Drawing.Color.FromArgb(alpha, 240, 80, 70));
+                color);
         }
     }
 
