@@ -2496,10 +2496,14 @@ public class HudService : IDisposable
                 EntityKind.Deer => MapMarkerType.OtherPlayer, // peaceful prey
                 _ => MapMarkerType.OtherPlayer,               // Rabbit: friendly-coded
             };
+            // Charging entities get a "!" suffix so the minimap reads
+            // their alert state at a glance even before the player sees
+            // the in-world aggro indicator.
+            string label = e.Alert == AlertMode.Charge ? $"{e.Kind}!" : e.Kind.ToString();
             Minimap.AddMarker(new MapMarker
             {
                 Id = markerId,
-                Label = e.Kind.ToString(),
+                Label = label,
                 WorldPosition = new Vector2(e.Position.X, e.Position.Z),
                 Type = markerType,
             });
