@@ -241,6 +241,13 @@
     /// <summary>Seconds remaining on the post-respawn HP-regen grace window.</summary>
     private float _resurrectGraceTimer;
 
+    // Kill-streak combo state. Each kill within KillStreakWindow seconds of
+    // the last bumps the counter and the next kill gets an XP multiplier.
+    // Resets on timeout or death.
+    private int _killStreak;
+    private DateTime _killStreakExpiry;
+    private const float KillStreakWindow = 8f;
+
     // Document handle for visibility-change auto-pause. Disposed in
     // DisposeAsync alongside the rest of the JS interop teardown.
     private SpawnDev.BlazorJS.JSObjects.Document? _doc;
@@ -679,14 +686,35 @@
     {
         // XP reward by kind - higher threats give more. Survives respawn per
         // PlayerStatsService's ResetToDefaults contract.
-        int xp = e.Kind switch
+        int baseXp = e.Kind switch
         {
             LostSpawns.Services.EntityKind.Wolf   => 15,
             LostSpawns.Services.EntityKind.Boar   => 10,
             LostSpawns.Services.EntityKind.Rabbit => 5,
             LostSpawns.Services.EntityKind.Crow   => 3,
+            LostSpawns.Services.EntityKind.Deer   => 12,
             _ => 1,
         };
+
+        // Combo multiplier: chained kills within the window escalate reward.
+        // Streak 1 = 1x, 2 = 1.5x, 3 = 2x, 5+ = 3x. Feedback toast at 2+.
+        var now = DateTime.UtcNow;
+        if (now <= _killStreakExpiry) _killStreak++; else _killStreak = 1;
+        _killStreakExpiry = now.AddSeconds(KillStreakWindow);
+        float mul = _killStreak switch
+        {
+            <= 1 => 1f,
+            2 => 1.5f,
+            3 => 2f,
+            4 => 2.5f,
+            _ => 3f,
+        };
+        int xp = (int)MathF.Ceiling(baseXp * mul);
+        if (_killStreak >= 2)
+        {
+            Hud.NotifySuccess($"{_killStreak}x COMBO! +{xp} XP");
+            Audio.PlayLevelUp();
+        }
         Stats.AwardXp(xp);
         Stats.RecordKill();
         Stats.RecordKindKill(e.Kind.ToString());
@@ -1152,6 +1180,9 @@
         // in OnGameUpdate via _resurrectGraceTimer.
         _resurrectGraceTimer = 30f;
         Hud.NotifySuccess("Resurrection grace - faster healing for 30s");
+        // Death breaks the kill chain - no carrying combos across lives.
+        _killStreak = 0;
+        _killStreakExpiry = DateTime.MinValue;
 
         // Teleport camera back to the heightmap spawn point and re-arm gravity so
         // it settles cleanly on the terrain.
