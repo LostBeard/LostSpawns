@@ -71,6 +71,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on J key press. Toggles the achievement-list overlay.</summary>
     public event Action? OnAchievementsTogglePressed;
 
+    /// <summary>Fired on F5 key press. Manual save (in addition to 10s auto-save).</summary>
+    public event Action? OnQuickSavePressed;
+
     /// <summary>Fired on Q key press. Drop active hotbar item to ground.</summary>
     public event Action? OnDropPressed;
 
@@ -188,6 +191,11 @@ public class InputService : IAsyncDisposable
         // Achievement-list overlay on J.
         if (!e.Repeat && (e.Key == "j" || e.Key == "J"))
             OnAchievementsTogglePressed?.Invoke();
+
+        // Manual quick-save on F5 (Minecraft-ish convention; auto-save still
+        // runs in the background every 10s).
+        if (!e.Repeat && e.Key == "F5")
+            OnQuickSavePressed?.Invoke();
 
         // Drop active item on Q.
         if (!e.Repeat && (e.Key == "q" || e.Key == "Q"))
