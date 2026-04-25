@@ -256,6 +256,11 @@
     private DateTime _killStreakExpiry;
     private const float KillStreakWindow = 8f;
 
+    // Wolves killed during the current night. Resets at each dawn (tracked
+    // by the _wasNight latch). Earning 5 in one night fires Pack Hunter.
+    private int _wolvesKilledThisNight;
+    private bool _wasNight;
+
     // Document handle for visibility-change auto-pause. Disposed in
     // DisposeAsync alongside the rest of the JS interop teardown.
     private SpawnDev.BlazorJS.JSObjects.Document? _doc;
@@ -727,7 +732,18 @@
         Stats.RecordKill();
         Stats.RecordKindKill(e.Kind.ToString());
         if (e.Kind == LostSpawns.Services.EntityKind.Wolf)
+        {
             Stats.TryAwardAchievement("First Wolf");
+            // Pack Hunter: drop 5 wolves in one night. Counter resets at dawn
+            // via the _wasNight latch in OnGameUpdate. Night-only increments
+            // so a dusk/daytime cleanup doesn't count toward it.
+            if (Time.IsNight)
+            {
+                _wolvesKilledThisNight++;
+                if (_wolvesKilledThisNight >= 5)
+                    Stats.TryAwardAchievement("Pack Hunter");
+            }
+        }
         if (e.Kind == LostSpawns.Services.EntityKind.Deer)
             Stats.TryAwardAchievement("Hunter");
 
@@ -1465,6 +1481,13 @@
         // refers to it each tick.
         Wildlife.DayNumber = Time.DayNumber;
         Wildlife.Tick(deltaTime, World, Renderer.Camera.Position, Time.IsNight);
+
+        // Day/night transition latch. On falling edge (night->day) reset the
+        // Pack Hunter night-kill counter so the 5-wolves-per-night target
+        // becomes a fresh goal each night.
+        if (_wasNight && !Time.IsNight)
+            _wolvesKilledThisNight = 0;
+        _wasNight = Time.IsNight;
         // Campfire cook tick - converts raw meat to cooked while the player
         // loiters inside the warmth radius. Reset logic lives in the service
         // so we don't have to track proximity state here too.

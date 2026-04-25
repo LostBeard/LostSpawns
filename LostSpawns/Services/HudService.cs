@@ -752,7 +752,7 @@ public class HudService : IDisposable
         {
             int s = (int)_stats.PlayTimeSeconds;
             string time = $"{s / 3600:D2}:{(s % 3600) / 60:D2}:{s % 60:D2}";
-            // Count achievement bools to show progress out of 14.
+            // Count achievement bools to show progress out of 15.
             int achvs = (_stats.FirstKillAwarded ? 1 : 0)
                       + (_stats.FirstFireAwarded ? 1 : 0)
                       + (_stats.FirstCookAwarded ? 1 : 0)
@@ -766,11 +766,12 @@ public class HudService : IDisposable
                       + (_stats.GourmetAwarded ? 1 : 0)
                       + (_stats.ResilientAwarded ? 1 : 0)
                       + (_stats.FirstAidAwarded ? 1 : 0)
+                      + (_stats.PackHunterAwarded ? 1 : 0)
                       + (_stats.CompletionistAwarded ? 1 : 0);
             _deathStats.Text =
                 $"Lv {_stats.Level}  XP {_stats.Experience}  T {time}  Deaths {_stats.Deaths}\n" +
                 $"Day {_worldTime.DayNumber}  Kills: {_stats.Kills}   R:{_stats.RabbitKills}  B:{_stats.BoarKills}  C:{_stats.CrowKills}  W:{_stats.WolfKills}  D:{_stats.DeerKills}\n" +
-                $"Achievements: {achvs} / 14";
+                $"Achievements: {achvs} / 15";
         }
 
         _ui.Screens.Push("death");
