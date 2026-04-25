@@ -1857,8 +1857,12 @@
         if (walking)
         {
             _bobPhase += deltaTime * (sprinting ? BobSprintSpeed : BobWalkSpeed);
-            float targetY = MathF.Sin(_bobPhase) * BobAmplitudeY;
-            float targetX = MathF.Sin(_bobPhase * 0.5f) * BobAmplitudeX;
+            // Exhaustion bob: when stamina is below 25% the player is gassed
+            // and the head-bob amplitude grows ~50% to sell the heaving-
+            // chest read. Recovers smoothly above 25% via the exp-approach.
+            float exhMul = Stats.Stamina < 0.25f ? 1.5f : 1.0f;
+            float targetY = MathF.Sin(_bobPhase) * BobAmplitudeY * exhMul;
+            float targetX = MathF.Sin(_bobPhase * 0.5f) * BobAmplitudeX * exhMul;
             _bobCurrentY = ExpApproach(_bobCurrentY, targetY, BobSmoothing, deltaTime);
             _bobCurrentX = ExpApproach(_bobCurrentX, targetX, BobSmoothing, deltaTime);
 
