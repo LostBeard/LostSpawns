@@ -1802,7 +1802,11 @@
         }
         // Wind ambient: a baseline 0.3 intensity always runs so the world
         // never feels sonically dead, plus rain adds on top so storms howl.
-        Audio.UpdateWindAmbient(0.3f + Weather.RainIntensity * 0.6f, deltaTime);
+        // Pitch bias by day phase: -1 deep night (low cold whoosh) to +1
+        // midday (bright high whistle). Cosine maps DayFraction so pitch
+        // smoothly sweeps once per day cycle.
+        float windPitch = -MathF.Cos(Time.DayFraction * MathF.PI * 2f);
+        Audio.UpdateWindAmbient(0.3f + Weather.RainIntensity * 0.6f, deltaTime, windPitch);
 
         // Low-HP heartbeat. Interval shortens as HP drops so the pulse
         // accelerates the closer the player gets to dying. Gate at 0.35 so

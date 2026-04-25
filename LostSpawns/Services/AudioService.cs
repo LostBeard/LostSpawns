@@ -760,7 +760,7 @@ public class AudioService : IDisposable
     /// slow 0.15 Hz sine modulation so the wind gusts. Call every frame
     /// with a value derived from weather / elevation / time-of-day.
     /// </summary>
-    public void UpdateWindAmbient(float intensity, float dt)
+    public void UpdateWindAmbient(float intensity, float dt, float pitchBias = 0f)
     {
         if (_ctx is null) return;
         try
@@ -782,6 +782,13 @@ public class AudioService : IDisposable
                 float gust = 0.5f + 0.5f * MathF.Sin(_windPhase);
                 float target = Math.Clamp(intensity * 0.025f * gust, 0, 0.05f);
                 _windGain.Gain.LinearRampToValueAtTime(target, _ctx.CurrentTime + 0.2);
+            }
+            // Pitch slides with day phase: pitchBias ranges -1 (cold night
+            // low) to +1 (warm day high). Maps to 70-120 Hz on the osc.
+            if (_windOsc is not null)
+            {
+                float baseFreq = 95f + pitchBias * 25f;
+                _windOsc.Frequency.LinearRampToValueAtTime(baseFreq, _ctx.CurrentTime + 1.0);
             }
         }
         catch (Exception ex)
