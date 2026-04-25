@@ -167,6 +167,42 @@ public class HudService : IDisposable
     }
 
     private UILabel? _helpLabel;
+    private UILabel? _achievementsLabel;
+
+    /// <summary>Toggle the J achievement-list overlay.</summary>
+    public void ToggleAchievements()
+    {
+        if (_achievementsLabel is null) return;
+        _achievementsLabel.Visible = !_achievementsLabel.Visible;
+        if (_achievementsLabel.Visible) RefreshAchievementsList();
+    }
+
+    private void RefreshAchievementsList()
+    {
+        if (_achievementsLabel is null) return;
+        // Each row: ✔ unlocked or • locked. Format kept short so the panel
+        // height (180) doesn't overflow.
+        string check = "[X]";
+        string lockd = "[ ]";
+        var sb = new System.Text.StringBuilder();
+        sb.Append("ACHIEVEMENTS\n\n");
+        sb.Append((_stats.FirstKillAwarded ? check : lockd)).Append(" First Kill\n");
+        sb.Append((_stats.FirstFireAwarded ? check : lockd)).Append(" First Fire\n");
+        sb.Append((_stats.FirstCookAwarded ? check : lockd)).Append(" First Cook\n");
+        sb.Append((_stats.FirstWolfAwarded ? check : lockd)).Append(" First Wolf\n");
+        sb.Append((_stats.FirstSleepAwarded ? check : lockd)).Append(" First Sleep\n");
+        sb.Append((_stats.HunterAwarded ? check : lockd)).Append(" Hunter (Deer)\n");
+        sb.Append((_stats.BowmanAwarded ? check : lockd)).Append(" Bowman\n");
+        sb.Append((_stats.FirstAidAwarded ? check : lockd)).Append(" First Aid\n");
+        sb.Append((_stats.GourmetAwarded ? check : lockd)).Append(" Gourmet (10 cooks)\n");
+        sb.Append((_stats.VeteranAwarded ? check : lockd)).Append(" Veteran (Lv 5)\n");
+        sb.Append((_stats.CenturionAwarded ? check : lockd)).Append(" Centurion (100 kills)\n");
+        sb.Append((_stats.SurvivorAwarded ? check : lockd)).Append(" Survivor (Day 7)\n");
+        sb.Append((_stats.ResilientAwarded ? check : lockd)).Append(" Resilient (3 deaths)\n");
+        sb.Append((_stats.PackHunterAwarded ? check : lockd)).Append(" Pack Hunter (5 wolves/night)\n");
+        sb.Append((_stats.CompletionistAwarded ? check : lockd)).Append(" Completionist (all 14)\n");
+        _achievementsLabel.Text = sb.ToString();
+    }
 
     /// <summary>Toggle the F1 controls reference overlay.</summary>
     public void ToggleHelp()
@@ -446,7 +482,7 @@ public class HudService : IDisposable
                 "E interact  F feed fire / drink  Z sleep near fire\n" +
                 "CTRL sneak (slower + halves wolf sensing)\n" +
                 "G quick-eat  T quick-drink  Q drop active item\n" +
-                "I inventory  C craft  ESC pause\n" +
+                "I inventory  J achievements  C craft  ESC pause\n" +
                 "F1 help  F3 debug  M mute",
             FontSize = FontSize.Body,
             Width = 560,
@@ -456,6 +492,20 @@ public class HudService : IDisposable
             Visible = false,
         };
         root.AddAnchored(_helpLabel, Anchor.Center, offsetY: 60);
+
+        // J achievement-list overlay - hidden by default; ToggleAchievements
+        // flips visibility and refreshes the list each open.
+        _achievementsLabel = new UILabel
+        {
+            Text = "",
+            FontSize = FontSize.Caption,
+            Width = 320,
+            Height = 360,
+            Align = TextAlign.Left,
+            Color = System.Drawing.Color.FromArgb(235, 220, 230, 240),
+            Visible = false,
+        };
+        root.AddAnchored(_achievementsLabel, Anchor.Center, offsetX: -240, offsetY: 0);
 
         // === Compass (top-center) ===
         Compass = new UICompass { Width = 200 };

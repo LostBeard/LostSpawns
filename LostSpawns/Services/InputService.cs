@@ -68,6 +68,9 @@ public class InputService : IAsyncDisposable
     /// <summary>Fired on F1 key press. Toggles the help overlay.</summary>
     public event Action? OnHelpTogglePressed;
 
+    /// <summary>Fired on J key press. Toggles the achievement-list overlay.</summary>
+    public event Action? OnAchievementsTogglePressed;
+
     /// <summary>Fired on Q key press. Drop active hotbar item to ground.</summary>
     public event Action? OnDropPressed;
 
@@ -181,6 +184,10 @@ public class InputService : IAsyncDisposable
         // Help overlay on F1.
         if (!e.Repeat && e.Key == "F1")
             OnHelpTogglePressed?.Invoke();
+
+        // Achievement-list overlay on J.
+        if (!e.Repeat && (e.Key == "j" || e.Key == "J"))
+            OnAchievementsTogglePressed?.Invoke();
 
         // Drop active item on Q.
         if (!e.Repeat && (e.Key == "q" || e.Key == "Q"))

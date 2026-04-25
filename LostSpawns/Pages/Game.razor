@@ -116,6 +116,7 @@
         Input.OnDropPressed += HandleDropActive;
         Input.OnQuickEatPressed += HandleQuickEat;
         Input.OnQuickDrinkPressed += HandleQuickDrink;
+        Input.OnAchievementsTogglePressed += () => Hud.ToggleAchievements();
 
         // Auto-pause when the player tabs away. Browser fires visibilitychange
         // on document; SpawnDev.BlazorJS wraps it as a typed ActionEvent so we
