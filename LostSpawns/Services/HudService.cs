@@ -1256,6 +1256,59 @@ public class HudService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Simple held-tool "viewmodel" painted in the bottom-right. Category
+    /// color drives the tint; the bob phase from camera bob gives it a
+    /// subtle walk sway. No actual 3D model - just a tilted rect that reads
+    /// as "something's in my hand".
+    /// </summary>
+    private void DrawViewmodel(int viewportWidth, int viewportHeight)
+    {
+        var item = _inventory.ActiveItem;
+        if (item is null) return;
+
+        // Only render for categories that represent held tools / placeables.
+        // Food items don't need a held appearance (the consume flow fires
+        // its own audio + toast).
+        bool held = item.Category == ItemCategory.Tool
+                 || item.Category == ItemCategory.Marker
+                 || item.Category == ItemCategory.Medical;
+        if (!held) return;
+
+        var tint = CategoryColor(item)
+                   ?? System.Drawing.Color.FromArgb(220, 210, 210, 220);
+
+        float baseX = viewportWidth - 220f;
+        float baseY = viewportHeight - 210f;
+        // Tie subtle bob to camera-bob current X/Y so the viewmodel sways
+        // with the player's walk cycle; idle ~zero.
+        float bobX = _bobCurrentX * 6f;
+        float bobY = _bobCurrentY * 6f;
+
+        // Main tool body (rotated-looking via an offset rect)
+        _ui.Renderer.DrawRect(baseX + bobX + 20, baseY + bobY, 80, 120, tint);
+        _ui.Renderer.DrawRect(baseX + bobX + 10, baseY + bobY + 30, 100, 18,
+            System.Drawing.Color.FromArgb(240, 90, 60, 30)); // wood haft crossbar
+
+        // Item label above the viewmodel rect
+        float textPx = 16f;
+        float textW = _ui.Renderer.MeasureText(item.Name, textPx);
+        _ui.Renderer.DrawText(
+            item.Name, baseX + bobX + 60 - textW * 0.5f, baseY + bobY - 18,
+            textPx, System.Drawing.Color.FromArgb(230, 230, 230, 240));
+    }
+
+    // Camera-bob offset fields owned by Game.razor, shared for the viewmodel
+    // sway. Setters kept internal so callers can push their current tick
+    // offsets without exposing raw mutable state.
+    private float _bobCurrentX;
+    private float _bobCurrentY;
+    public void SetBobOffset(float bobX, float bobY)
+    {
+        _bobCurrentX = bobX;
+        _bobCurrentY = bobY;
+    }
+
     private void DrawEntityBillboards(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null || _entities.Entities.Count == 0) return;
@@ -1874,6 +1927,10 @@ public class HudService : IDisposable
             // Durability bar above the active hotbar slot for tools that can
             // break. Small but always-visible so the player isn't surprised.
             DrawDurabilityBar(viewportWidth, viewportHeight);
+
+            // Simple held-tool viewmodel in the bottom-right - communicates
+            // "you have this equipped" without a full 3D rig.
+            DrawViewmodel(viewportWidth, viewportHeight);
 
             // Rain particles render on top of the voxel scene but below menus.
             DrawRain(viewportWidth, viewportHeight);

@@ -1326,6 +1326,7 @@
         _bobAppliedZOffset = right.Z * _bobCurrentX;
         _bobAppliedX = _bobCurrentX;
         _bobAppliedY = _bobCurrentY;
+        Hud.SetBobOffset(_bobCurrentX, _bobCurrentY);
         Renderer.Camera.Position = new System.Numerics.Vector3(
             camNow.X + _bobAppliedXOffset,
             camNow.Y + _bobAppliedY,
