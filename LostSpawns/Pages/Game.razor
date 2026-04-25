@@ -114,6 +114,12 @@
         Input.OnMuteTogglePressed += HandleMuteToggle;
         Input.OnHelpTogglePressed += HandleHelpToggle;
         Input.OnDropPressed += HandleDropActive;
+
+        // Auto-pause when the player tabs away. Browser fires visibilitychange
+        // on document; SpawnDev.BlazorJS wraps it as a typed ActionEvent so we
+        // can += / -= without raw addEventListener.
+        _doc = JS.Get<SpawnDev.BlazorJS.JSObjects.Document>("document");
+        _doc.OnVisibilityChange += HandleVisibilityChange;
         Input.OnInteractPressed += HandleInteract;
         Input.OnLeftClickPressed += HandleInteract;       // L-click = break, same as E
         Input.OnRightClickPressed += HandlePlaceBlock;    // R-click = place active hotbar material
@@ -231,6 +237,20 @@
     // Heartbeat cadence - pulses accelerate as HP drops, silences when the
     // player recovers past the low-HP threshold.
     private float _heartbeatTimer;
+
+    // Document handle for visibility-change auto-pause. Disposed in
+    // DisposeAsync alongside the rest of the JS interop teardown.
+    private SpawnDev.BlazorJS.JSObjects.Document? _doc;
+
+    private void HandleVisibilityChange(SpawnDev.BlazorJS.JSObjects.Event _)
+    {
+        // When the tab is hidden, push the pause menu so the player isn't
+        // bleeding hunger / thirst while AFK in a background tab. When the
+        // tab returns we leave it paused - they'll click through the menu
+        // intentionally to resume.
+        if (_doc is not null && _doc.Hidden && !Hud.IsPaused && !Hud.IsDead)
+            Hud.ShowPauseMenu();
+    }
 
     // Cricket chirps - random-jittered cadence while it's dark so the world
     // doesn't sound completely silent at night.
@@ -1484,6 +1504,9 @@
         Input.OnMuteTogglePressed -= HandleMuteToggle;
         Input.OnHelpTogglePressed -= HandleHelpToggle;
         Input.OnDropPressed -= HandleDropActive;
+        if (_doc is not null) _doc.OnVisibilityChange -= HandleVisibilityChange;
+        _doc?.Dispose();
+        _doc = null;
         Input.OnInteractPressed -= HandleInteract;
         Input.OnLeftClickPressed -= HandleInteract;
         Input.OnRightClickPressed -= HandlePlaceBlock;
