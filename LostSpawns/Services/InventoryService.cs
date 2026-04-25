@@ -47,6 +47,7 @@ public readonly record struct ItemEffect(
     float Hunger = 0,
     float Thirst = 0,
     float Stamina = 0,
+    float Warmth = 0,
     string DisplayVerb = "Used");
 
 /// <summary>
@@ -108,9 +109,10 @@ public class InventoryService
         ["food.boar_meat"]   = new(Hunger: 0.35f, Health: -0.05f, DisplayVerb: "Ate raw"),
         ["food.deer_meat"]   = new(Hunger: 0.45f, Health: -0.05f, DisplayVerb: "Ate raw"),
         // Cooked meat (campfire output): bigger hunger bonus, small HP heal.
-        ["food.rabbit_meat_cooked"] = new(Hunger: 0.35f, Health: 0.05f, DisplayVerb: "Ate"),
-        ["food.boar_meat_cooked"]   = new(Hunger: 0.55f, Health: 0.10f, DisplayVerb: "Ate"),
-        ["food.deer_meat_cooked"]   = new(Hunger: 0.65f, Health: 0.12f, DisplayVerb: "Ate"),
+        // Also warms the player slightly - real hot food warms you up.
+        ["food.rabbit_meat_cooked"] = new(Hunger: 0.35f, Health: 0.05f, Warmth: 0.05f, DisplayVerb: "Ate"),
+        ["food.boar_meat_cooked"]   = new(Hunger: 0.55f, Health: 0.10f, Warmth: 0.08f, DisplayVerb: "Ate"),
+        ["food.deer_meat_cooked"]   = new(Hunger: 0.65f, Health: 0.12f, Warmth: 0.10f, DisplayVerb: "Ate"),
     };
 
     /// <summary>Fired whenever any slot changes (set, clear, move).</summary>
@@ -238,6 +240,7 @@ public class InventoryService
         if (effect.Hunger  > 0) _stats.Hunger  = _stats.Hunger  + effect.Hunger;
         if (effect.Thirst  > 0) _stats.Thirst  = _stats.Thirst  + effect.Thirst;
         if (effect.Stamina > 0) _stats.Stamina = _stats.Stamina + effect.Stamina;
+        if (effect.Warmth  > 0) _stats.Temperature = _stats.Temperature + effect.Warmth;
 
         // Decrement count; clear slot when exhausted.
         if (item.Count > 1)
