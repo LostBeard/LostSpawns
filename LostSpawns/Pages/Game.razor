@@ -248,6 +248,11 @@
     private float _birdTimer;
     private readonly Random _birdRng = new();
 
+    // Dusk warning latch - fires "Nightfall approaches" toast once when
+    // DayFraction enters the 0.50-0.58 pre-dusk window. Re-arms after the
+    // window (when night ends and day rolls over).
+    private bool _duskWarned;
+
     // Heartbeat cadence - pulses accelerate as HP drops, silences when the
     // player recovers past the low-HP threshold.
     private float _heartbeatTimer;
@@ -1585,10 +1590,23 @@
 
         // Day/night transition latch. On falling edge (night->day) reset the
         // Pack Hunter night-kill counter so the 5-wolves-per-night target
-        // becomes a fresh goal each night.
+        // becomes a fresh goal each night. Also re-arm the dusk warning.
         if (_wasNight && !Time.IsNight)
+        {
             _wolvesKilledThisNight = 0;
+            _duskWarned = false;
+        }
         _wasNight = Time.IsNight;
+
+        // Dusk warning: one-shot toast when DayFraction enters the 0.50-0.58
+        // window (late afternoon). Gives the player 8% of a day to prep
+        // before the wolves spawn.
+        float dayFrac = Time.DayFraction;
+        if (!_duskWarned && dayFrac >= 0.50f && dayFrac < 0.58f)
+        {
+            _duskWarned = true;
+            Hud.NotifyWarning("Nightfall approaches - stoke the fire");
+        }
         // Campfire cook tick - converts raw meat to cooked while the player
         // loiters inside the warmth radius. Reset logic lives in the service
         // so we don't have to track proximity state here too.
