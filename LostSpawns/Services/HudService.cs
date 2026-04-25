@@ -1707,10 +1707,14 @@ public class HudService : IDisposable
             _fpsAccumTime = 0;
             int s = (int)_stats.PlayTimeSeconds;
             string time = $"{s / 3600:D2}:{(s % 3600) / 60:D2}:{s % 60:D2}";
+            string phase = _worldTime.PhaseName;
+            string rain = _weather.RainIntensity > 0.02f
+                ? $"  Rain {(int)(_weather.RainIntensity * 100)}%"
+                : "";
             _debugLabel.Text =
                 $"{(int)_fpsSmoothed} fps    " +
                 $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}    " +
-                $"Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  T {time}";
+                $"Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  T {time}  {phase}{rain}";
         }
 
         // Update compass bearing from camera yaw
