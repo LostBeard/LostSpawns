@@ -2878,8 +2878,8 @@ public class HudService : IDisposable
     {
         float cur = _stats.Hunger, prev = _lastHungerSeen;
         if (prev > 0.5f && cur <= 0.5f) Notify("Peckish");
-        if (prev > 0.3f && cur <= 0.3f) NotifyWarning("Hungry");
-        if (prev > 0.1f && cur <= 0.1f) NotifyDamage("Starving!");
+        if (prev > 0.3f && cur <= 0.3f) NotifyWarning("Hungry - press G to eat");
+        if (prev > 0.1f && cur <= 0.1f) NotifyDamage("Starving! Press G to eat");
         _lastHungerSeen = cur;
     }
 
@@ -2887,8 +2887,8 @@ public class HudService : IDisposable
     {
         float cur = _stats.Thirst, prev = _lastThirstSeen;
         if (prev > 0.5f && cur <= 0.5f) Notify("Damp");
-        if (prev > 0.3f && cur <= 0.3f) NotifyWarning("Thirsty");
-        if (prev > 0.1f && cur <= 0.1f) NotifyDamage("Dehydrated!");
+        if (prev > 0.3f && cur <= 0.3f) NotifyWarning("Thirsty - press T to drink");
+        if (prev > 0.1f && cur <= 0.1f) NotifyDamage("Dehydrated! Press T to drink");
         _lastThirstSeen = cur;
     }
 
