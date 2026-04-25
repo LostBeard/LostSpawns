@@ -451,9 +451,13 @@
 
         // Jump only works grounded AND not in water - swim-up handles Space in water.
         // Eats a bit of stamina so you can't hop-spam away from predators forever.
+        // Jump impulse scales with remaining stamina: full stamina = full hop,
+        // 30% stamina = 70% of full height. Exhausted players still clear
+        // 1-block steps but can't vault 2-block walls.
         if (!inWater && _grounded && Input.KeysDown.Contains("Space") && Stats.Stamina > 0.05f)
         {
-            _verticalVelocity = JumpImpulse;
+            float staminaMul = 0.6f + Stats.Stamina * 0.4f;
+            _verticalVelocity = JumpImpulse * staminaMul;
             Stats.Stamina = Stats.Stamina - 0.05f;
             _grounded = false;
             Audio.PlayJump();
