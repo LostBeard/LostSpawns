@@ -900,6 +900,10 @@
         // Craft success chime - same rising-sine shape as level-up but shorter
         // so the player registers "made something" without feeling gated.
         Audio.PlayBeep(560f, 0.15f, 0.18f, "triangle");
+        // Crafting XP: small reward per craft scales with recipe's level
+        // gate so Stone Pick (lvl 3) is worth more than Torch (lvl 1).
+        int xp = 2 + recipe.RequiredLevel * 2;
+        Stats.AwardXp(xp);
     }
 
     private void HandleFirstKill()
