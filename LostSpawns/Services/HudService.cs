@@ -1535,7 +1535,13 @@ public class HudService : IDisposable
             if (screenY < -80 || screenY > viewportHeight + 80) continue;
 
             float dist = MathF.Max(0.1f, clip.W);
-            float size = Math.Clamp(120f / dist, 10f, 90f) * pulse;
+            // Fire radius scales the visible flame size on top of distance.
+            // Bonfire (radius 12) looks ~1.5x bigger than a campfire (6),
+            // torch (2.5) renders much smaller. Reads as "bigger fires =
+            // bigger flames" rather than every fire being identical from
+            // the same distance.
+            float radiusScale = MathF.Sqrt(f.Radius / 6f);
+            float size = Math.Clamp(120f / dist * radiusScale, 6f, 130f) * pulse;
 
             // Ember glow survives to 0 so extinguished fires are still visible
             // on the ground as a dead pile; flame + tip fade with fuel so a
