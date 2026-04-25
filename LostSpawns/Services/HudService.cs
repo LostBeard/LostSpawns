@@ -328,7 +328,7 @@ public class HudService : IDisposable
             Text =
                 "WASD move  SHIFT sprint  SPACE jump  Scroll change slot\n" +
                 "LMB attack / chop  RMB place / shoot bow\n" +
-                "E interact  F feed fire / drink  Z sleep near fire\n" +
+                "E interact  F feed fire / drink  Z sleep near fire  Q drop\n" +
                 "I inventory  C craft  ESC pause\n" +
                 "F1 help  F3 debug  M mute",
             FontSize = FontSize.Body,
