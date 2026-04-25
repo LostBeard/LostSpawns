@@ -769,6 +769,10 @@
         Hud.NotifySuccess($"Cooked {cookedName}");
         Stats.TryAwardAchievement("First Cook");
         Stats.RecordCook();
+        // Cooking XP: small reward per successful cook. Rewards camping + food
+        // processing so players who hunt stockpiles get a progression bump on
+        // top of the raw hunger restoration.
+        Stats.AwardXp(3);
     }
 
     private void HandleLowFuel(LostSpawns.Services.Campfire fire)
@@ -978,6 +982,14 @@
         var fire = Fires.FindNearest(Renderer.Camera.Position);
         if (fire is null) { Hud.NotifyWarning("Need a campfire to sleep"); return; }
         if (fire.Fuel <= 0.05f) { Hud.NotifyWarning("Fire is out"); return; }
+        // Can't nod off while you're actively bleeding out. Bandage first.
+        // This forces the player to keep at least one bandage/leaves stash
+        // handy after a wolf fight if they want to time-skip.
+        if (Stats.BleedSecondsRemaining > 0)
+        {
+            Hud.NotifyWarning("Can't sleep while bleeding - apply a bandage");
+            return;
+        }
 
         // Advance time to early dawn. If we're already past dawn this
         // rolls the clock forward a full cycle which is fine - the player
