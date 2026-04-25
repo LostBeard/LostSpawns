@@ -694,14 +694,16 @@
 
     private void HandleFirstKill()
     {
-        Hud.NotifyAchievement("First Kill!");
-        Audio.PlayLevelUp(); // reuse the two-note chime for the milestone
+        Hud.NotifyAchievement("First Kill! (+25 XP)");
+        Audio.PlayLevelUp();
+        Stats.AwardXp(25);
     }
 
     private void HandleAchievement(string name)
     {
-        Hud.NotifyAchievement(name + "!");
+        Hud.NotifyAchievement(name + "! (+25 XP)");
         Audio.PlayLevelUp();
+        Stats.AwardXp(25);
     }
 
     private void HandleLevelUpSound(int newLevel) => Audio.PlayLevelUp();
