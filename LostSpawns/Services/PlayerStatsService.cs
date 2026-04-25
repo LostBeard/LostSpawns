@@ -93,6 +93,8 @@ public class PlayerStatsService
         if (blocks <= 0) return;
         DistanceTraveled += blocks;
         OnStatsChanged?.Invoke();
+        // Marathon at 10km lifetime. Idempotent guard inside TryAwardAchievement.
+        if (DistanceTraveled >= 10000f) TryAwardAchievement("Marathon");
     }
 
     /// <summary>Seed lifetime distance from save load.</summary>
@@ -194,6 +196,7 @@ public class PlayerStatsService
             "First Aid"     => Fire(ref _firstAid),
             "Pack Hunter"   => Fire(ref _packHunter),
             "Bear Slayer"   => Fire(ref _bearSlayer),
+            "Marathon"      => Fire(ref _marathon),
             "Completionist" => Fire(ref _completionist),
             _               => false,
         };
@@ -207,7 +210,7 @@ public class PlayerStatsService
             && FirstKillAwarded && _firstFire && _firstCook && _firstWolf
             && _firstSleep && _veteran && _centurion && _survivor && _bowman
             && _hunter && _gourmet && _resilient && _firstAid && _packHunter
-            && _bearSlayer)
+            && _bearSlayer && _marathon)
         {
             TryAwardAchievement("Completionist");
         }
@@ -230,6 +233,7 @@ public class PlayerStatsService
     private bool _firstAid;
     private bool _packHunter;
     private bool _bearSlayer;
+    private bool _marathon;
     private bool _completionist;
 
     public bool VeteranAwarded => _veteran;
@@ -242,6 +246,7 @@ public class PlayerStatsService
     public bool FirstAidAwarded => _firstAid;
     public bool PackHunterAwarded => _packHunter;
     public bool BearSlayerAwarded => _bearSlayer;
+    public bool MarathonAwarded => _marathon;
     public bool CompletionistAwarded => _completionist;
 
     /// <summary>Record one entity kill. Survives respawn like XP does.</summary>
@@ -266,7 +271,7 @@ public class PlayerStatsService
     }
 
     /// <summary>Seed the other achievement flags from save. Bypasses OnAchievement so reloads don't spam.</summary>
-    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false, bool hunter = false, bool gourmet = false, bool resilient = false, bool firstAid = false, bool packHunter = false, bool bearSlayer = false)
+    public void SeedAchievementsFromSave(bool fire, bool cook, bool wolf, bool sleep, bool veteran = false, bool centurion = false, bool survivor = false, bool bowman = false, bool completionist = false, bool hunter = false, bool gourmet = false, bool resilient = false, bool firstAid = false, bool packHunter = false, bool bearSlayer = false, bool marathon = false)
     {
         _firstFire = fire;
         _firstCook = cook;
@@ -283,6 +288,7 @@ public class PlayerStatsService
         _firstAid = firstAid;
         _packHunter = packHunter;
         _bearSlayer = bearSlayer;
+        _marathon = marathon;
         OnStatsChanged?.Invoke();
     }
 

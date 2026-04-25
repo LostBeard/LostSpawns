@@ -238,9 +238,10 @@ public class HudService : IDisposable
               + (_stats.ResilientAwarded ? 1 : 0)
               + (_stats.PackHunterAwarded ? 1 : 0)
               + (_stats.BearSlayerAwarded ? 1 : 0)
+              + (_stats.MarathonAwarded ? 1 : 0)
               + (_stats.CompletionistAwarded ? 1 : 0);
         var sb = new System.Text.StringBuilder();
-        sb.Append($"ACHIEVEMENTS  {n} / 15  ({n * 100 / 15}%)\n\n");
+        sb.Append($"ACHIEVEMENTS  {n} / 17  ({n * 100 / 17}%)\n\n");
         sb.Append((_stats.FirstKillAwarded ? check : lockd)).Append(" First Kill\n");
         sb.Append((_stats.FirstFireAwarded ? check : lockd)).Append(" First Fire\n");
         sb.Append((_stats.FirstCookAwarded ? check : lockd)).Append(" First Cook\n");
@@ -256,7 +257,8 @@ public class HudService : IDisposable
         sb.Append((_stats.ResilientAwarded ? check : lockd)).Append(" Resilient (3 deaths)\n");
         sb.Append((_stats.PackHunterAwarded ? check : lockd)).Append(" Pack Hunter (5 wolves/night)\n");
         sb.Append((_stats.BearSlayerAwarded ? check : lockd)).Append(" Bear Slayer (kill a bear)\n");
-        sb.Append((_stats.CompletionistAwarded ? check : lockd)).Append(" Completionist (all 15)\n");
+        sb.Append((_stats.MarathonAwarded ? check : lockd)).Append(" Marathon (10 km traveled)\n");
+        sb.Append((_stats.CompletionistAwarded ? check : lockd)).Append(" Completionist (all 16)\n");
         _achievementsLabel.Text = sb.ToString();
     }
 
@@ -764,11 +766,12 @@ public class HudService : IDisposable
                  + (_stats.ResilientAwarded ? 1 : 0)
                  + (_stats.PackHunterAwarded ? 1 : 0)
                  + (_stats.BearSlayerAwarded ? 1 : 0)
+                 + (_stats.MarathonAwarded ? 1 : 0)
                  + (_stats.CompletionistAwarded ? 1 : 0);
         _pauseStatsLabel.Text =
             $"Day {_worldTime.DayNumber}  Lv {_stats.Level}  XP {_stats.Experience}\n" +
             $"Kills {_stats.Kills}  Deaths {_stats.Deaths}  Best Combo {_stats.BestCombo}x\n" +
-            $"Achievements {achv}/16  Playtime {time}";
+            $"Achievements {achv}/17  Playtime {time}";
     }
 
     /// <summary>Push the pause menu onto the screen stack (dims HUD behind it).</summary>
@@ -998,6 +1001,7 @@ public class HudService : IDisposable
                       + (_stats.FirstAidAwarded ? 1 : 0)
                       + (_stats.PackHunterAwarded ? 1 : 0)
                       + (_stats.BearSlayerAwarded ? 1 : 0)
+                      + (_stats.MarathonAwarded ? 1 : 0)
                       + (_stats.CompletionistAwarded ? 1 : 0);
             // Distance shown in km when over 1000 blocks, else raw blocks.
             // Reads naturally - "12 km traveled" beats "12473 blocks".
@@ -1008,7 +1012,7 @@ public class HudService : IDisposable
                 $"Lv {_stats.Level}  XP {_stats.Experience}  T {time}  Deaths {_stats.Deaths}  Best Combo {_stats.BestCombo}x\n" +
                 $"Day {_worldTime.DayNumber}  Walked {dist}  Kills: {_stats.Kills}\n" +
                 $"R:{_stats.RabbitKills}  B:{_stats.BoarKills}  C:{_stats.CrowKills}  W:{_stats.WolfKills}  D:{_stats.DeerKills}  Bear:{_stats.BearKills}\n" +
-                $"Achievements: {achvs} / 16";
+                $"Achievements: {achvs} / 17";
         }
 
         _ui.Screens.Push("death");
@@ -2741,6 +2745,7 @@ public class HudService : IDisposable
                           + (_stats.FirstAidAwarded ? 1 : 0)
                           + (_stats.PackHunterAwarded ? 1 : 0)
                           + (_stats.BearSlayerAwarded ? 1 : 0)
+                          + (_stats.MarathonAwarded ? 1 : 0)
                           + (_stats.CompletionistAwarded ? 1 : 0);
             // Save age: "saved 4s ago" or "never" before first write.
             string savedAge = LastSaveTime == DateTime.MinValue
@@ -2749,7 +2754,7 @@ public class HudService : IDisposable
             _debugLabel.Text =
                 $"{(int)_fpsSmoothed} fps    " +
                 $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}    " +
-                $"D{_worldTime.DayNumber} [{phase}]  Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  Achv {achvCount}/16  T {time}{rain}  saved {savedAge}";
+                $"D{_worldTime.DayNumber} [{phase}]  Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  Achv {achvCount}/17  T {time}{rain}  saved {savedAge}";
         }
 
         // Update compass bearing from camera yaw
