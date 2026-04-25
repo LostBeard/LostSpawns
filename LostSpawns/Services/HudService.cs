@@ -63,6 +63,16 @@ public class HudService : IDisposable
     private bool _leavesSeeded;
     private readonly Random _leafFallRng = new();
 
+    // Dawn mist - low-Y horizontal-drifting white particles only visible
+    // during the dawn window. Sells the cool early-morning haze that
+    // hangs in real-world forests after a cold night.
+    private const int MistCount = 14;
+    private readonly float[] _mistX = new float[MistCount];
+    private readonly float[] _mistY = new float[MistCount];
+    private readonly float[] _mistDrift = new float[MistCount];
+    private bool _mistSeeded;
+    private readonly Random _mistRng = new();
+
     // Breath-puff particles for cold weather. Shorter-lived + fewer than rain;
     // emitted only when the player's temperature is low. Each particle rises
     // a few pixels as it fades. Age runs 0 -> 1 (1 = dead).
@@ -2164,6 +2174,49 @@ public class HudService : IDisposable
     }
 
     /// <summary>
+    /// Render dawn mist - long horizontal pale-white streaks that drift
+    /// across the lower half of the screen during early dawn (0.05-0.13).
+    /// Sells the cold-morning haze that real forests produce after a
+    /// cold night.
+    /// </summary>
+    private void DrawDawnMist(int viewportWidth, int viewportHeight)
+    {
+        float t = _worldTime.DayFraction;
+        float vis = 0f;
+        if (t >= 0.05f && t <= 0.13f)
+        {
+            // Sin curve so the mist fades in at 0.05, peaks ~0.09, fades out by 0.13.
+            float u = (t - 0.05f) / 0.08f;
+            vis = MathF.Sin(u * MathF.PI);
+        }
+        if (vis < 0.05f) return;
+
+        if (!_mistSeeded)
+        {
+            for (int i = 0; i < MistCount; i++)
+            {
+                _mistX[i] = (float)(_mistRng.NextDouble() * viewportWidth);
+                // Mist hangs in the lower 60% of the screen.
+                _mistY[i] = (float)(viewportHeight * 0.40f + _mistRng.NextDouble() * viewportHeight * 0.55f);
+                _mistDrift[i] = 8f + (float)_mistRng.NextDouble() * 12f;
+            }
+            _mistSeeded = true;
+        }
+
+        for (int i = 0; i < MistCount; i++)
+        {
+            _mistX[i] += _mistDrift[i] * 0.016f;
+            if (_mistX[i] > viewportWidth + 50) _mistX[i] = -50;
+
+            int alpha = (int)(70 * vis);
+            if (alpha < 5) continue;
+            // Long thin streak: 80x6 pixels.
+            _ui.Renderer.DrawRect(_mistX[i], _mistY[i], 80f, 6f,
+                System.Drawing.Color.FromArgb(alpha, 240, 240, 250));
+        }
+    }
+
+    /// <summary>
     /// Render falling leaves drifting diagonally down across the screen.
     /// Each leaf has independent fall speed + sin-sway X so the swarm
     /// moves naturally. Faded out at deep night (only sparse during day).
@@ -2848,6 +2901,7 @@ public class HudService : IDisposable
             DrawSunMoon(viewportWidth, viewportHeight);
             DrawFireflies(viewportWidth, viewportHeight);
             DrawFallingLeaves(viewportWidth, viewportHeight);
+            DrawDawnMist(viewportWidth, viewportHeight);
 
             // Campfires render first so entity billboards paint on top - a
             // critter standing in front of the fire occludes it naturally.
