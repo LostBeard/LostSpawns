@@ -344,6 +344,12 @@ public class AudioService : IDisposable
         PlayBeep(altPhase ? 130f : 110f, 0.04f, 0.06f, "sine");
     }
 
+    /// <summary>Wet wading-step footfall - higher pitch + airier than dry land.</summary>
+    public void PlayWaterStep(bool altPhase)
+    {
+        PlayBeep(altPhase ? 380f : 340f, 0.05f, 0.045f, "sine");
+    }
+
     /// <summary>Deep rumbling thunder - long triangle fade after a lightning strike.</summary>
     public void PlayThunder()
     {

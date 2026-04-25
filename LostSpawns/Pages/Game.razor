@@ -1364,7 +1364,8 @@
             {
                 _stepTimer = 0;
                 _stepAlt = !_stepAlt;
-                Audio.PlayStep(_stepAlt);
+                if (IsInWater()) Audio.PlayWaterStep(_stepAlt);
+                else             Audio.PlayStep(_stepAlt);
             }
         }
         else
