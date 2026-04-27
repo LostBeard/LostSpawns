@@ -84,7 +84,7 @@
         _drawDistance = SettingsSvc.DrawDistance;
         _fov = (int)SettingsSvc.FieldOfView;
         _vsync = SettingsSvc.Vsync;
-        _playerName = SettingsSvc.PlayerName;
+        _playerName = Identity.PlayerName;
     }
 
     private void OnDrawDistanceChanged(ChangeEventArgs e) => _drawDistance = int.Parse(e.Value?.ToString() ?? "8");
@@ -100,7 +100,6 @@
 
     private async Task SavePlayer()
     {
-        SettingsSvc.SavePlayerName(_playerName);
         Identity.SetPlayerName(_playerName);
         await ShowSaved();
     }

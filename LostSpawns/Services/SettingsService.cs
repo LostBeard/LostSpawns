@@ -18,8 +18,8 @@ public class SettingsService
     // Audio
     public float MasterVolume { get; private set; } = 1f;    // [0, 1]
 
-    // Player
-    public string PlayerName { get; private set; } = "Survivor";
+    // Note: PlayerName lives on IdentityService, not here. Identity owns the
+    // mutable display name alongside the persistent Ed25519 keypair.
 
     public SettingsService(BlazorJSRuntime js)
     {
@@ -34,7 +34,6 @@ public class SettingsService
         FieldOfView = GetFloat("lost.settings.fov", 70f);
         Vsync = GetBool("lost.settings.vsync", true);
         MasterVolume = Math.Clamp(GetFloat("lost.settings.volume", 1f), 0f, 1f);
-        PlayerName = GetString("lost.settings.playerName", "Survivor");
     }
 
     public void SaveVideo(int drawDistance, float fov, bool vsync)
@@ -43,12 +42,6 @@ public class SettingsService
         Set("lost.settings.drawDistance", drawDistance.ToString());
         Set("lost.settings.fov", fov.ToString("F2"));
         Set("lost.settings.vsync", vsync ? "1" : "0");
-    }
-
-    public void SavePlayerName(string name)
-    {
-        PlayerName = name;
-        Set("lost.settings.playerName", name);
     }
 
     public void SaveVolume(float volume)
