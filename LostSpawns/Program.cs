@@ -3,12 +3,16 @@ using LostSpawns.Services;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using SpawnDev.BlazorJS;
+using SpawnDev.BlazorJS.Cryptography;
 using SpawnDev.GameUI;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
 // Initialize BlazorJS runtime (required before any JS interop)
 builder.Services.AddBlazorJSRuntime(out var JS);
+
+// Cross-platform crypto (Ed25519, SHA, etc) - browser uses BrowserWASMCrypto
+builder.Services.AddPlatformCrypto();
 
 // Core game services
 builder.Services.AddSingleton<IdentityService>();
