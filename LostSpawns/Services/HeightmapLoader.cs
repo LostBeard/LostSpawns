@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using LostSpawns.Models;
 using LostSpawns.Rendering;
-using SpawnDev.BlazorJS;
+using SpawnDev.SpawnJS;
 
 namespace LostSpawns.Services;
 
@@ -29,10 +29,10 @@ public class HeightmapLoader
     /// <summary>
     /// Load a binary heightmap from a URL (static asset in wwwroot/maps/).
     /// </summary>
-    public async Task LoadAsync(BlazorJSRuntime js, string url)
+    public async Task LoadAsync(SpawnJSRuntime js, string url)
     {
 
-        using var response = await js.CallAsync<SpawnDev.BlazorJS.JSObjects.Response>("fetch", url);
+        using var response = await js.CallAsync<string, SpawnDev.SpawnJS.JSObjects.Response>("fetch", url);
         using var arrayBuffer = await response.ArrayBuffer();
         var bytes = arrayBuffer.ReadBytes();
 

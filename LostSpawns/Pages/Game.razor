@@ -1,5 +1,5 @@
 @page "/game"
-@using SpawnDev.BlazorJS.JSObjects
+@using SpawnDev.SpawnJS.JSObjects
 @using LostSpawns.Models
 @using LostSpawns.Rendering
 @inject VoxelEngineService Engine
@@ -18,7 +18,7 @@
 @inject CraftingService Crafter
 @inject InventoryService Inventory
 @inject SaveService Save
-@inject SpawnDev.BlazorJS.BlazorJSRuntime JS
+@inject SpawnDev.SpawnJS.SpawnJSRuntime JS
 @inject NavigationManager Nav
 @implements IAsyncDisposable
 
@@ -59,7 +59,7 @@
         _status = "Building render pipeline…";
         StateHasChanged();
 
-        using var canvas = new HTMLCanvasElement(_canvasRef);
+        using var canvas = _canvasRef.As<HTMLCanvasElement>();
         Renderer.Init(canvas, Engine.Accelerator!, World);
 
         _status = "Loading terrain data…";
@@ -123,9 +123,9 @@
         Input.OnQuickSavePressed += HandleQuickSave;
 
         // Auto-pause when the player tabs away. Browser fires visibilitychange
-        // on document; SpawnDev.BlazorJS wraps it as a typed ActionEvent so we
+        // on document; SpawnDev.SpawnJS wraps it as a typed ActionEvent so we
         // can += / -= without raw addEventListener.
-        _doc = JS.Get<SpawnDev.BlazorJS.JSObjects.Document>("document");
+        _doc = JS.Get<SpawnDev.SpawnJS.JSObjects.Document>("document");
         _doc.OnVisibilityChange += HandleVisibilityChange;
         Input.OnInteractPressed += HandleInteract;
         Input.OnLeftClickPressed += HandleInteract;       // L-click = break, same as E
@@ -329,9 +329,9 @@
 
     // Document handle for visibility-change auto-pause. Disposed in
     // DisposeAsync alongside the rest of the JS interop teardown.
-    private SpawnDev.BlazorJS.JSObjects.Document? _doc;
+    private SpawnDev.SpawnJS.JSObjects.Document? _doc;
 
-    private void HandleVisibilityChange(SpawnDev.BlazorJS.JSObjects.Event _)
+    private void HandleVisibilityChange(SpawnDev.SpawnJS.JSObjects.Event _)
     {
         // When the tab is hidden, push the pause menu so the player isn't
         // bleeding hunger / thirst while AFK in a background tab. When the
@@ -2016,7 +2016,7 @@
         Hud.HidePauseMenu();
         try
         {
-            using var canvas = new HTMLCanvasElement(_canvasRef);
+            using var canvas = _canvasRef.As<HTMLCanvasElement>();
             canvas.RequestPointerLock();
         }
         catch (Exception ex)
@@ -2115,7 +2115,7 @@
         // Re-request pointer lock so the player can look around immediately.
         try
         {
-            using var canvas = new HTMLCanvasElement(_canvasRef);
+            using var canvas = _canvasRef.As<HTMLCanvasElement>();
             canvas.RequestPointerLock();
         }
         catch (Exception ex)
@@ -2819,7 +2819,7 @@
         if (Input.IsPointerLocked) return;
         try
         {
-            using var canvas = new HTMLCanvasElement(_canvasRef);
+            using var canvas = _canvasRef.As<HTMLCanvasElement>();
             canvas.RequestPointerLock();
         }
         catch (Exception ex)

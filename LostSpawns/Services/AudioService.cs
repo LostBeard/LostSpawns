@@ -1,5 +1,5 @@
-using SpawnDev.BlazorJS;
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS;
+using SpawnDev.SpawnJS.JSObjects;
 
 namespace LostSpawns.Services;
 
@@ -17,7 +17,7 @@ namespace LostSpawns.Services;
 /// </summary>
 public class AudioService : IDisposable
 {
-    private readonly BlazorJSRuntime _js;
+    private readonly SpawnJSRuntime _js;
     private AudioContext? _ctx;
     private GainNode? _master;
     private bool _resumed;
@@ -40,7 +40,7 @@ public class AudioService : IDisposable
     }
     private float _masterVolume = 1f;
 
-    public AudioService(BlazorJSRuntime js)
+    public AudioService(SpawnJSRuntime js)
     {
         _js = js;
     }

@@ -1,16 +1,16 @@
-using SpawnDev.BlazorJS;
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS;
+using SpawnDev.SpawnJS.JSObjects;
 using System.Numerics;
 
 namespace LostSpawns.Services;
 
 /// <summary>
-/// Tracks keyboard and mouse input state using BlazorJS ActionEvent patterns.
+/// Tracks keyboard and mouse input state using SpawnJS ActionEvent patterns.
 /// Uses += / -= on Window.OnKeyDown, Window.OnKeyUp, and document.OnMouseMove.
 /// </summary>
 public class InputService : IAsyncDisposable
 {
-    private readonly BlazorJSRuntime _js;
+    private readonly SpawnJSRuntime _js;
     private Window? _window;
     private Document? _document;
 
@@ -108,7 +108,7 @@ public class InputService : IAsyncDisposable
         (Forward ? 1f : 0f) - (Back ? 1f : 0f)
     );
 
-    public InputService(BlazorJSRuntime js)
+    public InputService(SpawnJSRuntime js)
     {
         _js = js;
     }

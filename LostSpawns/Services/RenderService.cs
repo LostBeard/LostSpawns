@@ -1,5 +1,5 @@
-using SpawnDev.BlazorJS;
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS;
+using SpawnDev.SpawnJS.JSObjects;
 using SpawnDev.ILGPU.WebGPU;
 using ILGPU.Runtime;
 using System.Numerics;
@@ -19,7 +19,7 @@ namespace LostSpawns.Services;
 /// </summary>
 public class RenderService : IDisposable
 {
-    private readonly BlazorJSRuntime _js;
+    private readonly SpawnJSRuntime _js;
     private readonly WorldTimeService _worldTime;
 
     private GPUDevice? _device;
@@ -70,7 +70,7 @@ public class RenderService : IDisposable
     public int TotalSectionCount => _world?.LoadedSections ?? 0;
     public int TotalColumnCount => _world?.LoadedColumns ?? 0;
 
-    public RenderService(BlazorJSRuntime js, WorldTimeService worldTime)
+    public RenderService(SpawnJSRuntime js, WorldTimeService worldTime)
     {
         _js = js;
         _worldTime = worldTime;

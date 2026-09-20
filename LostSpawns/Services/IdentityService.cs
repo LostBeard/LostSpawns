@@ -1,6 +1,6 @@
-using SpawnDev.BlazorJS;
-using SpawnDev.BlazorJS.Cryptography;
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS;
+using SpawnDev.SpawnJS.Cryptography;
+using SpawnDev.SpawnJS.JSObjects;
 
 namespace LostSpawns.Services;
 
@@ -17,7 +17,7 @@ public class IdentityService : IAsyncDisposable
     private const string KEY_PUBLIC = "ed25519.spki";
     private const string KEY_PRIVATE = "ed25519.pkcs8";
 
-    private readonly BlazorJSRuntime _js;
+    private readonly SpawnJSRuntime _js;
     private readonly IPortableCrypto _crypto;
     private PortableEd25519Key? _key;
     private byte[] _publicKeySpki = [];
@@ -27,7 +27,7 @@ public class IdentityService : IAsyncDisposable
     public string PlayerName { get; private set; } = "Survivor";
     public bool IsInitialized { get; private set; }
 
-    public IdentityService(BlazorJSRuntime js, IPortableCrypto crypto)
+    public IdentityService(SpawnJSRuntime js, IPortableCrypto crypto)
     {
         _js = js;
         _crypto = crypto;

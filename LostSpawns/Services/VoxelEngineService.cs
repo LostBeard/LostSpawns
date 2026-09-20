@@ -1,6 +1,6 @@
 using ILGPU;
 using ILGPU.Runtime;
-using SpawnDev.BlazorJS;
+using SpawnDev.SpawnJS;
 using SpawnDev.ILGPU;
 using SpawnDev.ILGPU.WebGPU;
 using SpawnDev.VoxelEngine;
@@ -18,7 +18,7 @@ namespace LostSpawns.Services;
 /// </summary>
 public class VoxelEngineService : IAsyncDisposable
 {
-    private readonly BlazorJSRuntime _js;
+    private readonly SpawnJSRuntime _js;
     private Context? _context;
     private Accelerator? _accelerator;
 
@@ -36,7 +36,7 @@ public class VoxelEngineService : IAsyncDisposable
     public bool IsInitialized { get; private set; }
     public string? BackendName { get; private set; }
 
-    public VoxelEngineService(BlazorJSRuntime js)
+    public VoxelEngineService(SpawnJSRuntime js)
     {
         _js = js;
     }

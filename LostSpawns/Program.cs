@@ -2,14 +2,16 @@ using LostSpawns;
 using LostSpawns.Services;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
-using SpawnDev.BlazorJS;
-using SpawnDev.BlazorJS.Cryptography;
+using SpawnDev.SpawnJS;
+using SpawnDev.SpawnJS.Cryptography;
 using SpawnDev.GameUI;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
-// Initialize BlazorJS runtime (required before any JS interop)
-builder.Services.AddBlazorJSRuntime(out var JS);
+// Initialize SpawnJS runtime (required before any JS interop)
+builder.Services.AddSpawnJSRuntime(out var JS);
+// Slot lifetime is manual in SpawnJS; watcher names leaks from owned wrappers/callbacks.
+SpawnJSRuntime.EnableIDisposableWatcher = true;
 
 // Cross-platform crypto (Ed25519, SHA, etc) - browser uses BrowserWASMCrypto
 builder.Services.AddPlatformCrypto();
@@ -45,5 +47,5 @@ if (JS.IsWindow)
     builder.RootComponents.Add<HeadOutlet>("head::after");
 }
 
-// BlazorJSRunAsync replaces RunAsync — handles BlazorJS initialization lifecycle
-await builder.Build().BlazorJSRunAsync();
+// SpawnJSRunAsync replaces RunAsync - handles SpawnJS initialization lifecycle
+await builder.Build().SpawnJSRunAsync();

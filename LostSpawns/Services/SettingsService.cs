@@ -1,5 +1,5 @@
-using SpawnDev.BlazorJS;
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS;
+using SpawnDev.SpawnJS.JSObjects;
 
 namespace LostSpawns.Services;
 
@@ -8,7 +8,7 @@ namespace LostSpawns.Services;
 /// </summary>
 public class SettingsService
 {
-    private readonly BlazorJSRuntime _js;
+    private readonly SpawnJSRuntime _js;
 
     // Video
     public int DrawDistance { get; private set; } = 12;      // chunks (192m view radius)
@@ -21,7 +21,7 @@ public class SettingsService
     // Note: PlayerName lives on IdentityService, not here. Identity owns the
     // mutable display name alongside the persistent Ed25519 keypair.
 
-    public SettingsService(BlazorJSRuntime js)
+    public SettingsService(SpawnJSRuntime js)
     {
         _js = js;
         Load();

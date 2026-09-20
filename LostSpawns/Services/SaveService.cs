@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using SpawnDev.BlazorJS;
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS;
+using SpawnDev.SpawnJS.JSObjects;
 
 namespace LostSpawns.Services;
 
@@ -26,7 +26,7 @@ public class SaveService
     public const string SaveKey = "lost.save";
     public const float AutoSaveIntervalSeconds = 10f;
 
-    private readonly BlazorJSRuntime _js;
+    private readonly SpawnJSRuntime _js;
     private readonly PlayerStatsService _stats;
     private readonly InventoryService _inventory;
     private readonly WorldTimeService _worldTime;
@@ -41,7 +41,7 @@ public class SaveService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public SaveService(BlazorJSRuntime js, PlayerStatsService stats, InventoryService inventory, WorldTimeService worldTime, WorldService world, CampfireService fires, GroundItemService ground)
+    public SaveService(SpawnJSRuntime js, PlayerStatsService stats, InventoryService inventory, WorldTimeService worldTime, WorldService world, CampfireService fires, GroundItemService ground)
     {
         _js = js;
         _stats = stats;

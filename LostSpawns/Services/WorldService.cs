@@ -1,7 +1,7 @@
 using System.Numerics;
 using ILGPU;
 using ILGPU.Runtime;
-using SpawnDev.BlazorJS.JSObjects;
+using SpawnDev.SpawnJS.JSObjects;
 using SpawnDev.ILGPU.WebGPU;
 using SpawnDev.VoxelEngine;
 using SpawnDev.VoxelEngine.Meshing;

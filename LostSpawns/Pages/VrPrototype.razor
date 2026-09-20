@@ -1,7 +1,7 @@
 @page "/vr"
 @using System.Numerics
-@using SpawnDev.BlazorJS
-@using SpawnDev.BlazorJS.JSObjects
+@using SpawnDev.SpawnJS
+@using SpawnDev.SpawnJS.JSObjects
 @using SpawnDev.ILGPU.WebGPU
 @using SpawnDev.VoxelEngine.Rendering
 @using LostSpawns.Models
@@ -86,7 +86,7 @@
     </div>
 </div>
 
-@inject BlazorJSRuntime JS
+@inject SpawnJSRuntime JS
 
 @code {
     RenderPathReport? _report;
@@ -983,8 +983,8 @@ void main() {
         }
         catch (Exception ex)
         {
-            // BlazorJS wrapper may not marshal the anonymous position/orientation objects, or
-            // the runtime may reject the transform. If this repeats, flag as a SpawnDev.BlazorJS
+            // SpawnJS wrapper may not marshal the anonymous position/orientation objects, or
+            // the runtime may reject the transform. If this repeats, flag as a SpawnDev.SpawnJS
             // gap (first WebXR consumer - Captain confirmed possible bug surface 2026-04-23).
             JS.CallVoid("console.warn", $"[VR locomotion] GetOffsetReferenceSpace failed: {ex.Message}");
         }

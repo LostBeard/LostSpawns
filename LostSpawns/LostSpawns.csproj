@@ -19,12 +19,12 @@
 		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.3" PrivateAssets="all" />
 	</ItemGroup>
 
-	<!-- SpawnDev libraries from nuget.org (was ProjectReference; flipped on 2026-04-25 -->
+	<!-- SpawnDev libraries from local feed / nuget.org (was ProjectReference; flipped on 2026-04-25 -->
 	<!-- so GitHub Actions / GitHub Pages can build the project without local sources). -->
 	<ItemGroup>
-		<PackageReference Include="SpawnDev.BlazorJS.Cryptography" Version="3.2.0" />
-		<PackageReference Include="SpawnDev.GameUI" Version="0.1.0-rc.1" />
-		<PackageReference Include="SpawnDev.VoxelEngine" Version="0.1.0-rc.2" />
+		<PackageReference Include="SpawnDev.SpawnJS.Cryptography" Version="2.0.2" />
+		<PackageReference Include="SpawnDev.GameUI" Version="0.1.0-rc.2" />
+		<PackageReference Include="SpawnDev.VoxelEngine" Version="0.1.0-rc.3" />
 	</ItemGroup>
 
 	<ItemGroup>

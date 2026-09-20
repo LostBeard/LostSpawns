@@ -1,6 +1,6 @@
 # Lost Spawns
 
-A voxel-based 3D survival game built entirely in **Blazor WebAssembly** — showcasing the power of [SpawnDev.BlazorJS](https://github.com/LostBeard/SpawnDev.BlazorJS) and [SpawnDev.ILGPU](https://github.com/LostBeard/SpawnDev.ILGPU) for GPU-accelerated rendering and compute in the browser.
+A voxel-based 3D survival game built entirely in **Blazor WebAssembly** - showcasing the power of [SpawnDev.SpawnJS](https://github.com/LostBeard/SpawnDev.SpawnJS) and [SpawnDev.ILGPU](https://github.com/LostBeard/SpawnDev.ILGPU) for GPU-accelerated rendering and compute in the browser.
 
 ## 🎮 Overview
 
@@ -127,9 +127,9 @@ Research docs covering the tough problems (chunk streaming, palette compression,
 | Component | Technology |
 |-----------|-----------|
 | **Runtime** | .NET 10, Blazor WebAssembly |
-| **JS Interop** | [SpawnDev.BlazorJS](https://www.nuget.org/packages/SpawnDev.BlazorJS) |
+| **JS Interop** | [SpawnDev.SpawnJS](https://www.nuget.org/packages/SpawnDev.SpawnJS) |
 | **GPU Compute** | [SpawnDev.ILGPU](https://www.nuget.org/packages/SpawnDev.ILGPU) (WebGPU backend) |
-| **Rendering** | WebGPU API (via SpawnDev.BlazorJS wrappers) |
+| **Rendering** | WebGPU API (via SpawnDev.SpawnJS wrappers) |
 | **Shaders** | Hand-written WGSL |
 
 ## 🚀 Getting Started
@@ -181,10 +181,10 @@ Navigate to `https://localhost:7272/game` and click the canvas to capture mouse 
 
 ## 📦 NuGet Packages Used
 
-- [`SpawnDev.BlazorJS`](https://www.nuget.org/packages/SpawnDev.BlazorJS) — Strongly-typed JS interop for every Web API (transitive via GameUI + VoxelEngine)
-- [`SpawnDev.ILGPU`](https://www.nuget.org/packages/SpawnDev.ILGPU) — GPU compute with WebGPU, WebGL, Wasm, CUDA, OpenCL, and CPU backends (transitive via VoxelEngine)
-- [`SpawnDev.VoxelEngine`](https://www.nuget.org/packages/SpawnDev.VoxelEngine) — GPU-accelerated voxel engine (binary greedy meshing, culling, LOD, terrain carving, physics, SDF, VR)
-- [`SpawnDev.GameUI`](https://www.nuget.org/packages/SpawnDev.GameUI) — GPU-rendered game UI library (no HTML overlays on canvas, unified PC/VR/AR input)
+- [`SpawnDev.SpawnJS`](https://www.nuget.org/packages/SpawnDev.SpawnJS) - Strongly-typed JS interop for every Web API (via GameUI + VoxelEngine)
+- [`SpawnDev.ILGPU`](https://www.nuget.org/packages/SpawnDev.ILGPU) - GPU compute with WebGPU, WebGL, Wasm, CUDA, OpenCL, and CPU backends (transitive via VoxelEngine)
+- [`SpawnDev.VoxelEngine`](https://www.nuget.org/packages/SpawnDev.VoxelEngine) - GPU-accelerated voxel engine (binary greedy meshing, culling, LOD, terrain carving, physics, SDF, VR)
+- [`SpawnDev.GameUI`](https://www.nuget.org/packages/SpawnDev.GameUI) - GPU-rendered game UI library (no HTML overlays on canvas, unified PC/VR/AR input)
 
 > Currently consumed via `<ProjectReference>` for fast iteration. Switching to `<PackageReference>` for the public NuGet versions when GitHub Actions / GitHub Pages deployment lands.
 
