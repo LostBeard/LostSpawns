@@ -134,27 +134,60 @@ public static class GlbGpuUploader
             bMax = new Vector3(maxEl[0].GetSingle(), maxEl[1].GetSingle(), maxEl[2].GetSingle());
         }
 
-        bool hasWalk = false, hasAttack = false, hasIdle = false;
-        if (root.TryGetProperty("animations", out var anims))
+        GPUBuffer? jointsBuffer = null;
+        GPUBuffer? weightsBuffer = null;
+        const int ComponentUByte = 5121;
+        if (attrs.TryGetProperty("JOINTS_0", out var jAccEl)
+            && attrs.TryGetProperty("WEIGHTS_0", out var wAccEl))
         {
-            foreach (var a in anims.EnumerateArray())
+            var jAcc = accessors[jAccEl.GetInt32()];
+            var wAcc = accessors[wAccEl.GetInt32()];
+            if (jAcc.GetProperty("componentType").GetInt32() == ComponentUByte
+                && jAcc.GetProperty("type").GetString() == "VEC4"
+                && jAcc.GetProperty("count").GetInt32() == vertexCount
+                && wAcc.GetProperty("componentType").GetInt32() == ComponentFloat
+                && wAcc.GetProperty("type").GetString() == "VEC4"
+                && wAcc.GetProperty("count").GetInt32() == vertexCount)
             {
-                var name = a.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
-                if (name.Equals("Walk", StringComparison.OrdinalIgnoreCase)) hasWalk = true;
-                else if (name.Equals("Attack", StringComparison.OrdinalIgnoreCase)) hasAttack = true;
-                else if (name.StartsWith("Idle", StringComparison.OrdinalIgnoreCase)) hasIdle = true;
+                var (jOff, jLen, _) = ResolveView(jAcc, views, 4);
+                var (wOff, wLen, _) = ResolveView(wAcc, views, 16);
+                if (jOff + jLen <= binByteLength && wOff + wLen <= binByteLength)
+                {
+                    jointsBuffer = UploadView(device, queue, source.Buffer, binByteOffset + jOff, jLen,
+                        GPUBufferUsage.Vertex | GPUBufferUsage.CopyDst);
+                    weightsBuffer = UploadView(device, queue, source.Buffer, binByteOffset + wOff, wLen,
+                        GPUBufferUsage.Vertex | GPUBufferUsage.CopyDst);
+                }
             }
         }
 
+        GlbSkinRuntime? skin = null;
+        if (jointsBuffer != null && weightsBuffer != null)
+            skin = GlbSkinRuntime.TryParse(root, source.Buffer, binByteOffset, binByteLength);
+
+        if (skin == null)
+        {
+            jointsBuffer?.Destroy(); jointsBuffer?.Dispose();
+            weightsBuffer?.Destroy(); weightsBuffer?.Dispose();
+            jointsBuffer = null;
+            weightsBuffer = null;
+        }
+
+        bool hasWalk = skin?.HasClip("Walk") == true;
+        bool hasAttack = skin?.HasClip("Attack") == true;
+        bool hasIdle = skin?.HasClip("Idle") == true || skin?.HasClip("Idle_2") == true;
+
         Console.WriteLine(
             $"[Gltf] GPU mesh {source.Id}: verts={vertexCount} idx={indexCount} " +
-            $"stridePos={posStride} anims walk={hasWalk} attack={hasAttack} idle={hasIdle}");
+            $"skinned={skin != null} walk={hasWalk} attack={hasAttack} idle={hasIdle}");
 
         return new GpuEntityMesh(
             source.Id,
             posBuffer,
             normalBuffer,
             indexBuffer,
+            jointsBuffer,
+            weightsBuffer,
             indexCount,
             indexFormat,
             vertexCount,
@@ -162,7 +195,8 @@ public static class GlbGpuUploader
             bMax,
             hasWalk,
             hasAttack,
-            hasIdle);
+            hasIdle,
+            skin);
     }
 
     private static (long offset, int length, int stride) ResolveView(
@@ -247,13 +281,15 @@ public static class GlbGpuUploader
 /// <summary>Minimal GLB source handle used by the uploader (id + JS buffer).</summary>
 public readonly record struct LoadedGltfSource(string Id, ArrayBuffer Buffer);
 
-/// <summary>GPU-resident rest-pose mesh for one catalog entry.</summary>
+/// <summary>GPU-resident mesh for one catalog entry, with optional skin runtime.</summary>
 public sealed class GpuEntityMesh : IDisposable
 {
     public string Id { get; }
     public GPUBuffer PositionBuffer { get; }
     public GPUBuffer NormalBuffer { get; }
     public GPUBuffer IndexBuffer { get; }
+    public GPUBuffer? JointsBuffer { get; }
+    public GPUBuffer? WeightsBuffer { get; }
     public int IndexCount { get; }
     public GPUIndexFormat IndexFormat { get; }
     public int VertexCount { get; }
@@ -262,6 +298,9 @@ public sealed class GpuEntityMesh : IDisposable
     public bool HasWalkClip { get; }
     public bool HasAttackClip { get; }
     public bool HasIdleClip { get; }
+    public GlbSkinRuntime? Skin { get; }
+
+    public bool IsSkinned => Skin != null && JointsBuffer != null && WeightsBuffer != null;
 
     public float ModelHeight => MathF.Max(0.01f, BoundsMax.Y - BoundsMin.Y);
 
@@ -272,6 +311,8 @@ public sealed class GpuEntityMesh : IDisposable
         GPUBuffer positionBuffer,
         GPUBuffer normalBuffer,
         GPUBuffer indexBuffer,
+        GPUBuffer? jointsBuffer,
+        GPUBuffer? weightsBuffer,
         int indexCount,
         GPUIndexFormat indexFormat,
         int vertexCount,
@@ -279,12 +320,15 @@ public sealed class GpuEntityMesh : IDisposable
         Vector3 boundsMax,
         bool hasWalkClip,
         bool hasAttackClip,
-        bool hasIdleClip)
+        bool hasIdleClip,
+        GlbSkinRuntime? skin)
     {
         Id = id;
         PositionBuffer = positionBuffer;
         NormalBuffer = normalBuffer;
         IndexBuffer = indexBuffer;
+        JointsBuffer = jointsBuffer;
+        WeightsBuffer = weightsBuffer;
         IndexCount = indexCount;
         IndexFormat = indexFormat;
         VertexCount = vertexCount;
@@ -293,6 +337,7 @@ public sealed class GpuEntityMesh : IDisposable
         HasWalkClip = hasWalkClip;
         HasAttackClip = hasAttackClip;
         HasIdleClip = hasIdleClip;
+        Skin = skin;
     }
 
     public void Dispose()
@@ -302,5 +347,7 @@ public sealed class GpuEntityMesh : IDisposable
         PositionBuffer.Destroy(); PositionBuffer.Dispose();
         NormalBuffer.Destroy(); NormalBuffer.Dispose();
         IndexBuffer.Destroy(); IndexBuffer.Dispose();
+        JointsBuffer?.Destroy(); JointsBuffer?.Dispose();
+        WeightsBuffer?.Destroy(); WeightsBuffer?.Dispose();
     }
 }

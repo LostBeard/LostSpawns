@@ -13,7 +13,8 @@ Runtime mapping: `Content/MeshCatalog.cs`.
 
 1. `GltfMeshService` fetches GLBs into JS `ArrayBuffer`s (not the .NET heap).
 2. `GlbGpuUploader` reads only the JSON chunk into managed memory, then
-   `writeBuffer`s POSITION / NORMAL / index views from TypedArray slices.
-3. `EntityMeshPipeline` draws rest-pose meshes in the voxel depth pass.
-   Walk bob + charge lean approximate locomotion until joint skinning lands.
-4. HUD billboards are skipped per-kind once a GPU mesh is ready (HP/name stay).
+   `writeBuffer`s POSITION / NORMAL / JOINTS_0 / WEIGHTS_0 / index views.
+3. `GlbSkinRuntime` keeps IBM + Walk/Attack/Idle curves; evaluates a 64-bone
+   palette each draw (Walk when moving, Attack when charging, else Idle).
+4. `EntityMeshPipeline` skins in WGSL inside the voxel depth pass.
+5. HUD billboards are skipped per-kind once a GPU mesh is ready (HP/name stay).

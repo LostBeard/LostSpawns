@@ -8,39 +8,88 @@ using SpawnDev.VoxelEngine.Rendering;
 namespace LostSpawns.Rendering;
 
 /// <summary>
-/// Draws GPU-resident entity meshes (rest pose from GLB) inside the voxel
-/// render pass so they share reversed-Z depth. Walk/attack clips are not
-/// skinned yet - motion is approximated with yaw + bob + charge lean until
-/// a joint palette upload lands.
+/// Draws GPU-resident entity meshes inside the voxel render pass.
+/// Skinned GLBs use JOINTS_0/WEIGHTS_0 + a per-draw bone palette evaluated
+/// from Walk/Attack/Idle clips; unskinned meshes fall back to rest pose.
 /// </summary>
 public sealed class EntityMeshPipeline : IDisposable
 {
     private GPUDevice? _device;
     private GPUQueue? _queue;
-    private GPURenderPipeline? _pipeline;
+    private GPURenderPipeline? _pipelineSkinned;
+    private GPURenderPipeline? _pipelineStatic;
     private GPUBuffer? _uniformBuffer;
-    private GPUBindGroup? _bindGroup;
+    private GPUBuffer? _boneBuffer;
+    private GPUBindGroup? _bindGroupSkinned;
+    private GPUBindGroup? _bindGroupStatic;
     private bool _disposed;
 
-    // Per-frame uniform scratch (MVP + model + color + lightDir) = 192 bytes, pad to 256.
+    // mvp + model + color + lightDir = 192, pad to 256
     private const int UniformBytes = 256;
+    private const int BoneBytes = GlbSkinRuntime.MaxJoints * 64; // 64 * mat4
     private readonly byte[] _uniformScratch = new byte[UniformBytes];
+    private readonly byte[] _boneScratch = new byte[BoneBytes];
+    private readonly Matrix4x4[] _palette = new Matrix4x4[GlbSkinRuntime.MaxJoints];
 
     public void Init(GPUDevice device, GPUQueue queue, string colorFormat)
     {
         _device = device;
         _queue = queue;
 
-        const string wgsl = """
+        const string commonStructs = """
 struct Uniforms {
   mvp: mat4x4f,
   model: mat4x4f,
   color: vec4f,
   lightDir: vec4f,
 }
-
+struct Bones {
+  mats: array<mat4x4f, 64>,
+}
 @group(0) @binding(0) var<uniform> u: Uniforms;
+""";
 
+        const string skinnedWgsl = commonStructs + """
+@group(0) @binding(1) var<uniform> bones: Bones;
+
+struct VSOut {
+  @builtin(position) pos: vec4f,
+  @location(0) worldN: vec3f,
+  @location(1) color: vec4f,
+}
+
+@vertex
+fn vs_main(
+  @location(0) position: vec3f,
+  @location(1) normal: vec3f,
+  @location(2) joints: vec4<u32>,
+  @location(3) weights: vec4f,
+) -> VSOut {
+  var o: VSOut;
+  let skin =
+      bones.mats[joints.x] * weights.x +
+      bones.mats[joints.y] * weights.y +
+      bones.mats[joints.z] * weights.z +
+      bones.mats[joints.w] * weights.w;
+  let skinnedPos = skin * vec4f(position, 1.0);
+  let skinnedN = skin * vec4f(normal, 0.0);
+  o.pos = u.mvp * skinnedPos;
+  let n = (u.model * skinnedN).xyz;
+  let nlen = length(n);
+  o.worldN = select(vec3f(0.0, 1.0, 0.0), n / nlen, nlen > 0.001);
+  o.color = u.color;
+  return o;
+}
+
+@fragment
+fn fs_main(i: VSOut) -> @location(0) vec4f {
+  let L = normalize(u.lightDir.xyz);
+  let ndl = clamp(dot(normalize(i.worldN), L), 0.15, 1.0);
+  return vec4f(i.color.rgb * ndl, i.color.a);
+}
+""";
+
+        const string staticWgsl = commonStructs + """
 struct VSOut {
   @builtin(position) pos: vec4f,
   @location(0) worldN: vec3f,
@@ -65,98 +114,132 @@ fn vs_main(
 fn fs_main(i: VSOut) -> @location(0) vec4f {
   let L = normalize(u.lightDir.xyz);
   let ndl = clamp(dot(normalize(i.worldN), L), 0.15, 1.0);
-  let lit = i.color.rgb * ndl;
-  return vec4f(lit, i.color.a);
+  return vec4f(i.color.rgb * ndl, i.color.a);
 }
 """;
-
-        using var shader = device.CreateShaderModule(new GPUShaderModuleDescriptor { Code = wgsl });
-
-        _pipeline = device.CreateRenderPipeline(new GPURenderPipelineDescriptor
-        {
-            Layout = "auto",
-            Vertex = new GPUVertexState
-            {
-                Module = shader,
-                EntryPoint = "vs_main",
-                Buffers = new[]
-                {
-                    new GPUVertexBufferLayout
-                    {
-                        ArrayStride = 12,
-                        Attributes = new[]
-                        {
-                            new GPUVertexAttribute
-                            {
-                                Format = GPUVertexFormat.Float32x3,
-                                Offset = 0,
-                                ShaderLocation = 0,
-                            },
-                        },
-                    },
-                    new GPUVertexBufferLayout
-                    {
-                        ArrayStride = 12,
-                        Attributes = new[]
-                        {
-                            new GPUVertexAttribute
-                            {
-                                Format = GPUVertexFormat.Float32x3,
-                                Offset = 0,
-                                ShaderLocation = 1,
-                            },
-                        },
-                    },
-                },
-            },
-            Fragment = new GPUFragmentState
-            {
-                Module = shader,
-                EntryPoint = "fs_main",
-                Targets = new[]
-                {
-                    new GPUColorTargetState { Format = colorFormat },
-                },
-            },
-            Primitive = new GPUPrimitiveState
-            {
-                Topology = GPUPrimitiveTopology.TriangleList,
-                CullMode = GPUCullMode.Back,
-                FrontFace = GPUFrontFace.CCW,
-            },
-            DepthStencil = new GPUDepthStencilState
-            {
-                Format = ReversedZHelper.DepthFormat,
-                DepthWriteEnabled = true,
-                DepthCompare = ReversedZHelper.DepthCompare,
-            },
-        });
 
         _uniformBuffer = device.CreateBuffer(new GPUBufferDescriptor
         {
             Size = UniformBytes,
             Usage = GPUBufferUsage.Uniform | GPUBufferUsage.CopyDst,
         });
-
-        using var layout = _pipeline.GetBindGroupLayout(0);
-        _bindGroup = device.CreateBindGroup(new GPUBindGroupDescriptor
+        _boneBuffer = device.CreateBuffer(new GPUBufferDescriptor
         {
-            Layout = layout,
+            Size = BoneBytes,
+            Usage = GPUBufferUsage.Uniform | GPUBufferUsage.CopyDst,
+        });
+
+        using var skinnedShader = device.CreateShaderModule(new GPUShaderModuleDescriptor { Code = skinnedWgsl });
+        using var staticShader = device.CreateShaderModule(new GPUShaderModuleDescriptor { Code = staticWgsl });
+
+        var depth = new GPUDepthStencilState
+        {
+            Format = ReversedZHelper.DepthFormat,
+            DepthWriteEnabled = true,
+            DepthCompare = ReversedZHelper.DepthCompare,
+        };
+        var primitive = new GPUPrimitiveState
+        {
+            Topology = GPUPrimitiveTopology.TriangleList,
+            CullMode = GPUCullMode.Back,
+            FrontFace = GPUFrontFace.CCW,
+        };
+        var fragmentSkinned = new GPUFragmentState
+        {
+            Module = skinnedShader,
+            EntryPoint = "fs_main",
+            Targets = new[] { new GPUColorTargetState { Format = colorFormat } },
+        };
+        var fragmentStatic = new GPUFragmentState
+        {
+            Module = staticShader,
+            EntryPoint = "fs_main",
+            Targets = new[] { new GPUColorTargetState { Format = colorFormat } },
+        };
+
+        var posLayout = new GPUVertexBufferLayout
+        {
+            ArrayStride = 12,
+            Attributes = new[]
+            {
+                new GPUVertexAttribute { Format = GPUVertexFormat.Float32x3, Offset = 0, ShaderLocation = 0 },
+            },
+        };
+        var nrmLayout = new GPUVertexBufferLayout
+        {
+            ArrayStride = 12,
+            Attributes = new[]
+            {
+                new GPUVertexAttribute { Format = GPUVertexFormat.Float32x3, Offset = 0, ShaderLocation = 1 },
+            },
+        };
+        var jointsLayout = new GPUVertexBufferLayout
+        {
+            ArrayStride = 4,
+            Attributes = new[]
+            {
+                new GPUVertexAttribute { Format = GPUVertexFormat.UInt8x4, Offset = 0, ShaderLocation = 2 },
+            },
+        };
+        var weightsLayout = new GPUVertexBufferLayout
+        {
+            ArrayStride = 16,
+            Attributes = new[]
+            {
+                new GPUVertexAttribute { Format = GPUVertexFormat.Float32x4, Offset = 0, ShaderLocation = 3 },
+            },
+        };
+
+        _pipelineSkinned = device.CreateRenderPipeline(new GPURenderPipelineDescriptor
+        {
+            Layout = "auto",
+            Vertex = new GPUVertexState
+            {
+                Module = skinnedShader,
+                EntryPoint = "vs_main",
+                Buffers = new[] { posLayout, nrmLayout, jointsLayout, weightsLayout },
+            },
+            Fragment = fragmentSkinned,
+            Primitive = primitive,
+            DepthStencil = depth,
+        });
+
+        _pipelineStatic = device.CreateRenderPipeline(new GPURenderPipelineDescriptor
+        {
+            Layout = "auto",
+            Vertex = new GPUVertexState
+            {
+                Module = staticShader,
+                EntryPoint = "vs_main",
+                Buffers = new[] { posLayout, nrmLayout },
+            },
+            Fragment = fragmentStatic,
+            Primitive = primitive,
+            DepthStencil = depth,
+        });
+
+        using var layoutS = _pipelineSkinned.GetBindGroupLayout(0);
+        _bindGroupSkinned = device.CreateBindGroup(new GPUBindGroupDescriptor
+        {
+            Layout = layoutS,
             Entries = new[]
             {
-                new GPUBindGroupEntry
-                {
-                    Binding = 0,
-                    Resource = new GPUBufferBinding { Buffer = _uniformBuffer },
-                },
+                new GPUBindGroupEntry { Binding = 0, Resource = new GPUBufferBinding { Buffer = _uniformBuffer } },
+                new GPUBindGroupEntry { Binding = 1, Resource = new GPUBufferBinding { Buffer = _boneBuffer } },
+            },
+        });
+
+        using var layoutT = _pipelineStatic.GetBindGroupLayout(0);
+        _bindGroupStatic = device.CreateBindGroup(new GPUBindGroupDescriptor
+        {
+            Layout = layoutT,
+            Entries = new[]
+            {
+                new GPUBindGroupEntry { Binding = 0, Resource = new GPUBufferBinding { Buffer = _uniformBuffer } },
             },
         });
     }
 
-    /// <summary>
-    /// Draw all entities that have a GPU mesh. Call inside the voxel render
-    /// pass (after terrain draws) so depth testing works against voxels.
-    /// </summary>
     public void DrawEntities(
         GPURenderPassEncoder pass,
         Matrix4x4 viewProjection,
@@ -165,11 +248,7 @@ fn fs_main(i: VSOut) -> @location(0) vec4f {
         Vector3 lightDir,
         float timeSeconds)
     {
-        if (_pipeline == null || _queue == null || _bindGroup == null || entities.Count == 0)
-            return;
-
-        pass.SetPipeline(_pipeline);
-        pass.SetBindGroup(0, _bindGroup);
+        if (_queue == null || entities.Count == 0) return;
 
         for (int i = 0; i < entities.Count; i++)
         {
@@ -177,9 +256,21 @@ fn fs_main(i: VSOut) -> @location(0) vec4f {
             var mesh = resolveMesh(e.Kind);
             if (mesh == null) continue;
 
-            var model = BuildModelMatrix(e, mesh, timeSeconds);
-            var mvp = model * viewProjection; // row-vector: v * model * vp
+            float speed = MathF.Sqrt(e.Velocity.X * e.Velocity.X + e.Velocity.Z * e.Velocity.Z);
+            bool charging = e.Alert == AlertMode.Charge;
+            string? clip = mesh.Skin?.ResolveClip(charging, speed);
+            // Per-entity phase so a herd isn't synchronized.
+            float animT = timeSeconds + e.Id * 0.37f;
 
+            if (mesh.IsSkinned && mesh.Skin != null)
+            {
+                mesh.Skin.EvaluatePalette(clip, animT, _palette);
+                MemoryMarshal.AsBytes(_palette.AsSpan()).CopyTo(_boneScratch);
+                _queue.WriteBuffer(_boneBuffer!, 0, _boneScratch);
+            }
+
+            var model = BuildModelMatrix(e, mesh, speed, charging, skinned: mesh.IsSkinned);
+            var mvp = model * viewProjection;
             var color = ColorForKind(e);
             if (e.HitFlashTimer > 0f)
                 color = new Vector4(1f, 1f, 1f, 1f);
@@ -187,37 +278,47 @@ fn fs_main(i: VSOut) -> @location(0) vec4f {
             WriteUniforms(mvp, model, color, lightDir);
             _queue.WriteBuffer(_uniformBuffer!, 0, _uniformScratch);
 
-            pass.SetVertexBuffer(0, mesh.PositionBuffer);
-            pass.SetVertexBuffer(1, mesh.NormalBuffer);
+            if (mesh.IsSkinned)
+            {
+                pass.SetPipeline(_pipelineSkinned!);
+                pass.SetBindGroup(0, _bindGroupSkinned!);
+                pass.SetVertexBuffer(0, mesh.PositionBuffer);
+                pass.SetVertexBuffer(1, mesh.NormalBuffer);
+                pass.SetVertexBuffer(2, mesh.JointsBuffer!);
+                pass.SetVertexBuffer(3, mesh.WeightsBuffer!);
+            }
+            else
+            {
+                pass.SetPipeline(_pipelineStatic!);
+                pass.SetBindGroup(0, _bindGroupStatic!);
+                pass.SetVertexBuffer(0, mesh.PositionBuffer);
+                pass.SetVertexBuffer(1, mesh.NormalBuffer);
+            }
+
             pass.SetIndexBuffer(mesh.IndexBuffer, mesh.IndexFormat);
             pass.DrawIndexed((uint)mesh.IndexCount);
         }
     }
 
-    private static Matrix4x4 BuildModelMatrix(WanderingEntity e, GpuEntityMesh mesh, float timeSeconds)
+    private static Matrix4x4 BuildModelMatrix(
+        WanderingEntity e, GpuEntityMesh mesh, float speed, bool charging, bool skinned)
     {
-        float scale = ScaleForKind(e.Kind);
-        // Quaternius animals face +Z; yaw from horizontal velocity.
+        // Armature scale (~0.3) is already in the skin hierarchy for skinned meshes.
+        float scale = skinned ? ScaleForKindSkinned(e.Kind) : ScaleForKind(e.Kind);
+
         float yaw = 0f;
-        float speed = MathF.Sqrt(e.Velocity.X * e.Velocity.X + e.Velocity.Z * e.Velocity.Z);
         if (speed > 0.05f)
             yaw = MathF.Atan2(e.Velocity.X, e.Velocity.Z);
 
-        // Walk bob when moving; faster bob when charging. Uses Walk clip presence
-        // only as a hint that the asset expects locomotion (skinning later).
+        // Procedural bob only for unskinned fallback.
         float bob = 0f;
-        float bobFreq = e.Alert == AlertMode.Charge ? 10f : 7f;
-        if (speed > 0.08f)
-            bob = MathF.Abs(MathF.Sin(timeSeconds * bobFreq + e.Id)) * 0.06f * scale;
+        if (!skinned && speed > 0.08f)
+            bob = MathF.Abs(MathF.Sin(Environment.TickCount * 0.01f + e.Id)) * 0.06f * scale;
 
-        // Charge lean: pitch toward travel direction.
         float pitch = 0f;
-        if (e.Alert == AlertMode.Charge && mesh.HasAttackClip)
-            pitch = -0.25f;
-        else if (e.Alert == AlertMode.Charge)
-            pitch = -0.18f;
+        if (!skinned && charging)
+            pitch = -0.2f;
 
-        // Feet at mesh BoundsMin.Y -> world ground. Entity Position.Y is ~ground+1.
         float groundY = e.Kind == EntityKind.Crow
             ? e.Position.Y
             : e.Position.Y - 1f;
@@ -241,6 +342,19 @@ fn fs_main(i: VSOut) -> @location(0) vec4f {
         _ => 1f,
     };
 
+    // Skinned Quaternius meshes already include ~0.3 armature scale in the
+    // hierarchy; these multipliers tune relative size across kinds.
+    private static float ScaleForKindSkinned(EntityKind kind) => kind switch
+    {
+        EntityKind.Wolf => 1.15f,
+        EntityKind.Deer => 1.25f,
+        EntityKind.Bear => 1.9f,
+        EntityKind.Boar => 0.85f,
+        EntityKind.Rabbit => 0.4f,
+        EntityKind.Crow => 0.45f,
+        _ => 1f,
+    };
+
     private static Vector4 ColorForKind(WanderingEntity e)
     {
         float j = e.ColorJitter;
@@ -258,7 +372,6 @@ fn fs_main(i: VSOut) -> @location(0) vec4f {
 
     private void WriteUniforms(Matrix4x4 mvp, Matrix4x4 model, Vector4 color, Vector3 lightDir)
     {
-        // Layout matches WGSL: mat4 + mat4 + vec4 + vec4 = 192, buffer is 256.
         var span = _uniformScratch.AsSpan();
         span.Clear();
         MemoryMarshal.Write(span.Slice(0, 64), in mvp);
@@ -272,12 +385,13 @@ fn fs_main(i: VSOut) -> @location(0) vec4f {
     {
         if (_disposed) return;
         _disposed = true;
-        _bindGroup?.Dispose();
-        _bindGroup = null;
-        _uniformBuffer?.Destroy();
-        _uniformBuffer?.Dispose();
-        _uniformBuffer = null;
-        _pipeline?.Dispose();
-        _pipeline = null;
+        _bindGroupSkinned?.Dispose();
+        _bindGroupStatic?.Dispose();
+        _bindGroupSkinned = null;
+        _bindGroupStatic = null;
+        _uniformBuffer?.Destroy(); _uniformBuffer?.Dispose(); _uniformBuffer = null;
+        _boneBuffer?.Destroy(); _boneBuffer?.Dispose(); _boneBuffer = null;
+        _pipelineSkinned?.Dispose(); _pipelineSkinned = null;
+        _pipelineStatic?.Dispose(); _pipelineStatic = null;
     }
 }
