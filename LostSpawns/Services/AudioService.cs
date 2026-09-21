@@ -391,6 +391,7 @@ public class AudioService : IDisposable
     /// <summary>
     /// Quiet low-pitched thump for each footstep. Alternating high/low
     /// phase keeps two consecutive steps from sounding identical.
+    /// Prefer <see cref="PlayStepSurface"/> when the underfoot block is known.
     /// </summary>
     public void PlayStep(bool altPhase)
     {
@@ -401,6 +402,65 @@ public class AudioService : IDisposable
     public void PlayWaterStep(bool altPhase)
     {
         PlayBeep(altPhase ? 380f : 340f, 0.05f, 0.045f, "sine");
+    }
+
+    /// <summary>
+    /// Surface-aware footstep. Grass/dirt soft, stone sharp, sand muted,
+    /// wood hollow, water delegates to <see cref="PlayWaterStep"/>.
+    /// Timbre is still procedural (CC0 sample packs can replace later).
+    /// </summary>
+    public void PlayStepSurface(LostSpawns.Models.BlockType surface, bool altPhase)
+    {
+        switch (surface)
+        {
+            case LostSpawns.Models.BlockType.Water:
+                PlayWaterStep(altPhase);
+                return;
+            case LostSpawns.Models.BlockType.Stone:
+                PlayBeep(altPhase ? 210f : 185f, 0.035f, 0.07f, "square");
+                return;
+            case LostSpawns.Models.BlockType.Sand:
+                PlayBeep(altPhase ? 95f : 80f, 0.05f, 0.045f, "sine");
+                return;
+            case LostSpawns.Models.BlockType.Wood:
+                PlayBeep(altPhase ? 160f : 140f, 0.04f, 0.055f, "triangle");
+                return;
+            case LostSpawns.Models.BlockType.Leaves:
+                PlayBeep(altPhase ? 280f : 250f, 0.03f, 0.04f, "sine");
+                return;
+            case LostSpawns.Models.BlockType.Grass:
+            case LostSpawns.Models.BlockType.Dirt:
+            default:
+                PlayBeep(altPhase ? 130f : 110f, 0.04f, 0.06f, "sine");
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Dig / break cue colored by the block being removed. Stone = mine,
+    /// wood = chop, soft soils = lower thud. Replaces a single PlayMine for
+    /// shovel work so dirt and rock do not share one voice.
+    /// </summary>
+    public void PlayDig(LostSpawns.Models.BlockType block)
+    {
+        switch (block)
+        {
+            case LostSpawns.Models.BlockType.Stone:
+                PlayMine();
+                return;
+            case LostSpawns.Models.BlockType.Wood:
+            case LostSpawns.Models.BlockType.Leaves:
+                PlayChop();
+                return;
+            case LostSpawns.Models.BlockType.Sand:
+                PlayBeep(150f, 0.08f, 0.14f, "sine");
+                return;
+            case LostSpawns.Models.BlockType.Dirt:
+            case LostSpawns.Models.BlockType.Grass:
+            default:
+                PlayBeep(120f, 0.09f, 0.16f, "triangle");
+                return;
+        }
     }
 
     /// <summary>Deep rumbling thunder - long triangle fade after a lightning strike.</summary>

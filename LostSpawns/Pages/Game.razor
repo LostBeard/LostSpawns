@@ -15,6 +15,7 @@
 @inject CampfireService Fires
 @inject GroundItemService Ground
 @inject AudioService Audio
+@inject GltfMeshService Meshes
 @inject CraftingService Crafter
 @inject InventoryService Inventory
 @inject SaveService Save
@@ -185,6 +186,10 @@
         // radius so GetHeightAt calls are cheap. Entities appear as colored dots
         // on the minimap immediately; 3D rendering of their bodies is a follow-up.
         Wildlife.SpawnStarter(Renderer.Camera.Position, World);
+
+        // Preload CC0 wildlife GLBs into JS ArrayBuffers (header-validated).
+        // Missing tool drop-ins are logged and skipped. GPU draw is phase C.
+        _ = Meshes.PreloadCatalogAsync();
 
         // Drop a starter campfire a couple blocks east of spawn. Gives the
         // player an obvious warmth anchor and a target for future "cook meat"
@@ -410,6 +415,23 @@
         int iz = (int)MathF.Floor(pos.Z);
         int feetY = (int)MathF.Floor(pos.Y - EyeHeight + 0.1f);
         return World.GetBlockAt(ix, feetY, iz) == LostSpawns.Models.BlockType.Water;
+    }
+
+    /// <summary>
+    /// Block the player is standing on (one cell below feet). Used for
+    /// surface-aware footstep timbre. Air falls back to Dirt so the
+    /// default soft thud still plays while airborne / mid-jump.
+    /// </summary>
+    private LostSpawns.Models.BlockType GetUnderfootBlock()
+    {
+        var pos = Renderer.Camera.Position;
+        int ix = (int)MathF.Floor(pos.X);
+        int iz = (int)MathF.Floor(pos.Z);
+        int underY = (int)MathF.Floor(pos.Y - EyeHeight - 0.05f);
+        var bt = World.GetBlockAt(ix, underY, iz);
+        return bt == LostSpawns.Models.BlockType.Air
+            ? LostSpawns.Models.BlockType.Dirt
+            : bt;
     }
 
     private void ApplyGravityAndJump(float dt)
@@ -696,7 +718,17 @@
             : World.BuildSphere(center, _terraformRadius, buildType);
 
         int totalCells = 0;
-        foreach (var (_, count) in changed) totalCells += count;
+        LostSpawns.Models.BlockType dominantType = buildType;
+        int dominantCount = 0;
+        foreach (var (bt, count) in changed)
+        {
+            totalCells += count;
+            if (carve && count > dominantCount)
+            {
+                dominantCount = count;
+                dominantType = bt;
+            }
+        }
         if (totalCells == 0)
         {
             Audio.PlayWhoosh();
@@ -709,7 +741,8 @@
 
         ConsumeBlockActionCost();
         ApplyCameraKick(carve ? 3.0f : 2.5f);
-        Audio.PlayMine();
+        // Surface-colored dig cue: stone vs dirt vs sand, not one mine beep.
+        Audio.PlayDig(carve ? dominantType : buildType);
 
         // Terraform costs stamina proportional to volume moved - sculpting
         // big slabs of rock should leave you winded. Capped so a max-radius
@@ -860,11 +893,11 @@
         };
         Stats.AwardXp(blockXp);
         // Tool-specific hit sound: wood-chop for axe-breakable blocks,
-        // stone-mine for pick-breakable, generic thud for anything else.
+        // stone-mine for pick-breakable, surface dig for soft soils.
         var req = RequiredToolForBlockType(brokenType);
         if (req == "tool.axe")        Audio.PlayChop();
         else if (req == "tool.pick")  Audio.PlayMine();
-        else                          Audio.PlayHit();
+        else                          Audio.PlayDig(brokenType);
 
         var drop = DropForBlockType(brokenType);
         if (drop is null)
@@ -2704,7 +2737,7 @@
                 else if (exhaustedSkip) { /* dragging feet, every other step silent */ }
                 else if (IsInWater()) Audio.PlayWaterStep(_stepAlt);
                 else if (Weather.RainIntensity > 0.25f) Audio.PlayWaterStep(_stepAlt);
-                else             Audio.PlayStep(_stepAlt);
+                else Audio.PlayStepSurface(GetUnderfootBlock(), _stepAlt);
                 // Sprint kicks up small dust puffs at the player's feet.
                 // Skip if sneaking (silent stealth = no visual tell either),
                 // wading (water already splashes), or in heavy rain (mud,

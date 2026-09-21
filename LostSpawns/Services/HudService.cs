@@ -89,6 +89,9 @@ public class HudService : IDisposable
     private readonly float[] _starY = new float[StarCount];
     private readonly float[] _starSize = new float[StarCount];
     private bool _starsSeeded;
+    // World-projected sun screen X from last DrawSunMoon (entity shadow bias).
+    private float _sunScreenX;
+    private bool _sunVisible;
 
     // One-shot impact markers (e.g. arrow hit point). World-space position +
     // spawn timestamp; projected each frame and faded out. Up to 4 concurrent.
@@ -389,6 +392,11 @@ public class HudService : IDisposable
     private float _lastThirstSeen = 1f;
     private float _lastTempSeen = 0.5f;
     private float _lastStaminaSeen = 1f;
+    // Diegetic vitals: seconds remaining to keep StatusHUD visible after a crisis.
+    private float _vitalsShowTimer;
+    // Compass auto-fade: last yaw we considered "turning".
+    private float _lastCompassYaw;
+    private float _compassIdleTimer;
 
     public bool IsInitialized { get; private set; }
 
@@ -520,6 +528,10 @@ public class HudService : IDisposable
         int alpha = Math.Clamp((int)(amount * 500f), 40, 180);
         ScreenOverlay?.Flash(System.Drawing.Color.FromArgb(alpha, 220, 20, 20), 0.5f);
         NotifyDamage($"-{(int)(amount * 100f)} HP");
+        // Pop vitals for a few seconds so the player can read the hit
+        // without keeping bars always on (diegetic default).
+        _vitalsShowTimer = MathF.Max(_vitalsShowTimer, 4f);
+        StatusHUD?.FlashDamage();
     }
 
     private void HandleHealed(float amount)
@@ -565,13 +577,14 @@ public class HudService : IDisposable
         _ui.Screens.Push("hud");
 
         // === Status bars (bottom-left) ===
-        // Driven by PlayerStatsService. Values push here in Update() so gameplay
-        // systems can write to the stats and the bars animate automatically.
-        StatusHUD = new UIStatusHUD { Width = 180, ShowAllPercentages = true };
+        // Diegetic default (PLAN-UI-HUD): hidden unless AlwaysShowVitals or a
+        // vitals crisis / recent damage. Accessibility toggle in Settings.
+        StatusHUD = new UIStatusHUD { Width = 180, ShowAllPercentages = true, Visible = false };
         SyncStatsToHud();
         root.AddAnchored(StatusHUD, Anchor.BottomLeft, offsetX: 16, offsetY: -16);
 
         // === XP bar + level label (above status HUD) ===
+        // Same contextual rule as StatusHUD - not always-on.
         _xpBar = new UIProgressBar
         {
             MinValue = 0,
@@ -580,6 +593,7 @@ public class HudService : IDisposable
             ShowPercentage = false,
             Width = 180,
             Height = 8,
+            Visible = false,
         };
         root.AddAnchored(_xpBar, Anchor.BottomLeft, offsetX: 16, offsetY: -160);
         _xpLabel = new UILabel
@@ -590,6 +604,7 @@ public class HudService : IDisposable
             Height = 14,
             Align = TextAlign.Center,
             Color = System.Drawing.Color.FromArgb(235, 200, 240, 160),
+            Visible = false,
         };
         root.AddAnchored(_xpLabel, Anchor.BottomLeft, offsetX: 16, offsetY: -170);
 
@@ -2365,19 +2380,20 @@ public class HudService : IDisposable
             // Ground shadow: a dark translucent oval beneath the billboard
             // that helps the entity read as "standing on terrain" rather
             // than "floating". Crows skip this because they ARE floating.
-            // Shadow offset shifts left/right based on the sun's screen
-            // x-position so shadows actually point away from the light.
+            // Shadow offset shifts left/right based on the sun's projected
+            // screen X so shadows point away from the world-locked sun.
             if (e.Kind != EntityKind.Crow)
             {
                 float shadowY = y + size + size * 0.05f;
                 float shadowW = size * 0.9f;
                 float shadowH = size * 0.15f;
-                // Sun arc angle: 0 at dawn, 1 at dusk (for sun-visible window).
-                float frac = _worldTime.DayFraction;
-                float sunU = (frac - 0.05f) / 0.50f;
                 float shadowOffset = 0f;
-                if (sunU > 0 && sunU < 1)
-                    shadowOffset = (sunU - 0.5f) * size * -0.4f; // sun on right -> shadow on left
+                if (_sunVisible && viewportWidth > 0)
+                {
+                    // Sun on the right of screen -> shadow shifts left of the entity.
+                    float sunU = (_sunScreenX / viewportWidth) - 0.5f;
+                    shadowOffset = sunU * size * -0.4f;
+                }
                 _ui.Renderer.DrawRect(
                     x + (size - shadowW) * 0.5f + shadowOffset, shadowY,
                     shadowW, shadowH,
@@ -2761,36 +2777,90 @@ public class HudService : IDisposable
     }
 
     /// <summary>
-    /// Render the sun + moon as small bright circles that arc across the
-    /// sky based on DayFraction. Rough projection: x sweeps left-to-right
-    /// over the day, y dips lowest at noon (midpoint) and apex matches.
-    /// Day fraction 0.0-0.5 = sun visible. 0.5-1.0 = moon visible.
+    /// Render the sun or moon as a bright disc locked to a world-space sky
+    /// direction derived from DayFraction, projected through the camera VP.
+    /// Turning the camera moves them across the sky; looking away hides them.
     /// </summary>
     private void DrawSunMoon(int viewportWidth, int viewportHeight)
     {
+        _sunVisible = false;
+        if (_renderer == null) return;
+
         float t = _worldTime.DayFraction;
-        // Sun arc: rises at 0.05, sets at 0.55. Parabolic Y so noon (0.30)
-        // is highest in the sky.
-        if (t > 0.05f && t < 0.55f)
+        bool drawSun = t > 0.05f && t < 0.55f;
+        bool drawMoon = t > 0.55f || t < 0.05f;
+        if (!drawSun && !drawMoon) return;
+
+        // World-space direction: Y up, +X east, +Z south. Sun rises east, noon
+        // south/high, sets west. Moon is opposite the sun on the same great circle.
+        Vector3 dir;
+        System.Drawing.Color color;
+        float sizePx;
+        if (drawSun)
         {
-            float u = (t - 0.05f) / 0.50f;          // 0..1 across the arc
-            float x = u * viewportWidth;
-            float y = viewportHeight * 0.30f * (1f - 4f * (u - 0.5f) * (u - 0.5f)); // peak at u=0.5
-            float size = 28f;
-            _ui.Renderer.DrawRect(x - size * 0.5f, y, size, size,
-                System.Drawing.Color.FromArgb(220, 255, 220, 130));
+            float u = (t - 0.05f) / 0.50f; // 0..1 dawn->dusk
+            dir = CelestialDirectionFromArc(u);
+            color = System.Drawing.Color.FromArgb(230, 255, 220, 130);
+            sizePx = 36f;
         }
-        // Moon arc: rises at 0.55, sets at 1.05 (wraps to 0.05).
-        else if (t > 0.55f || t < 0.05f)
+        else
         {
             float tt = t > 0.55f ? t : t + 1f;
             float u = (tt - 0.55f) / 0.50f;
-            float x = u * viewportWidth;
-            float y = viewportHeight * 0.30f * (1f - 4f * (u - 0.5f) * (u - 0.5f));
-            float size = 22f;
-            _ui.Renderer.DrawRect(x - size * 0.5f, y, size, size,
-                System.Drawing.Color.FromArgb(220, 230, 235, 255));
+            dir = CelestialDirectionFromArc(u);
+            color = System.Drawing.Color.FromArgb(220, 230, 235, 255);
+            sizePx = 28f;
         }
+
+        // Place a far point along the direction so it reads as sky (not near-field).
+        const float skyDist = 800f;
+        var cam = _renderer.Camera.Position;
+        var world = new Vector4(cam.X + dir.X * skyDist, cam.Y + dir.Y * skyDist, cam.Z + dir.Z * skyDist, 1f);
+
+        float aspect = (float)viewportWidth / viewportHeight;
+        var vp = _renderer.Camera.GetVpMatrix(aspect);
+        var clip = Vector4.Transform(world, vp);
+        if (clip.W <= 0.001f) return; // behind camera
+
+        float ndcX = clip.X / clip.W;
+        float ndcY = clip.Y / clip.W;
+        // Outside NDC frustum (with a little margin for the disc size).
+        if (ndcX < -1.2f || ndcX > 1.2f || ndcY < -1.2f || ndcY > 1.2f) return;
+
+        float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+        float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
+
+        // Below the terrain horizon on screen - still draw if above mid-lower band;
+        // true occlusion needs depth. Skip if clearly underfoot.
+        if (screenY > viewportHeight * 0.92f) return;
+
+        _ui.Renderer.DrawRect(screenX - sizePx * 0.5f, screenY - sizePx * 0.5f, sizePx, sizePx, color);
+
+        // Soft glow halo (larger translucent disc).
+        var glow = System.Drawing.Color.FromArgb(color.A / 3, color.R, color.G, color.B);
+        float glowSize = sizePx * 1.8f;
+        _ui.Renderer.DrawRect(screenX - glowSize * 0.5f, screenY - glowSize * 0.5f, glowSize, glowSize, glow);
+
+        // Cache sun screen X for entity ground-shadow bias this frame.
+        _sunScreenX = screenX;
+        _sunVisible = drawSun;
+    }
+
+    /// <summary>
+    /// Unit sky direction for arc parameter u in [0,1] (rise→set).
+    /// Elevation peaks at noon (u=0.5); azimuth swings east→south→west.
+    /// </summary>
+    private static Vector3 CelestialDirectionFromArc(float u)
+    {
+        // Azimuth: +pi/2 at rise (east), 0 at noon (south), -pi/2 at set (west).
+        float az = MathF.PI * (0.5f - u);
+        // Elevation angle: 0 at horizon, ~70deg at noon.
+        float el = MathF.Sin(Math.Clamp(u, 0f, 1f) * MathF.PI) * (MathF.PI * 0.39f);
+        float cosEl = MathF.Cos(el);
+        return Vector3.Normalize(new Vector3(
+            cosEl * MathF.Sin(az),
+            MathF.Sin(el),
+            cosEl * MathF.Cos(az)));
     }
 
     /// <summary>
@@ -2974,6 +3044,9 @@ public class HudService : IDisposable
             _xpLabel.Text = $"Lv {lv}   {_stats.Experience - prev} / {span} XP";
         }
 
+        // Contextual vitals visibility (diegetic default).
+        UpdateVitalsVisibility();
+
         // Persistent low-health vignette. Ramps in from HP 0.3 down to 0 so the
         // effect intensifies as the player bleeds out. SetPersistent replaces the
         // same key each frame; ClearPersistent removes it when health recovers.
@@ -3044,12 +3117,66 @@ public class HudService : IDisposable
         CheckStaminaThreshold();
     }
 
+    /// <summary>
+    /// Show StatusHUD + XP only when AlwaysShowVitals, a crisis threshold is
+    /// active, or <see cref="_vitalsShowTimer"/> still has seconds left after
+    /// damage. Matches PLAN-UI-HUD diegetic default.
+    /// </summary>
+    private void UpdateVitalsVisibility()
+    {
+        bool crisis =
+            _stats.Health < 0.35f
+            || _stats.Hunger < 0.35f
+            || _stats.Thirst < 0.35f
+            || _stats.Stamina < 0.15f
+            || _stats.Temperature < 0.25f
+            || _stats.Temperature > 0.75f
+            || _stats.BleedSecondsRemaining > 0f;
+
+        bool show = _settings.AlwaysShowVitals || crisis || _vitalsShowTimer > 0f;
+        StatusHUD.Visible = show;
+        if (_xpBar != null) _xpBar.Visible = show;
+        if (_xpLabel != null) _xpLabel.Visible = show;
+    }
+
+    /// <summary>
+    /// Compass stays visible while the player turns; fades after ~3s idle when
+    /// CompassAutoFade is on. Always visible when auto-fade is disabled.
+    /// </summary>
+    private void UpdateCompassFade(float deltaTime, float cameraYaw)
+    {
+        if (Compass == null) return;
+
+        float delta = MathF.Abs(cameraYaw - _lastCompassYaw);
+        if (delta > 180f) delta = 360f - delta;
+        if (delta > 0.4f)
+        {
+            _lastCompassYaw = cameraYaw;
+            _compassIdleTimer = 0f;
+            Compass.Visible = true;
+            return;
+        }
+
+        if (!_settings.CompassAutoFade)
+        {
+            Compass.Visible = true;
+            return;
+        }
+
+        _compassIdleTimer += deltaTime;
+        Compass.Visible = _compassIdleTimer < 3f;
+    }
+
     private void CheckStaminaThreshold()
     {
         float cur = _stats.Stamina, prev = _lastStaminaSeen;
         // Fire "Winded" once when stamina hits empty mid-sprint. Comes back "Rested"
         // when it recovers above 0.50 so the next sprint opportunity is obvious.
-        if (prev > 0.05f && cur <= 0.05f) NotifyWarning("Winded");
+        if (prev > 0.05f && cur <= 0.05f)
+        {
+            NotifyWarning("Winded");
+            _vitalsShowTimer = MathF.Max(_vitalsShowTimer, 3f);
+        }
         if (prev < 0.50f && cur >= 0.50f) Notify("Rested");
         _lastStaminaSeen = cur;
     }
@@ -3072,18 +3199,18 @@ public class HudService : IDisposable
     private void CheckHungerThreshold()
     {
         float cur = _stats.Hunger, prev = _lastHungerSeen;
-        if (prev > 0.5f && cur <= 0.5f) Notify("Peckish");
-        if (prev > 0.3f && cur <= 0.3f) NotifyWarning("Hungry - press G to eat");
-        if (prev > 0.1f && cur <= 0.1f) NotifyDamage("Starving! Press G to eat");
+        if (prev > 0.5f && cur <= 0.5f) { Notify("Peckish"); _vitalsShowTimer = MathF.Max(_vitalsShowTimer, 3f); }
+        if (prev > 0.3f && cur <= 0.3f) { NotifyWarning("Hungry - press G to eat"); _vitalsShowTimer = MathF.Max(_vitalsShowTimer, 4f); }
+        if (prev > 0.1f && cur <= 0.1f) { NotifyDamage("Starving! Press G to eat"); _vitalsShowTimer = MathF.Max(_vitalsShowTimer, 5f); }
         _lastHungerSeen = cur;
     }
 
     private void CheckThirstThreshold()
     {
         float cur = _stats.Thirst, prev = _lastThirstSeen;
-        if (prev > 0.5f && cur <= 0.5f) Notify("Damp");
-        if (prev > 0.3f && cur <= 0.3f) NotifyWarning("Thirsty - press T to drink");
-        if (prev > 0.1f && cur <= 0.1f) NotifyDamage("Dehydrated! Press T to drink");
+        if (prev > 0.5f && cur <= 0.5f) { Notify("Damp"); _vitalsShowTimer = MathF.Max(_vitalsShowTimer, 3f); }
+        if (prev > 0.3f && cur <= 0.3f) { NotifyWarning("Thirsty - press T to drink"); _vitalsShowTimer = MathF.Max(_vitalsShowTimer, 4f); }
+        if (prev > 0.1f && cur <= 0.1f) { NotifyDamage("Dehydrated! Press T to drink"); _vitalsShowTimer = MathF.Max(_vitalsShowTimer, 5f); }
         _lastThirstSeen = cur;
     }
 
@@ -3100,7 +3227,12 @@ public class HudService : IDisposable
 
         // Push current player stats into the StatusHUD bars. Cheap field copy;
         // UIStatusHUD handles its own dirty/animation tracking internally.
+        if (_vitalsShowTimer > 0f)
+            _vitalsShowTimer = MathF.Max(0f, _vitalsShowTimer - deltaTime);
         SyncStatsToHud();
+
+        // Compass: fade after idle yaw (PLAN-UI-HUD). Reticle stays always on.
+        UpdateCompassFade(deltaTime, cameraYaw);
 
         // Refresh the clock label from WorldTimeService (cheap string format).
         // Tint the text by phase so day/night reads at a glance from the

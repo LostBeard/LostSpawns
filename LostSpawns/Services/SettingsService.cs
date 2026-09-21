@@ -18,6 +18,14 @@ public class SettingsService
     // Audio
     public float MasterVolume { get; private set; } = 1f;    // [0, 1]
 
+    // HUD (diegetic-first defaults - PLAN-UI-HUD)
+    /// <summary>When true, always show health/hunger/thirst bars. Default false:
+    /// bars only pop in when a vitals threshold is crossed or damage lands.</summary>
+    public bool AlwaysShowVitals { get; private set; }
+
+    /// <summary>When true, compass fades after ~3s without yaw change.</summary>
+    public bool CompassAutoFade { get; private set; } = true;
+
     // Note: PlayerName lives on IdentityService, not here. Identity owns the
     // mutable display name alongside the persistent Ed25519 keypair.
 
@@ -34,6 +42,8 @@ public class SettingsService
         FieldOfView = GetFloat("lost.settings.fov", 70f);
         Vsync = GetBool("lost.settings.vsync", true);
         MasterVolume = Math.Clamp(GetFloat("lost.settings.volume", 1f), 0f, 1f);
+        AlwaysShowVitals = GetBool("lost.settings.alwaysShowVitals", false);
+        CompassAutoFade = GetBool("lost.settings.compassFade", true);
     }
 
     public void SaveVideo(int drawDistance, float fov, bool vsync)
@@ -48,6 +58,14 @@ public class SettingsService
     {
         MasterVolume = Math.Clamp(volume, 0f, 1f);
         Set("lost.settings.volume", MasterVolume.ToString("F2"));
+    }
+
+    public void SaveHud(bool alwaysShowVitals, bool compassAutoFade)
+    {
+        AlwaysShowVitals = alwaysShowVitals;
+        CompassAutoFade = compassAutoFade;
+        Set("lost.settings.alwaysShowVitals", alwaysShowVitals ? "1" : "0");
+        Set("lost.settings.compassFade", compassAutoFade ? "1" : "0");
     }
 
     private string GetString(string key, string def)

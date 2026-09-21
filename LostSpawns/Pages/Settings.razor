@@ -61,6 +61,41 @@
             Save Player Settings
         </button>
     </div>
+
+    <!-- HUD (diegetic defaults) -->
+    <div class="card">
+        <div class="card-header">HUD</div>
+
+        <div class="setting-row">
+            <label class="form-label">Always show vitals</label>
+            <div class="setting-control">
+                <label class="toggle">
+                    <input type="checkbox" checked="@_alwaysShowVitals" @onchange="OnAlwaysVitalsChanged" />
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="form-hint" style="opacity:0.7;font-size:0.85em;margin-top:0.35rem;">
+                Off by default: bars appear on damage or when hunger/thirst/health are low.
+            </div>
+        </div>
+
+        <div class="setting-row">
+            <label class="form-label">Compass auto-fade</label>
+            <div class="setting-control">
+                <label class="toggle">
+                    <input type="checkbox" checked="@_compassFade" @onchange="OnCompassFadeChanged" />
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="form-hint" style="opacity:0.7;font-size:0.85em;margin-top:0.35rem;">
+                Hides the compass after ~3s without turning. Reticle stays on.
+            </div>
+        </div>
+
+        <button class="btn btn-primary" style="margin-top: 1rem;" @onclick="SaveHud">
+            Save HUD Settings
+        </button>
+    </div>
 </div>
 
 @if (_saved)
@@ -75,6 +110,8 @@
     private int _fov;
     private bool _vsync;
     private string _playerName = "";
+    private bool _alwaysShowVitals;
+    private bool _compassFade = true;
     private bool _saved;
 
     protected override async Task OnInitializedAsync()
@@ -85,12 +122,16 @@
         _fov = (int)SettingsSvc.FieldOfView;
         _vsync = SettingsSvc.Vsync;
         _playerName = Identity.PlayerName;
+        _alwaysShowVitals = SettingsSvc.AlwaysShowVitals;
+        _compassFade = SettingsSvc.CompassAutoFade;
     }
 
     private void OnDrawDistanceChanged(ChangeEventArgs e) => _drawDistance = int.Parse(e.Value?.ToString() ?? "8");
     private void OnFovChanged(ChangeEventArgs e) => _fov = int.Parse(e.Value?.ToString() ?? "70");
     private void OnVsyncChanged(ChangeEventArgs e) => _vsync = (bool)(e.Value ?? true);
     private void OnPlayerNameChanged(ChangeEventArgs e) => _playerName = e.Value?.ToString() ?? "";
+    private void OnAlwaysVitalsChanged(ChangeEventArgs e) => _alwaysShowVitals = (bool)(e.Value ?? false);
+    private void OnCompassFadeChanged(ChangeEventArgs e) => _compassFade = (bool)(e.Value ?? true);
 
     private async Task SaveVideo()
     {
@@ -101,6 +142,12 @@
     private async Task SavePlayer()
     {
         Identity.SetPlayerName(_playerName);
+        await ShowSaved();
+    }
+
+    private async Task SaveHud()
+    {
+        SettingsSvc.SaveHud(_alwaysShowVitals, _compassFade);
         await ShowSaved();
     }
 
