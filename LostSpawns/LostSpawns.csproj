@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
@@ -24,7 +24,7 @@
 	<ItemGroup>
 		<PackageReference Include="SpawnDev.SpawnJS.Cryptography" Version="2.0.2" />
 		<PackageReference Include="SpawnDev.GameUI" Version="0.1.0-rc.2" />
-		<PackageReference Include="SpawnDev.VoxelEngine" Version="0.1.0-rc.3" />
+		<PackageReference Include="SpawnDev.VoxelEngine" Version="0.1.1-local.3" />
 	</ItemGroup>
 
 	<ItemGroup>

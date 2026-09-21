@@ -4,6 +4,7 @@ using SpawnDev.SpawnJS;
 using SpawnDev.ILGPU;
 using SpawnDev.ILGPU.WebGPU;
 using SpawnDev.VoxelEngine;
+using SpawnDev.VoxelEngine.Destruction;
 using SpawnDev.VoxelEngine.Meshing;
 using LostSpawns.Rendering;
 
@@ -25,16 +26,29 @@ public class VoxelEngineService : IAsyncDisposable
     // Heightmap kernel (kept - generates terrain heights on GPU)
     private Action<Index1D, ArrayView<int>, ArrayView<int>, float, float, float, float, float, int, int>? _heightmapKernel;
     private MemoryBuffer1D<int, Stride1D.Dense>? _permBuffer;
+    // Reused heightmap output buffer - avoid Allocate1D(256) every column miss.
+    private MemoryBuffer1D<int, Stride1D.Dense>? _heightmapOutBuffer;
 
     // VoxelEngine greedy mesh pipeline (replaces old per-face MeshKernel)
     private VoxelMeshPipeline? _meshPipeline;
+    private BlockColumnCarveService? _carve;
 
     // Serialize mesh dispatches - VoxelMeshPipeline shares intermediate GPU buffers
     private readonly SemaphoreSlim _meshLock = new(1, 1);
 
+    // Dig remesh waiters - stream mesh releases the lock if dig is waiting.
+    private int _digWaiters;
+
     public Accelerator? Accelerator => _accelerator;
+    public BlockColumnCarveService? Carve => _carve;
     public bool IsInitialized { get; private set; }
     public string? BackendName { get; private set; }
+    /// <summary>Milliseconds spent waiting on _meshLock in the last mesh call (F3).</summary>
+    public double LastMeshLockWaitMs { get; private set; }
+
+    /// <summary>Call around dig remesh so in-flight stream mesh yields the shared pipeline lock.</summary>
+    public void BeginDigRemesh() => Interlocked.Increment(ref _digWaiters);
+    public void EndDigRemesh() => Interlocked.Decrement(ref _digWaiters);
 
     public VoxelEngineService(SpawnJSRuntime js)
     {
@@ -59,8 +73,11 @@ public class VoxelEngineService : IAsyncDisposable
             float, float, float, float, float, int, int
         >(TerrainKernels.HeightmapKernel);
 
+        _heightmapOutBuffer = _accelerator.Allocate1D<int>(256);
+
         // VoxelEngine greedy mesh pipeline (face cull + greedy merge on GPU)
         _meshPipeline = new VoxelMeshPipeline(_accelerator);
+        _carve = new BlockColumnCarveService(_accelerator);
 
         Console.WriteLine($"[VoxelEngine] {BackendName}");
         IsInitialized = true;
@@ -72,49 +89,114 @@ public class VoxelEngineService : IAsyncDisposable
         _permBuffer = _accelerator!.Allocate1D(permTable);
     }
 
+    /// <summary>
+    /// Generate a 16x16 heightmap into a caller-owned buffer (or returns a pooled copy).
+    /// Prefer <see cref="FillColumnFromHeightmapAsync"/> to avoid host round-trip on the dig path.
+    /// </summary>
     public async Task<int[]> GenerateHeightmapAsync(int chunkX, int chunkZ)
     {
-        if (_heightmapKernel == null || _permBuffer == null)
+        if (_heightmapKernel == null || _permBuffer == null || _heightmapOutBuffer == null)
             throw new InvalidOperationException("Not initialized");
-
-        using var outputBuffer = _accelerator!.Allocate1D<int>(256);
 
         _heightmapKernel(
             (Index1D)256,
             _permBuffer.View,
-            outputBuffer.View,
+            _heightmapOutBuffer.View,
             chunkX * 16f, chunkZ * 16f,
             TerrainGenerator.NoiseScale,
             TerrainGenerator.HeightScale,
             TerrainGenerator.BaseHeight,
             4, Models.ChunkData.Height);
 
-        await _accelerator.SynchronizeAsync();
-        return await outputBuffer.CopyToHostAsync();
+        await _accelerator!.SynchronizeAsync();
+        // Terminal sink for callers that still need CPU heights (legacy). Prefer FillColumnFromHeightmapAsync.
+        return await _heightmapOutBuffer.CopyToHostAsync();
+    }
+
+    /// <summary>
+    /// Run heightmap on GPU then fill a byte[] column on CPU from the small 256-int
+    /// heightmap without allocating a new heightmap buffer each call. The CopyToHost
+    /// of 256 ints is unavoidable until a GPU fill kernel lands; the win is no
+    /// Allocate1D churn and a single reused output buffer.
+    /// </summary>
+    public async Task FillColumnFromHeightmapAsync(int chunkX, int chunkZ, byte[] column, Func<int, int, int, byte> fillColumnXz)
+    {
+        if (_heightmapKernel == null || _permBuffer == null || _heightmapOutBuffer == null)
+            throw new InvalidOperationException("Not initialized");
+
+        _heightmapKernel(
+            (Index1D)256,
+            _permBuffer.View,
+            _heightmapOutBuffer.View,
+            chunkX * 16f, chunkZ * 16f,
+            TerrainGenerator.NoiseScale,
+            TerrainGenerator.HeightScale,
+            TerrainGenerator.BaseHeight,
+            4, Models.ChunkData.Height);
+
+        await _accelerator!.SynchronizeAsync();
+        var heights = await _heightmapOutBuffer.CopyToHostAsync();
+        for (int z = 0; z < 16; z++)
+            for (int x = 0; x < 16; x++)
+                fillColumnXz(x, z, heights[x + z * 16]);
+        _ = column; // caller mutates column inside fillColumnXz
     }
 
     /// <summary>
     /// Generate mesh for all 16 vertical sections of a chunk (16x16x256 -> 16x 16x16x16).
-    /// VoxelEngine's occupancy columns are 64-bit, so max section height is 64.
-    /// We split into standard 16-high sections for correct face culling.
-    /// Returns a list of (sectionY, MeshResult) for non-empty sections.
-    ///
-    /// Supplying neighbor chunk blocks fills the XZ padding border, which hides the boundary
-    /// faces that would otherwise show through at chunk edges. Pass null for any neighbor that
-    /// is not yet loaded - those boundary faces will render (air padding) until the neighbor
-    /// arrives. Intra-chunk Y boundaries (Y=16,32,...,240) are now padded by reading the
-    /// adjacent section's interior boundary layer from the same chunk column and feeding it
-    /// to the kernel's Y-pad slabs - no see-through at section seams within a chunk.
-    /// Inter-chunk Y boundaries (world top/bottom) remain air since chunks span the full
-    /// world height of 256.
     /// </summary>
-    /// <param name="blocks">Target chunk block data, flat byte[] of size SizeXZ*SizeXZ*Height.</param>
-    /// <param name="neighborXMinus">Blocks of chunk at (cx-1, cz), or null.</param>
-    /// <param name="neighborXPlus">Blocks of chunk at (cx+1, cz), or null.</param>
-    /// <param name="neighborZMinus">Blocks of chunk at (cx, cz-1), or null.</param>
-    /// <param name="neighborZPlus">Blocks of chunk at (cx, cz+1), or null.</param>
     public async Task<List<(int sectionY, VoxelMeshPipeline.MeshResult mesh)>> GenerateChunkMeshesAsync(
         byte[] blocks,
+        byte[]? neighborXMinus = null,
+        byte[]? neighborXPlus = null,
+        byte[]? neighborZMinus = null,
+        byte[]? neighborZPlus = null,
+        bool digPriority = false)
+    {
+        if (_meshPipeline == null)
+            throw new InvalidOperationException("Not initialized");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            // Prefer dig: don't even enter the FIFO WaitAsync queue while dig is waiting.
+            if (!digPriority && Volatile.Read(ref _digWaiters) > 0)
+            {
+                await Task.Yield();
+                continue;
+            }
+
+            await _meshLock.WaitAsync();
+            // Stream path: if dig remesh is waiting, release and retry so pickaxe isn't stuck
+            // behind a full-column mesh (was ~5s of dirt lag).
+            if (!digPriority && Volatile.Read(ref _digWaiters) > 0)
+            {
+                _meshLock.Release();
+                await Task.Yield();
+                continue;
+            }
+            LastMeshLockWaitMs = sw.Elapsed.TotalMilliseconds;
+            try
+            {
+                return await _meshPipeline.MeshChunkColumnAsync(
+                    blocks,
+                    neighborXMinus, neighborXPlus, neighborZMinus, neighborZPlus,
+                    Models.ChunkData.SizeXZ,
+                    Models.ChunkData.Height);
+            }
+            finally
+            {
+                _meshLock.Release();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Remesh only the listed section-Y indices (dig/terraform dirty queue).
+    /// </summary>
+    public async Task<List<(int sectionY, VoxelMeshPipeline.MeshResult mesh)>> GenerateChunkMeshesSectionsAsync(
+        byte[] blocks,
+        IReadOnlyCollection<int> sectionYs,
         byte[]? neighborXMinus = null,
         byte[]? neighborXPlus = null,
         byte[]? neighborZMinus = null,
@@ -123,16 +205,14 @@ public class VoxelEngineService : IAsyncDisposable
         if (_meshPipeline == null)
             throw new InvalidOperationException("Not initialized");
 
-        // Delegate to the library: VoxelMeshPipeline.MeshChunkColumnAsync owns the padding
-        // assembly, intra-chunk Y-slab derivation, and (critically) the all-air fast path
-        // that skips kernel dispatches for sections whose interior is entirely zero. For a
-        // Lost Spawns terrain column (geometry concentrated in a narrow Y band) that is
-        // 13-of-16 sections with no GPU work.
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        // Dig priority is owned by WorldService.DrainDirtyRemeshAsync (BeginDigRemesh).
         await _meshLock.WaitAsync();
+        LastMeshLockWaitMs = sw.Elapsed.TotalMilliseconds;
         try
         {
-            return await _meshPipeline.MeshChunkColumnAsync(
-                blocks,
+            return await _meshPipeline.MeshChunkColumnSectionsAsync(
+                blocks, sectionYs,
                 neighborXMinus, neighborXPlus, neighborZMinus, neighborZPlus,
                 Models.ChunkData.SizeXZ,
                 Models.ChunkData.Height);
@@ -145,7 +225,10 @@ public class VoxelEngineService : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        _carve?.Dispose();
         _permBuffer?.Dispose();
+        _heightmapOutBuffer?.Dispose();
+        _meshPipeline?.Dispose();
         _accelerator?.Dispose();
         _context?.Dispose();
         IsInitialized = false;

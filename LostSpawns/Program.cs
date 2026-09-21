@@ -11,7 +11,7 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 // Initialize SpawnJS runtime (required before any JS interop)
 builder.Services.AddSpawnJSRuntime(out var JS);
 // Slot lifetime is manual in SpawnJS; watcher names leaks from owned wrappers/callbacks.
-SpawnJSRuntime.EnableIDisposableWatcher = true;
+SpawnJSRuntime.EnableIDisposableWatcher = false;
 
 // Cross-platform crypto (Ed25519, SHA, etc) - browser uses BrowserWASMCrypto
 builder.Services.AddPlatformCrypto();

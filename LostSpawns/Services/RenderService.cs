@@ -39,10 +39,14 @@ public class RenderService : IDisposable
     // World reference (set during init)
     private WorldService? _world;
 
-    // Dynamic uniform batching - pre-allocated arrays for visible sections
-    private const int MaxVisibleSections = 512;
+    // Dynamic uniform batching - pre-allocated arrays for visible sections.
+    // DrawDistance 12 ≈ 450 columns × ~4-8 meshed sections can exceed 512 easily;
+    // capping without distance sort made terrain "vanish" when looking back after a long walk.
+    private const int MaxVisibleSections = 2048;
     private readonly GPUBuffer[] _visibleQuadBuffers = new GPUBuffer[MaxVisibleSections];
     private readonly int[] _visibleQuadCounts = new int[MaxVisibleSections];
+    // Scratch for distance-sorted visibility (avoid alloc per frame).
+    private readonly List<(float distSq, int cx, int sy, int cz, ChunkMesh mesh)> _visibleScratch = new(1024);
 
     private bool _running;
     private bool _disposed;
@@ -201,9 +205,11 @@ public class RenderService : IDisposable
         using var colorTexture = _context.GetCurrentTexture();
         using var colorView = colorTexture.CreateView();
 
-        // Collect visible sections for dynamic uniform batching
+        // Collect frustum-visible sections, then keep the nearest MaxVisibleSections.
+        // Without distance sort, Dictionary iteration order + a hard cap drops spawn-side
+        // terrain after walking far (look-back vanish).
         const int SectionHeight = 16;
-        int slotIndex = 0;
+        _visibleScratch.Clear();
 
         foreach (var ((cx, sy, cz), sectionMesh) in _world.Sections)
         {
@@ -216,16 +222,26 @@ public class RenderService : IDisposable
             if (!FrustumCuller.IsBoxVisible(in frustum, min, max))
                 continue;
 
-            _voxelPipeline.WriteDynamicUniforms(slotIndex, vp, sectionOffset, 1.0f,
-                fogColor, fogDensity, ambientColor, 0, cameraPos);
-            _visibleQuadBuffers[slotIndex] = sectionMesh.QuadBuffer!;
-            _visibleQuadCounts[slotIndex] = sectionMesh.QuadCount;
-            slotIndex++;
-
-            if (slotIndex >= MaxVisibleSections) break;
+            float dx = sectionOffset.X + ChunkData.SizeXZ * 0.5f - cameraPos.X;
+            float dy = sectionOffset.Y + SectionHeight * 0.5f - cameraPos.Y;
+            float dz = sectionOffset.Z + ChunkData.SizeXZ * 0.5f - cameraPos.Z;
+            _visibleScratch.Add((dx * dx + dy * dy + dz * dz, cx, sy, cz, sectionMesh));
         }
 
-        int visibleCount = slotIndex;
+        if (_visibleScratch.Count > MaxVisibleSections)
+            _visibleScratch.Sort((a, b) => a.distSq.CompareTo(b.distSq));
+
+        int visibleCount = Math.Min(_visibleScratch.Count, MaxVisibleSections);
+        for (int i = 0; i < visibleCount; i++)
+        {
+            var (_, cx, sy, cz, sectionMesh) = _visibleScratch[i];
+            var sectionOffset = new Vector3(cx * ChunkData.SizeXZ, sy * SectionHeight, cz * ChunkData.SizeXZ);
+            _voxelPipeline.WriteDynamicUniforms(i, vp, sectionOffset, 1.0f,
+                fogColor, fogDensity, ambientColor, 0, cameraPos);
+            _visibleQuadBuffers[i] = sectionMesh.QuadBuffer!;
+            _visibleQuadCounts[i] = sectionMesh.QuadCount;
+        }
+
         VisibleChunkCount = visibleCount;
 
         // Single GPU upload for all section uniforms

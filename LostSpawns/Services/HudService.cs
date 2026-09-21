@@ -397,6 +397,15 @@ public class HudService : IDisposable
     /// HUD can display "saved Xs ago". DateTime.MinValue means no save yet.</summary>
     public DateTime LastSaveTime { get; set; } = DateTime.MinValue;
 
+    /// <summary>F3 dig/stream diagnostics - pushed from Game.razor each frame.</summary>
+    public int DebugPendingChunks { get; set; }
+    public int DebugDirtyRemesh { get; set; }
+    public double DebugLastRemeshMs { get; set; }
+    public double DebugLastCarveMs { get; set; }
+    public double DebugMeshLockWaitMs { get; set; }
+    public int DebugVisibleSections { get; set; }
+    public int DebugLoadedSections { get; set; }
+
     /// <summary>True while the pause menu is on top of the screen stack.</summary>
     public bool IsPaused => _ui.Screens.ActiveScreen == "pause";
 
@@ -729,8 +738,8 @@ public class HudService : IDisposable
         {
             Text = "",
             FontSize = FontSize.Caption,
-            Width = 260,
-            Height = 18,
+            Width = 720,
+            Height = 36,
             Align = TextAlign.Left,
             Color = System.Drawing.Color.FromArgb(200, 180, 200, 210),
         };
@@ -3164,8 +3173,9 @@ public class HudService : IDisposable
                 ? "never"
                 : $"{(int)(DateTime.UtcNow - LastSaveTime).TotalSeconds}s ago";
             _debugLabel.Text =
-                $"{(int)_fpsSmoothed} fps    " +
+                $"{(int)_fpsSmoothed} fps ({deltaTime * 1000f:F1} ms)    " +
                 $"X {cameraPosition.X,6:F1} Y {cameraPosition.Y,6:F1} Z {cameraPosition.Z,6:F1}    " +
+                $"vis {DebugVisibleSections}/{DebugLoadedSections} pending {DebugPendingChunks} dirty {DebugDirtyRemesh} remesh {DebugLastRemeshMs:F1}ms carve {DebugLastCarveMs:F1}ms lock {DebugMeshLockWaitMs:F1}ms    " +
                 $"D{_worldTime.DayNumber} [{phase}]  Lv {_stats.Level}  XP {_stats.Experience}  Kills {_stats.Kills}  Achv {achvCount}/17  T {time}{rain}  saved {savedAge}";
         }
 

@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using LostSpawns.Models;
 using LostSpawns.Rendering;
 using SpawnDev.SpawnJS;
@@ -43,7 +42,11 @@ public class HeightmapLoader
         if (_gridSize * _gridSize != sampleCount)
             throw new InvalidOperationException($"Heightmap is not square: {sampleCount} samples, sqrt={Math.Sqrt(sampleCount):F2}");
 
-        _heightmap = MemoryMarshal.Cast<byte, short>(bytes).ToArray();
+        // One managed copy: reinterpret bytes as short[] without a second ToArray().
+        // MemoryMarshal.Cast is a view over `bytes`; we must keep a copy that owns the
+        // storage once `bytes` is eligible for GC - allocate short[] once and BlockCopy.
+        _heightmap = new short[sampleCount];
+        Buffer.BlockCopy(bytes, 0, _heightmap, 0, bytes.Length);
 
         // Sea level at voxel Y=64 (gives room for underwater terrain)
         _seaLevelVoxel = 64;

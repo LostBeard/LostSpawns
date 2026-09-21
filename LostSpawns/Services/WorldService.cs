@@ -4,6 +4,7 @@ using ILGPU.Runtime;
 using SpawnDev.SpawnJS.JSObjects;
 using SpawnDev.ILGPU.WebGPU;
 using SpawnDev.VoxelEngine;
+using SpawnDev.VoxelEngine.Destruction;
 using SpawnDev.VoxelEngine.Meshing;
 using SpawnDev.VoxelEngine.Physics;
 using LostSpawns.Models;
@@ -15,6 +16,8 @@ namespace LostSpawns.Services;
 /// Manages the voxel world: chunk loading/unloading around the player.
 /// Full GPU pipeline: heightmap -> block fill -> VoxelEngine greedy mesh -> GPU-resident quads.
 /// No CPU readback - mesh data stays on GPU from generation to rendering.
+/// Dig/terraform: edits mark dirty sections; ProcessDirtyRemesh drains one coalesced pass per frame
+/// (pauses stream mesh while dirty) so paint strokes do not stampede full-column remeshes.
 /// </summary>
 public class WorldService
 {
@@ -33,6 +36,22 @@ public class WorldService
     // avoiding the ~5x CPU work amplification in the initial load path.
     private readonly Dictionary<(int cx, int cz), byte[]> _blocksCache = new();
 
+    // Dig remesh coalesce: section keys dirty since last ProcessDirtyRemesh.
+    // Do NOT fire-and-forget ReMeshColumnAsync per SphereOp - that stampeded _meshLock.
+    private readonly HashSet<(int cx, int sy, int cz)> _dirtySections = new();
+    private bool _dirtyRemeshRunning;
+    // Reused raycast section buffer - CastWorld consumes each getSection result before
+    // the next call, so one int[4096] is safe and avoids WASM GC on terraform preview.
+    private readonly int[] _raycastSectionBuf = new int[16 * 16 * 16];
+
+    // Dig stage timings (last completed remesh pass) - F3 / console.
+    public double LastCarveMs { get; private set; }
+    public double LastRemeshMs { get; private set; }
+    public int LastDirtySectionCount { get; private set; }
+    public int LastSectionsMeshed { get; private set; }
+    public int DirtyRemeshPending => _dirtySections.Count;
+    public double LastMeshLockWaitMs => _engine.LastMeshLockWaitMs;
+
     // Sparse edit log per column. Key = byte-array index within the column,
     // value = the new block byte. Only covers player modifications (break/place);
     // procedural terrain is recreated from the heightmap every time the column
@@ -46,7 +65,11 @@ public class WorldService
     private HeightmapLoader? _heightmapLoader;
     private int _lastCX = int.MinValue;
     private int _lastCZ = int.MinValue;
-    private const int MaxConcurrentGpu = 16;
+    // Keep this small: all mesh work shares one _meshLock. A large in-flight count
+    // queues many WaitAsync callers FIFO, so dig remesh sat behind ~16 full-column
+    // meshes (~5s pickaxe lag). Dig BeginDigRemesh + stream yield handles new work;
+    // this cap limits how deep the FIFO already is when dig arrives.
+    private const int MaxConcurrentGpu = 2;
 
     public int Seed { get; private set; }
     public bool IsInitialized { get; private set; }
@@ -184,6 +207,10 @@ public class WorldService
 
     private void DispatchGpuPending()
     {
+        // Dig remesh wins: do not start new stream columns while dirty sections pending.
+        if (_dirtySections.Count > 0 || _dirtyRemeshRunning)
+            return;
+
         while (_inFlight.Count < MaxConcurrentGpu && _pendingQueue.Count > 0)
         {
             var key = _pendingQueue.Dequeue();
@@ -191,6 +218,87 @@ public class WorldService
             _inFlight.Add(key);
             _ = GenerateChunkGpuAsync(key.Item1, key.Item2);
         }
+    }
+
+    /// <summary>
+    /// Coalesce dirty sections into one remesh pass. Grouped by column; each column
+    /// remeshes only its dirty section-Y indices via MeshChunkColumnSectionsAsync.
+    /// </summary>
+    public void ProcessDirtyRemesh()
+    {
+        if (_dirtyRemeshRunning || _dirtySections.Count == 0) return;
+        _dirtyRemeshRunning = true;
+        var snapshot = _dirtySections.ToList();
+        _dirtySections.Clear();
+        LastDirtySectionCount = snapshot.Count;
+        _ = DrainDirtyRemeshAsync(snapshot);
+    }
+
+    private async Task DrainDirtyRemeshAsync(List<(int cx, int sy, int cz)> snapshot)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        int meshed = 0;
+        _engine.BeginDigRemesh();
+        try
+        {
+            var byColumn = new Dictionary<(int cx, int cz), List<int>>();
+            foreach (var (cx, sy, cz) in snapshot)
+            {
+                if (sy < 0 || sy >= 16) continue;
+                var col = (cx, cz);
+                if (!byColumn.TryGetValue(col, out var list))
+                {
+                    list = new List<int>();
+                    byColumn[col] = list;
+                }
+                if (!list.Contains(sy))
+                    list.Add(sy);
+            }
+
+            foreach (var ((cx, cz), sectionYs) in byColumn)
+                meshed += await RemeshSectionsAsync(cx, cz, sectionYs);
+        }
+        finally
+        {
+            _engine.EndDigRemesh();
+            sw.Stop();
+            LastRemeshMs = sw.Elapsed.TotalMilliseconds;
+            LastSectionsMeshed = meshed;
+            _dirtyRemeshRunning = false;
+            if (_dirtySections.Count == 0)
+                DispatchGpuPending();
+        }
+    }
+
+    private void MarkSectionsDirty(IEnumerable<SectionCoord> coords)
+    {
+        foreach (var c in coords)
+        {
+            if (c.Sy < 0 || c.Sy >= 16) continue;
+            _dirtySections.Add((c.Cx, c.Sy, c.Cz));
+        }
+    }
+
+    private void MarkBlockDirty(int worldX, int worldY, int worldZ)
+    {
+        const int ss = ChunkData.SizeXZ;
+        int cx = (int)MathF.Floor(worldX / (float)ss);
+        int cz = (int)MathF.Floor(worldZ / (float)ss);
+        int sy = worldY / ss;
+        int lx = worldX - cx * ss;
+        int lz = worldZ - cz * ss;
+
+        _dirtySections.Add((cx, sy, cz));
+        if (worldY % ss == 0 && sy > 0) _dirtySections.Add((cx, sy - 1, cz));
+        if (worldY % ss == ss - 1 && sy < 15) _dirtySections.Add((cx, sy + 1, cz));
+        if (lx == 0) _dirtySections.Add((cx - 1, sy, cz));
+        if (lx == ss - 1) _dirtySections.Add((cx + 1, sy, cz));
+        if (lz == 0) _dirtySections.Add((cx, sy, cz - 1));
+        if (lz == ss - 1) _dirtySections.Add((cx, sy, cz + 1));
+
+        // Kick remesh now (don't wait for next frame's ProcessReadyChunks) so pickaxe
+        // dirt updates in the same interaction, once stream tasks yield the mesh lock.
+        ProcessDirtyRemesh();
     }
 
     /// <summary>
@@ -208,12 +316,24 @@ public class WorldService
 
             if (_loadedColumns.Contains((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
 
+            // Dig remesh must win the mesh lock. In-flight stream tasks that already
+            // passed DispatchGpuPending used to hold _meshLock for seconds (full-column
+            // mesh ×16) and made pickaxe dirt lag ~5s. Yield here until dig drain finishes.
+            while (_dirtySections.Count > 0 || _dirtyRemeshRunning)
+                await Task.Yield();
+
+            if (_loadedColumns.Contains((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
+
             // XZ neighbors for boundary padding. Cached across calls so a neighbor
             // generated once gets reused when adjacent columns mesh.
             var nxMinus = await GetOrGenerateBlocksAsync(cx - 1, cz);
             var nxPlus = await GetOrGenerateBlocksAsync(cx + 1, cz);
             var nzMinus = await GetOrGenerateBlocksAsync(cx, cz - 1);
             var nzPlus = await GetOrGenerateBlocksAsync(cx, cz + 1);
+
+            // Re-check dig priority after neighbor gen (can take a while).
+            while (_dirtySections.Count > 0 || _dirtyRemeshRunning)
+                await Task.Yield();
 
             // VoxelEngine greedy mesh: split chunk into 16x16x16 sections, mesh each with neighbor padding
             var sectionMeshes = await _engine.GenerateChunkMeshesAsync(
@@ -252,10 +372,12 @@ public class WorldService
     }
 
     /// <summary>
-    /// Called per frame. Dequeues fully-meshed chunks and adds them to the active chunks dictionary.
+    /// Called per frame. Drains dirty dig remesh first, then dequeues streamed sections.
     /// </summary>
     public int ProcessReadyChunks(int maxCount = 16)
     {
+        ProcessDirtyRemesh();
+
         int processed = 0;
         while (processed < maxCount && _readyQueue.Count > 0)
         {
@@ -434,7 +556,8 @@ public class WorldService
             });
     }
 
-    /// <summary>Adapter: flat byte[] column cache -> int[] 16x16x16 section in PackedBlock format.</summary>
+    /// <summary>Adapter: flat byte[] column cache -> int[] 16x16x16 section in PackedBlock format.
+    /// Reuses one buffer - CastWorld reads each section before requesting the next.</summary>
     private int[]? GetSectionBlocksForRaycast(SectionCoord coord)
     {
         const int ss = 16;
@@ -443,7 +566,8 @@ public class WorldService
         if (coord.Sy < 0 || (coord.Sy + 1) * ss > ChunkData.Height)
             return null;
 
-        var section = new int[ss * ss * ss];
+        var section = _raycastSectionBuf;
+        System.Array.Clear(section, 0, section.Length);
         int yStart = coord.Sy * ss;
         for (int y = 0; y < ss; y++)
         {
@@ -453,7 +577,6 @@ public class WorldService
                 for (int x = 0; x < ss; x++)
                 {
                     byte b = col[x + z * ChunkData.SizeXZ + srcYBase];
-                    // byte -> PackedBlock int (lower 12 bits = block type)
                     section[x + z * ss + dstYBase] = b;
                 }
         }
@@ -483,13 +606,7 @@ public class WorldService
 
         col[idx] = (byte)type;
         RecordEdit(cx, cz, idx, (byte)type);
-
-        _ = ReMeshColumnAsync(cx, cz);
-        if (lx == 0) _ = ReMeshColumnAsync(cx - 1, cz);
-        if (lx == ChunkData.SizeXZ - 1) _ = ReMeshColumnAsync(cx + 1, cz);
-        if (lz == 0) _ = ReMeshColumnAsync(cx, cz - 1);
-        if (lz == ChunkData.SizeXZ - 1) _ = ReMeshColumnAsync(cx, cz + 1);
-
+        MarkBlockDirty(worldX, worldY, worldZ);
         return true;
     }
 
@@ -518,14 +635,7 @@ public class WorldService
 
         col[idx] = 0;
         RecordEdit(cx, cz, idx, 0);
-
-        // Re-mesh this column + any edge-neighbor columns that share the boundary.
-        _ = ReMeshColumnAsync(cx, cz);
-        if (lx == 0) _ = ReMeshColumnAsync(cx - 1, cz);
-        if (lx == ChunkData.SizeXZ - 1) _ = ReMeshColumnAsync(cx + 1, cz);
-        if (lz == 0) _ = ReMeshColumnAsync(cx, cz - 1);
-        if (lz == ChunkData.SizeXZ - 1) _ = ReMeshColumnAsync(cx, cz + 1);
-
+        MarkBlockDirty(worldX, worldY, worldZ);
         return (BlockType)original;
     }
 
@@ -571,68 +681,132 @@ public class WorldService
         var changed = new Dictionary<BlockType, int>();
         if (radius <= 0) return changed;
 
-        // Bounding box in world cell space; clamp Y to the chunk Height range.
-        int minX = (int)MathF.Floor(center.X - radius);
-        int maxX = (int)MathF.Floor(center.X + radius);
+        var carveSw = System.Diagnostics.Stopwatch.StartNew();
+
         int minY = Math.Max(0, (int)MathF.Floor(center.Y - radius));
         int maxY = Math.Min(ChunkData.Height - 1, (int)MathF.Floor(center.Y + radius));
+        float r2 = radius * radius;
+
+        int minX = (int)MathF.Floor(center.X - radius);
+        int maxX = (int)MathF.Floor(center.X + radius);
         int minZ = (int)MathF.Floor(center.Z - radius);
         int maxZ = (int)MathF.Floor(center.Z + radius);
 
-        float r2 = radius * radius;
-        // Track every column that gets a write so we can re-mesh exactly once
-        // at the end + cover XZ neighbors when writes fall on a chunk boundary.
-        var dirty = new HashSet<(int cx, int cz)>();
-
+        var touchedColumns = new HashSet<(int cx, int cz)>();
         for (int wx = minX; wx <= maxX; wx++)
-        for (int wy = minY; wy <= maxY; wy++)
         for (int wz = minZ; wz <= maxZ; wz++)
+            touchedColumns.Add((
+                (int)MathF.Floor(wx / (float)ChunkData.SizeXZ),
+                (int)MathF.Floor(wz / (float)ChunkData.SizeXZ)));
+
+        // Sync carve must stay on CPU - GetAwaiter().GetResult() on GPU deadlocks Blazor WASM.
+        // BlockColumnCarveService is available for async blast paths; brush uses library CPU.
+        foreach (var (cx, cz) in touchedColumns)
         {
-            // Sphere test: cell-center distance from the operation center.
-            float dx = (wx + 0.5f) - center.X;
-            float dy = (wy + 0.5f) - center.Y;
-            float dz = (wz + 0.5f) - center.Z;
-            if (dx * dx + dy * dy + dz * dz > r2) continue;
-
-            int cx = (int)MathF.Floor(wx / (float)ChunkData.SizeXZ);
-            int cz = (int)MathF.Floor(wz / (float)ChunkData.SizeXZ);
             if (!_blocksCache.TryGetValue((cx, cz), out var col)) continue;
+            float localCx = center.X - cx * ChunkData.SizeXZ;
+            float localCz = center.Z - cz * ChunkData.SizeXZ;
 
-            int lx = wx - cx * ChunkData.SizeXZ;
-            int lz = wz - cz * ChunkData.SizeXZ;
-            int idx = lx + lz * ChunkData.SizeXZ + wy * ChunkData.SizeXZ * ChunkData.SizeXZ;
+            // Snapshot candidates for tallies before mutating.
+            var pre = new List<(int idx, byte original)>(64);
+            int cMinX = Math.Max(0, (int)MathF.Floor(localCx - radius));
+            int cMaxX = Math.Min(ChunkData.SizeXZ - 1, (int)MathF.Floor(localCx + radius));
+            int cMinZ = Math.Max(0, (int)MathF.Floor(localCz - radius));
+            int cMaxZ = Math.Min(ChunkData.SizeXZ - 1, (int)MathF.Floor(localCz + radius));
+            for (int lx = cMinX; lx <= cMaxX; lx++)
+            for (int wy = minY; wy <= maxY; wy++)
+            for (int lz = cMinZ; lz <= cMaxZ; lz++)
+            {
+                float dx = (lx + 0.5f) - localCx;
+                float dy = (wy + 0.5f) - center.Y;
+                float dz = (lz + 0.5f) - localCz;
+                if (dx * dx + dy * dy + dz * dz > r2) continue;
+                int idx = lx + lz * ChunkData.SizeXZ + wy * ChunkData.SizeXZ * ChunkData.SizeXZ;
+                byte original = col[idx];
+                if (allowOverwrite) { if (original == 0) continue; }
+                else { if (original != 0) continue; }
+                pre.Add((idx, original));
+            }
 
-            byte original = col[idx];
+            if (pre.Count == 0) continue;
+
             if (allowOverwrite)
-            {
-                // Carve: skip already-air cells so we don't fire spurious edits.
-                if (original == 0) continue;
-            }
+                ExplosionKernels.DestroyInSphereBytes(col, ChunkData.SizeXZ, ChunkData.Height,
+                    localCx, center.Y, localCz, radius);
             else
+                ExplosionKernels.FillInSphereBytes(col, ChunkData.SizeXZ, ChunkData.Height,
+                    localCx, center.Y, localCz, radius, replaceWith);
+
+            foreach (var (idx, original) in pre)
             {
-                // Build: skip non-air cells so we don't overwrite existing geometry.
-                if (original != 0) continue;
+                byte now = col[idx];
+                if (allowOverwrite)
+                {
+                    if (now != 0) continue;
+                    RecordEdit(cx, cz, idx, 0);
+                    changed[(BlockType)original] = changed.GetValueOrDefault((BlockType)original) + 1;
+                }
+                else
+                {
+                    if (now != replaceWith) continue;
+                    RecordEdit(cx, cz, idx, replaceWith);
+                    changed[(BlockType)replaceWith] = changed.GetValueOrDefault((BlockType)replaceWith) + 1;
+                }
             }
-
-            col[idx] = replaceWith;
-            RecordEdit(cx, cz, idx, replaceWith);
-
-            // Tally the type that changed (original for carve, replaceWith for build).
-            BlockType changedType = allowOverwrite ? (BlockType)original : (BlockType)replaceWith;
-            changed[changedType] = changed.GetValueOrDefault(changedType) + 1;
-
-            dirty.Add((cx, cz));
-            // Boundary writes also dirty the XZ neighbor so the seam re-meshes.
-            if (lx == 0) dirty.Add((cx - 1, cz));
-            if (lx == ChunkData.SizeXZ - 1) dirty.Add((cx + 1, cz));
-            if (lz == 0) dirty.Add((cx, cz - 1));
-            if (lz == ChunkData.SizeXZ - 1) dirty.Add((cx, cz + 1));
         }
 
-        foreach (var (cx, cz) in dirty)
-            _ = ReMeshColumnAsync(cx, cz);
+        var affected = new HashSet<SectionCoord>();
+        ExplosionKernels.CollectAffectedSections(
+            center.X, center.Y, center.Z, radius, ChunkData.SizeXZ, affected);
+        foreach (var s in affected.ToList())
+        {
+            affected.Add(new SectionCoord(s.Cx - 1, s.Sy, s.Cz));
+            affected.Add(new SectionCoord(s.Cx + 1, s.Sy, s.Cz));
+            affected.Add(new SectionCoord(s.Cx, s.Sy, s.Cz - 1));
+            affected.Add(new SectionCoord(s.Cx, s.Sy, s.Cz + 1));
+            if (s.Sy > 0) affected.Add(new SectionCoord(s.Cx, s.Sy - 1, s.Cz));
+            if (s.Sy < 15) affected.Add(new SectionCoord(s.Cx, s.Sy + 1, s.Cz));
+        }
+        MarkSectionsDirty(affected);
 
+        carveSw.Stop();
+        LastCarveMs = carveSw.Elapsed.TotalMilliseconds;
+        ProcessDirtyRemesh();
         return changed;
+    }
+
+    /// <summary>
+    /// Async GPU sphere carve for large blasts. Prefer this over sync SphereOp when
+    /// volume is huge; brush path stays on CPU DestroyInSphereBytes to avoid WASM deadlock.
+    /// </summary>
+    public async Task<int> CarveSphereGpuAsync(Vector3 center, float radius)
+    {
+        if (_engine.Carve == null || radius <= 0) return 0;
+        int total = 0;
+        int minX = (int)MathF.Floor(center.X - radius);
+        int maxX = (int)MathF.Floor(center.X + radius);
+        int minZ = (int)MathF.Floor(center.Z - radius);
+        int maxZ = (int)MathF.Floor(center.Z + radius);
+        var cols = new HashSet<(int, int)>();
+        for (int wx = minX; wx <= maxX; wx++)
+        for (int wz = minZ; wz <= maxZ; wz++)
+            cols.Add(((int)MathF.Floor(wx / (float)ChunkData.SizeXZ),
+                      (int)MathF.Floor(wz / (float)ChunkData.SizeXZ)));
+
+        foreach (var (cx, cz) in cols)
+        {
+            if (!_blocksCache.TryGetValue((cx, cz), out var col)) continue;
+            float localCx = center.X - cx * ChunkData.SizeXZ;
+            float localCz = center.Z - cz * ChunkData.SizeXZ;
+            total += await _engine.Carve.DestroySphereAsync(
+                col, ChunkData.SizeXZ, ChunkData.Height, localCx, center.Y, localCz, radius);
+        }
+
+        var affected = new HashSet<SectionCoord>();
+        ExplosionKernels.CollectAffectedSections(
+            center.X, center.Y, center.Z, radius, ChunkData.SizeXZ, affected);
+        MarkSectionsDirty(affected);
+        return total;
     }
 
     /// <summary>
@@ -680,20 +854,15 @@ public class WorldService
     }
 
     /// <summary>Public hook for Game.razor to re-mesh a column after applying saved edits.</summary>
-    public Task ReMeshColumn(int cx, int cz) => ReMeshColumnAsync(cx, cz);
+    public Task ReMeshColumn(int cx, int cz) => RemeshSectionsAsync(cx, cz, null).AsTask();
 
-    private static bool TryParseChunkKey(string key, out int cx, out int cz)
+    /// <summary>
+    /// Remesh selected section-Y indices of a column (null = full column).
+    /// Returns number of sections that produced a mesh.
+    /// </summary>
+    private async ValueTask<int> RemeshSectionsAsync(int cx, int cz, List<int>? sectionYs)
     {
-        cx = 0; cz = 0;
-        int comma = key.IndexOf(',');
-        if (comma <= 0) return false;
-        return int.TryParse(key.AsSpan(0, comma), out cx) &&
-               int.TryParse(key.AsSpan(comma + 1), out cz);
-    }
-
-    private async Task ReMeshColumnAsync(int cx, int cz)
-    {
-        if (!_blocksCache.TryGetValue((cx, cz), out var blocks)) return;
+        if (!_blocksCache.TryGetValue((cx, cz), out var blocks)) return 0;
         var nxMinus = _blocksCache.TryGetValue((cx - 1, cz), out var a) ? a : null;
         var nxPlus  = _blocksCache.TryGetValue((cx + 1, cz), out var b) ? b : null;
         var nzMinus = _blocksCache.TryGetValue((cx, cz - 1), out var c) ? c : null;
@@ -702,27 +871,52 @@ public class WorldService
         List<(int sectionY, VoxelMeshPipeline.MeshResult mesh)> sectionMeshes;
         try
         {
-            sectionMeshes = await _engine.GenerateChunkMeshesAsync(
-                blocks, nxMinus, nxPlus, nzMinus, nzPlus);
+            if (sectionYs == null || sectionYs.Count == 0)
+            {
+                sectionMeshes = await _engine.GenerateChunkMeshesAsync(
+                    blocks, nxMinus, nxPlus, nzMinus, nzPlus);
+            }
+            else
+            {
+                sectionMeshes = await _engine.GenerateChunkMeshesSectionsAsync(
+                    blocks, sectionYs, nxMinus, nxPlus, nzMinus, nzPlus);
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[World] Re-mesh ({cx},{cz}) failed: {ex.Message}");
-            return;
+            return 0;
         }
 
-        // Swap the column's sections with the fresh meshes. Dispose any old sections
-        // the new pass didn't produce (they're now all-air after the break).
-        var freshSyIndices = new HashSet<int>(sectionMeshes.Select(s => s.sectionY));
-        for (int sy = 0; sy < 16; sy++)
+        if (sectionYs == null || sectionYs.Count == 0)
         {
-            var key = (cx, sy, cz);
-            if (_chunks.TryGetValue(key, out var old) && !freshSyIndices.Contains(sy))
+            var freshSyIndices = new HashSet<int>(sectionMeshes.Select(s => s.sectionY));
+            for (int sy = 0; sy < 16; sy++)
             {
-                old.Dispose();
-                _chunks.Remove(key);
+                var key = (cx, sy, cz);
+                if (_chunks.TryGetValue(key, out var old) && !freshSyIndices.Contains(sy))
+                {
+                    old.Dispose();
+                    _chunks.Remove(key);
+                }
             }
         }
+        else
+        {
+            // Partial remesh: drop dirty sections that became all-air.
+            var fresh = new HashSet<int>(sectionMeshes.Select(s => s.sectionY));
+            foreach (int sy in sectionYs)
+            {
+                if (fresh.Contains(sy)) continue;
+                var key = (cx, sy, cz);
+                if (_chunks.TryGetValue(key, out var old))
+                {
+                    old.Dispose();
+                    _chunks.Remove(key);
+                }
+            }
+        }
+
         foreach (var (sy, meshResult) in sectionMeshes)
         {
             var key = (cx, sy, cz);
@@ -736,6 +930,16 @@ public class WorldService
                 IlgpuBuffer = meshResult.QuadBuffer,
             };
         }
+        return sectionMeshes.Count;
+    }
+
+    private static bool TryParseChunkKey(string key, out int cx, out int cz)
+    {
+        cx = 0; cz = 0;
+        int comma = key.IndexOf(',');
+        if (comma <= 0) return false;
+        return int.TryParse(key.AsSpan(0, comma), out cx) &&
+               int.TryParse(key.AsSpan(comma + 1), out cz);
     }
 
     /// <summary>Resets all state so the service can be re-initialized.</summary>
@@ -751,6 +955,7 @@ public class WorldService
         _pendingQueue.Clear();
         _inFlight.Clear();
         _blocksCache.Clear();
+        _dirtySections.Clear();
         _lastCX = int.MinValue;
         _lastCZ = int.MinValue;
         _generator = null;
