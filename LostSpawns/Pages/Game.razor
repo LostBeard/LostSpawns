@@ -187,9 +187,10 @@
         // on the minimap immediately; 3D rendering of their bodies is a follow-up.
         Wildlife.SpawnStarter(Renderer.Camera.Position, World);
 
-        // Preload CC0 wildlife GLBs into JS ArrayBuffers (header-validated).
-        // Missing tool drop-ins are logged and skipped. GPU draw is phase C.
-        _ = Meshes.PreloadCatalogAsync();
+        // Preload CC0 wildlife GLBs into JS ArrayBuffers (header-validated),
+        // then upload POSITION/NORMAL/index views to WebGPU for 3D draw.
+        await Meshes.PreloadCatalogAsync();
+        Renderer.UploadEntityMeshes();
 
         // Drop a starter campfire a couple blocks east of spawn. Gives the
         // player an obvious warmth anchor and a target for future "cook meat"

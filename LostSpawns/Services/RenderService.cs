@@ -21,6 +21,8 @@ public class RenderService : IDisposable
 {
     private readonly SpawnJSRuntime _js;
     private readonly WorldTimeService _worldTime;
+    private readonly EntityService _entities;
+    private readonly GltfMeshService _meshes;
 
     private GPUDevice? _device;
     private GPUQueue? _queue;
@@ -35,6 +37,8 @@ public class RenderService : IDisposable
 
     // VoxelEngine vertex-pull render pipeline (reads PackedQuad directly from storage buffer)
     private VertexPullPipeline? _voxelPipeline;
+    private EntityMeshPipeline? _entityPipeline;
+    private float _animTime;
 
     // World reference (set during init)
     private WorldService? _world;
@@ -74,10 +78,12 @@ public class RenderService : IDisposable
     public int TotalSectionCount => _world?.LoadedSections ?? 0;
     public int TotalColumnCount => _world?.LoadedColumns ?? 0;
 
-    public RenderService(SpawnJSRuntime js, WorldTimeService worldTime)
+    public RenderService(SpawnJSRuntime js, WorldTimeService worldTime, EntityService entities, GltfMeshService meshes)
     {
         _js = js;
         _worldTime = worldTime;
+        _entities = entities;
+        _meshes = meshes;
     }
 
     public void Init(HTMLCanvasElement canvas, Accelerator accelerator, WorldService world)
@@ -130,10 +136,24 @@ public class RenderService : IDisposable
         _voxelPipeline.Init(_device, _queue, _canvasFormat, blockColors);
         _voxelPipeline.InitDynamic(MaxVisibleSections);
 
+        _entityPipeline = new EntityMeshPipeline();
+        _entityPipeline.Init(_device, _queue, _canvasFormat);
+
         CreateDepthTexture();
 
         IsInitialized = true;
         Console.WriteLine($"[Render] Pipeline ready ({_canvasWidth}x{_canvasHeight})");
+    }
+
+    /// <summary>
+    /// Upload any GLBs already fetched into GPU mesh buffers. Call after
+    /// <see cref="GltfMeshService.PreloadCatalogAsync"/>.
+    /// </summary>
+    public void UploadEntityMeshes()
+    {
+        if (_device == null || _queue == null) return;
+        _meshes.UploadCachedToGpu(_device, _queue);
+        Console.WriteLine($"[Render] Entity GPU meshes: {_meshes.GpuMeshCount}");
     }
 
     public void StartRenderLoop()
@@ -161,6 +181,7 @@ public class RenderService : IDisposable
         _lastTimestamp = timestamp;
         dt = Math.Min(dt, 0.1f);
         OnUpdate?.Invoke(dt);
+        _animTime += dt;
         RenderFrame();
         RequestFrame();
     }
@@ -258,6 +279,24 @@ public class RenderService : IDisposable
             _voxelPipeline.DrawSectionDynamic(pass, _visibleQuadBuffers[i], _visibleQuadCounts[i], i);
         }
 
+        // Entity GLB meshes share this pass's depth buffer (reversed-Z).
+        if (_entityPipeline != null && _meshes.GpuMeshCount > 0)
+        {
+            // Approximate sun direction from day fraction (matches HudService arc).
+            float t = _worldTime.DayFraction;
+            float u = t > 0.05f && t < 0.55f ? (t - 0.05f) / 0.50f : 0.5f;
+            float az = MathF.PI * (0.5f - u);
+            float el = MathF.Sin(Math.Clamp(u, 0f, 1f) * MathF.PI) * (MathF.PI * 0.39f);
+            float cosEl = MathF.Cos(el);
+            var lightDir = Vector3.Normalize(new Vector3(
+                cosEl * MathF.Sin(az),
+                MathF.Sin(el),
+                cosEl * MathF.Cos(az)));
+
+            _entityPipeline.DrawEntities(
+                pass, vp, _entities.Entities, _meshes.ResolveWildlifeMesh, lightDir, _animTime);
+        }
+
         pass.End();
         using var cmdBuf = encoder.Finish();
         _queue!.Submit(new[] { cmdBuf });
@@ -292,6 +331,9 @@ public class RenderService : IDisposable
 
         _rafCallback?.Dispose();
         _rafCallback = null;
+
+        _entityPipeline?.Dispose();
+        _entityPipeline = null;
 
         _depthView?.Dispose();
         _depthView = null;

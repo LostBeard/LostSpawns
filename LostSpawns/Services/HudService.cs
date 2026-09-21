@@ -31,6 +31,7 @@ public class HudService : IDisposable
     private readonly EntityService _entities;
     private readonly CampfireService _fires;
     private readonly GroundItemService _ground;
+    private readonly GltfMeshService _meshes;
 
     // Rain particle state. Each particle stores its current Y, per-particle speed,
     // and X (randomized once at spawn). Updated in Update(dt); drawn in OnPostRender
@@ -444,7 +445,7 @@ public class HudService : IDisposable
     /// <summary>True while the death screen is on top of the screen stack.</summary>
     public bool IsDead => _ui.Screens.ActiveScreen == "death";
 
-    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather, EntityService entities, CampfireService fires, GroundItemService ground)
+    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather, EntityService entities, CampfireService fires, GroundItemService ground, GltfMeshService meshes)
     {
         _ui = ui;
         _stats = stats;
@@ -456,6 +457,7 @@ public class HudService : IDisposable
         _entities = entities;
         _fires = fires;
         _ground = ground;
+        _meshes = meshes;
         // Seed breath puffs past their lifetime so they aren't rendered as a
         // ghost ring at (0, 0) on the first few frames before the emitter
         // has had a chance to spawn real ones.
@@ -2377,12 +2379,16 @@ public class HudService : IDisposable
             float x = screenX - size / 2f;
             float y = screenY - size / 2f;
 
+            // When a WebGPU mesh is drawing this kind, skip the 2D silhouette
+            // (shadow + body). Keep HP / name / aggro overlays.
+            bool gpuMesh = _meshes.HasGpuMeshForKind(e.Kind);
+
             // Ground shadow: a dark translucent oval beneath the billboard
             // that helps the entity read as "standing on terrain" rather
             // than "floating". Crows skip this because they ARE floating.
             // Shadow offset shifts left/right based on the sun's projected
             // screen X so shadows point away from the world-locked sun.
-            if (e.Kind != EntityKind.Crow)
+            if (!gpuMesh && e.Kind != EntityKind.Crow)
             {
                 float shadowY = y + size + size * 0.05f;
                 float shadowW = size * 0.9f;
@@ -2400,6 +2406,8 @@ public class HudService : IDisposable
                     System.Drawing.Color.FromArgb(110, 10, 10, 10));
             }
 
+            if (!gpuMesh)
+            {
             // Per-kind silhouette: extra rects that stick out above / below
             // the body to suggest ears, snout, wings, etc. All decorations
             // use the same body color so hit flashes apply uniformly.
@@ -2496,6 +2504,7 @@ public class HudService : IDisposable
             _ui.Renderer.DrawRect(x, y + size - 2, size, 2, border);
             _ui.Renderer.DrawRect(x, y, 2, size, border);
             _ui.Renderer.DrawRect(x + size - 2, y, 2, size, border);
+            } // !gpuMesh silhouette
 
             // HP bar above the body when damaged. Bar fill normalizes to the
             // entity's MaxHealth so wolves (1.8 HP) and boars (1.5 HP) read as

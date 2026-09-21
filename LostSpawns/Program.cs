@@ -22,18 +22,18 @@ builder.Services.AddSingleton<SettingsService>();
 builder.Services.AddSingleton<InputService>();
 builder.Services.AddSingleton<VoxelEngineService>();
 builder.Services.AddSingleton<WorldService>();
+builder.Services.AddSingleton<WorldTimeService>();
+builder.Services.AddSingleton<EntityService>();
+builder.Services.AddSingleton<GltfMeshService>();
 builder.Services.AddSingleton<RenderService>();
 // PlayerStats first because InventoryService now constructor-injects it for consumables.
 builder.Services.AddSingleton<PlayerStatsService>();
 builder.Services.AddSingleton<InventoryService>();
 builder.Services.AddSingleton<CraftingService>();
-builder.Services.AddSingleton<WorldTimeService>();
 builder.Services.AddSingleton<WeatherService>();
-builder.Services.AddSingleton<EntityService>();
 builder.Services.AddSingleton<CampfireService>();
 builder.Services.AddSingleton<GroundItemService>();
 builder.Services.AddSingleton<AudioService>();
-builder.Services.AddSingleton<GltfMeshService>();
 builder.Services.AddSingleton<SaveService>();
 builder.Services.AddSingleton<HudService>();
 
