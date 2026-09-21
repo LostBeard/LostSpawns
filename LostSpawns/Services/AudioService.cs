@@ -903,6 +903,25 @@ public class AudioService : IDisposable
     /// 1.0 puts it at full bass-drone. Game.razor pushes this from
     /// "is any aggro entity within combat range" tally.
     /// </summary>
+    /// <summary>
+    /// Hard-mute continuous ambient loops (wind / rain / danger). Call when
+    /// menus are open so oscillators do not keep humming at their last gain.
+    /// </summary>
+    public void SilenceAmbients()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            if (_windGain is not null) SetGainNow(_windGain, _ctx, 0f);
+            if (_rainGain is not null) SetGainNow(_rainGain, _ctx, 0f);
+            if (_dangerGain is not null) SetGainNow(_dangerGain, _ctx, 0f);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] SilenceAmbients failed: {ex.Message}");
+        }
+    }
+
     public void UpdateDangerDrone(float intensity)
     {
         if (_ctx is null) return;
@@ -951,8 +970,9 @@ public class AudioService : IDisposable
             {
                 _windOsc = _ctx.CreateOscillator();
                 _windGain = _ctx.CreateGain();
-                _windOsc.Type = "sawtooth";
-                _windOsc.Frequency.SetValueAtTime(90f, _ctx.CurrentTime);
+                // Sine - sawtooth harmonics were a constant buzz under gameplay.
+                _windOsc.Type = "sine";
+                _windOsc.Frequency.SetValueAtTime(70f, _ctx.CurrentTime);
                 _windGain.Gain.SetValueAtTime(0, _ctx.CurrentTime);
                 _windOsc.Connect(_windGain);
                 _windGain.Connect(Destination);
@@ -962,11 +982,11 @@ public class AudioService : IDisposable
             if (_windGain is not null)
             {
                 float gust = 0.5f + 0.5f * MathF.Sin(_windPhase);
-                SetGainNow(_windGain, _ctx, Math.Clamp(intensity * 0.025f * gust, 0, 0.05f));
+                SetGainNow(_windGain, _ctx, Math.Clamp(intensity * 0.02f * gust, 0, 0.035f));
             }
             if (_windOsc is not null)
             {
-                float baseFreq = 95f + pitchBias * 25f;
+                float baseFreq = 65f + pitchBias * 15f;
                 double t = _ctx.CurrentTime;
                 _windOsc.Frequency.CancelScheduledValues(t);
                 _windOsc.Frequency.SetValueAtTime(baseFreq, t);
@@ -1007,17 +1027,16 @@ public class AudioService : IDisposable
             {
                 _rainOsc = _ctx.CreateOscillator();
                 _rainGain = _ctx.CreateGain();
-                // Soft low triangle - broadband hiss needs a noise buffer;
-                // a piercing 1200 Hz sawtooth was the "high pitch that grows".
-                _rainOsc.Type = "triangle";
-                _rainOsc.Frequency.SetValueAtTime(110f, _ctx.CurrentTime);
+                // Soft low sine - triangle still had a noticeable buzz under rain.
+                _rainOsc.Type = "sine";
+                _rainOsc.Frequency.SetValueAtTime(90f, _ctx.CurrentTime);
                 _rainGain.Gain.SetValueAtTime(0f, _ctx.CurrentTime);
                 _rainOsc.Connect(_rainGain);
                 _rainGain.Connect(Destination);
                 _rainOsc.Start();
             }
             if (_rainGain is not null)
-                SetGainNow(_rainGain, _ctx, Math.Clamp(intensity * 0.03f, 0f, 0.04f));
+                SetGainNow(_rainGain, _ctx, Math.Clamp(intensity * 0.02f, 0f, 0.025f));
             if (intensity <= 0.05f && _rainOsc is not null)
             {
                 SetGainNow(_rainGain!, _ctx, 0f);

@@ -579,10 +579,10 @@
         // dismisses itself when chunk gen completes).
         if (Hud.IsLoading || Hud.IsDead) return;
         if (Hud.IsSettingsOpen)  { Hud.HideSettings();  return; }
-        if (Hud.IsCraftingOpen)  { Hud.HideCrafting();  return; }
-        if (Hud.IsInventoryOpen) { Hud.HideInventory(); return; }
+        if (Hud.IsCraftingOpen)  { Hud.HideCrafting(); RecapturePointerForGameplay(); return; }
+        if (Hud.IsInventoryOpen) { Hud.HideInventory(); RecapturePointerForGameplay(); return; }
         if (Hud.IsPaused) HandleResumeClicked();
-        else Hud.ShowPauseMenu();
+        else { Hud.ShowPauseMenu(); ReleasePointerForUi(); }
     }
 
     private void HandleInventoryToggle()
@@ -591,16 +591,28 @@
         // settings all own the screen and should not be pushed over. If the
         // inventory itself is already up, the toggle closes it (handled inside
         // Hud.ToggleInventory).
-        if (Hud.IsInventoryOpen) { Hud.ToggleInventory(); return; }
+        if (Hud.IsInventoryOpen)
+        {
+            Hud.ToggleInventory();
+            RecapturePointerForGameplay();
+            return;
+        }
         if (Hud.IsLoading || Hud.IsPaused || Hud.IsSettingsOpen || Hud.IsCraftingOpen || Hud.IsDead) return;
         Hud.ToggleInventory();
+        ReleasePointerForUi();
     }
 
     private void HandleCraftingToggle()
     {
-        if (Hud.IsCraftingOpen) { Hud.ToggleCrafting(); return; }
+        if (Hud.IsCraftingOpen)
+        {
+            Hud.ToggleCrafting();
+            RecapturePointerForGameplay();
+            return;
+        }
         if (Hud.IsLoading || Hud.IsPaused || Hud.IsSettingsOpen || Hud.IsInventoryOpen || Hud.IsDead) return;
         Hud.ToggleCrafting();
+        ReleasePointerForUi();
     }
 
     // Dev keybinds for testing the damage/heal UX. Remove once real combat /
@@ -2044,14 +2056,31 @@
 
     private void HandlePointerLockChanged(bool locked)
     {
-        // Lock lost while playing => show pause menu (covers alt-tab, browser Escape, etc.)
-        if (!locked && !Hud.IsPaused)
+        // Lock lost while playing => pause. Do NOT pause when we released
+        // lock on purpose for inventory / death / crafting / settings.
+        if (!locked && !Hud.IsAnyMenuOpen && !Hud.IsPaused)
             Hud.ShowPauseMenu();
     }
 
-    private void HandleResumeClicked()
+    /// <summary>Release mouse capture so the OS cursor is visible for UI.</summary>
+    private void ReleasePointerForUi()
     {
-        Hud.HidePauseMenu();
+        try
+        {
+            using var doc = JS.Get<Document>("document");
+            if (doc.PointerLockElement != null)
+                doc.ExitPointerLock();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Game] ExitPointerLock failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Re-capture the mouse after closing a menu (gameplay look).</summary>
+    private void RecapturePointerForGameplay()
+    {
+        if (Hud.IsAnyMenuOpen || Hud.IsDead) return;
         try
         {
             using var canvas = _canvasRef.As<HTMLCanvasElement>();
@@ -2059,8 +2088,14 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Game] Pointer lock request on resume failed: {ex.Message}");
+            Console.WriteLine($"[Game] RequestPointerLock failed: {ex.Message}");
         }
+    }
+
+    private void HandleResumeClicked()
+    {
+        Hud.HidePauseMenu();
+        RecapturePointerForGameplay();
     }
 
     private void HandleQuitToMenuClicked()
@@ -2086,6 +2121,8 @@
         // its own death screen.
         Stats.RecordDeath();
         Hud.ShowDeathScreen();
+        ReleasePointerForUi();
+        Audio.SilenceAmbients();
         Audio.PlayDeath();
     }
 
@@ -2151,15 +2188,7 @@
         }
 
         // Re-request pointer lock so the player can look around immediately.
-        try
-        {
-            using var canvas = _canvasRef.As<HTMLCanvasElement>();
-            canvas.RequestPointerLock();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Game] Pointer lock on respawn failed: {ex.Message}");
-        }
+        RecapturePointerForGameplay();
     }
 
     private void OnGameUpdate(float deltaTime)
@@ -2181,9 +2210,12 @@
         // While any menu is open: don't feed camera movement, mouse look, or FPS
         // counter updates. Chunk streaming + HUD input still run so the menu stays
         // interactive. Drain mouse deltas so resuming doesn't snap the view.
+        // Silence continuous ambients - wind/rain oscillators keep sounding at
+        // their last gain if we skip Update* while menus are up.
         if (Hud.IsAnyMenuOpen)
         {
             Input.ConsumeMouseDelta();
+            Audio.SilenceAmbients();
             Hud.Update(deltaTime, Renderer.Camera.Position, Renderer.Camera.Yaw);
             return;
         }
@@ -2321,13 +2353,10 @@
                 Ground.Drop(new System.Numerics.Vector3(fx, fy, fz), item);
             }
         }
-        // Wind ambient: a baseline 0.3 intensity always runs so the world
-        // never feels sonically dead, plus rain adds on top so storms howl.
-        // Pitch bias by day phase: -1 deep night (low cold whoosh) to +1
-        // midday (bright high whistle). Cosine maps DayFraction so pitch
-        // smoothly sweeps once per day cycle.
+        // Wind ambient: soft sine (sawtooth buzzed). Low baseline so the
+        // world isn't constantly humming; rain can still layer on top.
         float windPitch = -MathF.Cos(Time.DayFraction * MathF.PI * 2f);
-        Audio.UpdateWindAmbient(0.3f + Weather.RainIntensity * 0.6f, deltaTime, windPitch);
+        Audio.UpdateWindAmbient(0.08f + Weather.RainIntensity * 0.25f, deltaTime, windPitch);
 
         // Low-HP heartbeat. Interval shortens as HP drops so the pulse
         // accelerates the closer the player gets to dying. Gate at 0.35 so
@@ -2864,6 +2893,8 @@
         Audio.MasterVolume = Settings.MasterVolume;
 
         if (Input.IsPointerLocked) return;
+        // Menus need a visible OS cursor - never re-lock while UI is up.
+        if (Hud.IsAnyMenuOpen) return;
         try
         {
             using var canvas = _canvasRef.As<HTMLCanvasElement>();
@@ -2945,7 +2976,8 @@
         display: block;
         width: 100%;
         height: 100%;
-        cursor: crosshair;
+        /* default: visible when unlocked. Pointer lock hides the OS cursor. */
+        cursor: default;
         outline: none;
     }
 
