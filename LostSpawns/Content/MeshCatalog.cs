@@ -42,10 +42,10 @@ public static class MeshCatalog
                 "Primary prey silhouette."),
             [EntityKind.Bear] = new(
                 "wildlife.bear",
-                WildlifeRoot + "husky.glb", // stand-in until a CC0 bear GLB is vendored
-                "Quaternius Ultimate Animated Animals (AnimaSim CC0 redistrib)",
-                "CC0",
-                "TEMP: husky mesh as mass stand-in. Replace with Quaternius bear when vendored."),
+                null, // no CC0 bear yet - husky stand-in looked wrong skinned
+                "(billboard)",
+                "n/a",
+                "Billboard until a real bear GLB is vendored."),
             [EntityKind.Crow] = new(
                 "wildlife.crow",
                 null,
@@ -54,16 +54,16 @@ public static class MeshCatalog
                 "No CC0 crow GLB in shortlist yet - keep HUD billboard."),
             [EntityKind.Rabbit] = new(
                 "wildlife.rabbit",
-                WildlifeRoot + "fox.glb", // small-mammal stand-in
-                "Quaternius Ultimate Animated Animals (AnimaSim CC0 redistrib)",
-                "CC0",
-                "TEMP: fox mesh scaled down at render time. Prefer dedicated rabbit GLB."),
+                null, // fox stand-in was misleading
+                "(billboard)",
+                "n/a",
+                "Billboard until a rabbit GLB is vendored."),
             [EntityKind.Boar] = new(
                 "wildlife.boar",
-                WildlifeRoot + "stag.glb", // hoofed stand-in
-                "Quaternius Ultimate Animated Animals (AnimaSim CC0 redistrib)",
-                "CC0",
-                "TEMP: stag mesh until a CC0 boar is vendored."),
+                null, // stag stand-in = antlers, not a boar
+                "(billboard)",
+                "n/a",
+                "Billboard until a boar GLB is vendored. Do not map stag."),
         };
 
     /// <summary>First-person / held tool meshes (drop files into tools/).</summary>

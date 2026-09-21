@@ -35,7 +35,10 @@ public class AudioService : IDisposable
         {
             _masterVolume = Math.Clamp(value, 0f, 1f);
             if (_master is not null && _ctx is not null)
-                _master.Gain.LinearRampToValueAtTime(_masterVolume, _ctx.CurrentTime + 0.05);
+            {
+                _master.Gain.CancelScheduledValues(_ctx.CurrentTime);
+                _master.Gain.SetValueAtTime(_masterVolume, _ctx.CurrentTime);
+            }
         }
     }
     private float _masterVolume = 1f;
@@ -884,6 +887,18 @@ public class AudioService : IDisposable
     private GainNode? _dangerGain;
 
     /// <summary>
+    /// Set an AudioParam without stacking LinearRamps. Calling LinearRamp every
+    /// frame without cancelScheduledValues makes gain climb without bound - that
+    /// was the rising high-pitch rain/wind bug.
+    /// </summary>
+    private static void SetGainNow(GainNode gain, AudioContext ctx, float value)
+    {
+        double t = ctx.CurrentTime;
+        gain.Gain.CancelScheduledValues(t);
+        gain.Gain.SetValueAtTime(Math.Clamp(value, 0f, 1f), t);
+    }
+
+    /// <summary>
     /// Update the danger drone gain. Intensity [0,1] - 0 silences it,
     /// 1.0 puts it at full bass-drone. Game.razor pushes this from
     /// "is any aggro entity within combat range" tally.
@@ -901,13 +916,19 @@ public class AudioService : IDisposable
                 _dangerOsc.Frequency.SetValueAtTime(48f, _ctx.CurrentTime);
                 _dangerGain.Gain.SetValueAtTime(0f, _ctx.CurrentTime);
                 _dangerOsc.Connect(_dangerGain);
-                _dangerGain.Connect(_ctx.Destination);
+                _dangerGain.Connect(Destination);
                 _dangerOsc.Start();
             }
             if (_dangerGain is not null)
+                SetGainNow(_dangerGain, _ctx, Math.Clamp(intensity * 0.06f, 0f, 0.06f));
+            if (intensity <= 0.02f && _dangerOsc is not null)
             {
-                float target = Math.Clamp(intensity * 0.06f, 0f, 0.06f);
-                _dangerGain.Gain.LinearRampToValueAtTime(target, _ctx.CurrentTime + 0.4);
+                SetGainNow(_dangerGain!, _ctx, 0f);
+                _dangerOsc.Stop((float)(_ctx.CurrentTime + 0.05));
+                _dangerOsc.Dispose();
+                _dangerGain?.Dispose();
+                _dangerOsc = null;
+                _dangerGain = null;
             }
         }
         catch (Exception ex)
@@ -934,22 +955,30 @@ public class AudioService : IDisposable
                 _windOsc.Frequency.SetValueAtTime(90f, _ctx.CurrentTime);
                 _windGain.Gain.SetValueAtTime(0, _ctx.CurrentTime);
                 _windOsc.Connect(_windGain);
-                _windGain.Connect(_ctx.Destination);
+                _windGain.Connect(Destination);
                 _windOsc.Start();
             }
             _windPhase += dt * 0.15f * MathF.PI * 2f;
             if (_windGain is not null)
             {
                 float gust = 0.5f + 0.5f * MathF.Sin(_windPhase);
-                float target = Math.Clamp(intensity * 0.025f * gust, 0, 0.05f);
-                _windGain.Gain.LinearRampToValueAtTime(target, _ctx.CurrentTime + 0.2);
+                SetGainNow(_windGain, _ctx, Math.Clamp(intensity * 0.025f * gust, 0, 0.05f));
             }
-            // Pitch slides with day phase: pitchBias ranges -1 (cold night
-            // low) to +1 (warm day high). Maps to 70-120 Hz on the osc.
             if (_windOsc is not null)
             {
                 float baseFreq = 95f + pitchBias * 25f;
-                _windOsc.Frequency.LinearRampToValueAtTime(baseFreq, _ctx.CurrentTime + 1.0);
+                double t = _ctx.CurrentTime;
+                _windOsc.Frequency.CancelScheduledValues(t);
+                _windOsc.Frequency.SetValueAtTime(baseFreq, t);
+            }
+            if (intensity <= 0.02f && _windOsc is not null)
+            {
+                SetGainNow(_windGain!, _ctx, 0f);
+                _windOsc.Stop((float)(_ctx.CurrentTime + 0.05));
+                _windOsc.Dispose();
+                _windGain?.Dispose();
+                _windOsc = null;
+                _windGain = null;
             }
         }
         catch (Exception ex)
@@ -958,10 +987,8 @@ public class AudioService : IDisposable
         }
     }
 
-    // Persistent rain ambient - one oscillator + gain node reused across the
-    // whole session. Frequency is a high broadband hiss approximation (real
-    // white noise would need a noise buffer - sawtooth at ~1200 Hz is close
-    // enough for ambient rain at low volume).
+    // Persistent rain ambient - low rumble, not a 1200 Hz sawtooth (that
+    // read as a rising scream when LinearRamps stacked each frame).
     private OscillatorNode? _rainOsc;
     private GainNode? _rainGain;
 
@@ -978,31 +1005,23 @@ public class AudioService : IDisposable
         {
             if (intensity > 0.05f && _rainOsc is null)
             {
-                // First crossing into rain - spin up the persistent loop.
                 _rainOsc = _ctx.CreateOscillator();
                 _rainGain = _ctx.CreateGain();
-                _rainOsc.Type = "sawtooth";
-                _rainOsc.Frequency.SetValueAtTime(1200f, _ctx.CurrentTime);
+                // Soft low triangle - broadband hiss needs a noise buffer;
+                // a piercing 1200 Hz sawtooth was the "high pitch that grows".
+                _rainOsc.Type = "triangle";
+                _rainOsc.Frequency.SetValueAtTime(110f, _ctx.CurrentTime);
                 _rainGain.Gain.SetValueAtTime(0f, _ctx.CurrentTime);
                 _rainOsc.Connect(_rainGain);
-                _rainGain.Connect(_ctx.Destination);
+                _rainGain.Connect(Destination);
                 _rainOsc.Start();
             }
             if (_rainGain is not null)
-            {
-                // Target gain scales with intensity, capped low so it reads as
-                // ambient rain not a fog horn. Ramp to target with a short
-                // time constant so cuts + swells feel smooth.
-                float target = Math.Clamp(intensity * 0.05f, 0f, 0.06f);
-                _rainGain.Gain.LinearRampToValueAtTime(target, _ctx.CurrentTime + 0.5);
-            }
+                SetGainNow(_rainGain, _ctx, Math.Clamp(intensity * 0.03f, 0f, 0.04f));
             if (intensity <= 0.05f && _rainOsc is not null)
             {
-                // Tear down the loop once rain's fully stopped. Can't Dispose
-                // a started oscillator after Stop(); let the GC clean up once
-                // Stop() schedule completes.
-                _rainGain?.Gain.LinearRampToValueAtTime(0f, _ctx.CurrentTime + 0.3);
-                _rainOsc.Stop((float)(_ctx.CurrentTime + 0.35));
+                SetGainNow(_rainGain!, _ctx, 0f);
+                _rainOsc.Stop((float)(_ctx.CurrentTime + 0.05));
                 _rainOsc.Dispose();
                 _rainGain?.Dispose();
                 _rainOsc = null;
@@ -1018,8 +1037,14 @@ public class AudioService : IDisposable
     public void Dispose()
     {
         try { _rainOsc?.Stop(); } catch { }
+        try { _windOsc?.Stop(); } catch { }
+        try { _dangerOsc?.Stop(); } catch { }
         _rainOsc?.Dispose();
         _rainGain?.Dispose();
+        _windOsc?.Dispose();
+        _windGain?.Dispose();
+        _dangerOsc?.Dispose();
+        _dangerGain?.Dispose();
         _master?.Dispose();
         try { _ctx?.Close(); } catch { }
         _ctx?.Dispose();

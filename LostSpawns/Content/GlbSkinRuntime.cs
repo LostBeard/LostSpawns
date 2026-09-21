@@ -47,8 +47,17 @@ public sealed class GlbSkinRuntime
 
     public string? ResolveClip(bool charging, float speed)
     {
-        if (charging && _clips.ContainsKey("Attack")) return "Attack";
-        if (speed > 0.12f && _clips.ContainsKey("Walk")) return "Walk";
+        if (charging)
+        {
+            if (_clips.ContainsKey("Attack")) return "Attack";
+            if (_clips.ContainsKey("Attack_Headbutt")) return "Attack_Headbutt";
+            if (_clips.ContainsKey("Attack_Kick")) return "Attack_Kick";
+        }
+        if (speed > 0.12f)
+        {
+            if (_clips.ContainsKey("Walk")) return "Walk";
+            if (_clips.ContainsKey("Gallop")) return "Gallop";
+        }
         if (_clips.ContainsKey("Idle")) return "Idle";
         if (_clips.ContainsKey("Idle_2")) return "Idle_2";
         return _clips.Keys.FirstOrDefault();
@@ -262,10 +271,12 @@ public sealed class GlbSkinRuntime
             {
                 string name = a.TryGetProperty("name", out var nm) ? nm.GetString() ?? "" : "";
                 if (string.IsNullOrEmpty(name)) continue;
-                // Prefer first Idle*, keep Walk/Attack/Idle exactly.
                 bool keep =
                     name.Equals("Walk", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("Gallop", StringComparison.OrdinalIgnoreCase)
                     || name.Equals("Attack", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("Attack_Headbutt", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("Attack_Kick", StringComparison.OrdinalIgnoreCase)
                     || name.Equals("Idle", StringComparison.OrdinalIgnoreCase)
                     || name.Equals("Idle_2", StringComparison.OrdinalIgnoreCase);
                 if (!keep) continue;
