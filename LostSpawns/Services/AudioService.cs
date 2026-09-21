@@ -89,17 +89,22 @@ public class AudioService : IDisposable
         if (_ctx is null) return; // not initialized yet - silent fail
         try
         {
+            // using-dispose frees the SpawnJS slot only; Stop is already
+            // scheduled on the JS node so the tone still ends. Do not call
+            // Stop with a float-cast CurrentTime that can round into the past
+            // (InvalidStateError -> osc never stops -> stacked low hum).
             using var osc = _ctx.CreateOscillator();
             using var gain = _ctx.CreateGain();
             osc.Type = type;
-            osc.Frequency.SetValueAtTime(freq, _ctx.CurrentTime);
-            gain.Gain.SetValueAtTime(0, _ctx.CurrentTime);
-            gain.Gain.LinearRampToValueAtTime(volume, _ctx.CurrentTime + 0.005);
-            gain.Gain.ExponentialRampToValueAtTime(0.0001f, _ctx.CurrentTime + duration);
+            double t = _ctx.CurrentTime;
+            osc.Frequency.SetValueAtTime(freq, t);
+            gain.Gain.SetValueAtTime(0, t);
+            gain.Gain.LinearRampToValueAtTime(volume, t + 0.005);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + duration);
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(_ctx.CurrentTime + duration));
+            osc.Stop((float)(t + duration + 0.05));
         }
         catch (Exception ex)
         {
@@ -873,197 +878,59 @@ public class AudioService : IDisposable
         }
     }
 
-    // Persistent wind ambient - low sawtooth with slowly modulated gain so
-    // the volume breathes up and down like real wind gusts. Started on the
-    // first UpdateWindAmbient call and left running.
+    // Continuous wind/rain/danger oscillators are retired. A always-on 48-90 Hz
+    // sine is exactly the "low hum that gets louder over time" players hear
+    // (rain intensity and danger stack on top of a wind baseline that never
+    // tears down). Call sites still invoke Update* / SilenceAmbients so we
+    // tear down any leftover nodes from older builds once, then no-op.
     private OscillatorNode? _windOsc;
     private GainNode? _windGain;
-    private float _windPhase;
-
-    // Persistent "danger drone" - slow low pulsating bass that fades in
-    // when something is actively hunting the player. Started lazily on
-    // the first UpdateDangerDrone call with intensity > 0.
     private OscillatorNode? _dangerOsc;
     private GainNode? _dangerGain;
-
-    /// <summary>
-    /// Set an AudioParam without stacking LinearRamps. Calling LinearRamp every
-    /// frame without cancelScheduledValues makes gain climb without bound - that
-    /// was the rising high-pitch rain/wind bug.
-    /// </summary>
-    private static void SetGainNow(GainNode gain, AudioContext ctx, float value)
-    {
-        double t = ctx.CurrentTime;
-        gain.Gain.CancelScheduledValues(t);
-        gain.Gain.SetValueAtTime(Math.Clamp(value, 0f, 1f), t);
-    }
-
-    /// <summary>
-    /// Update the danger drone gain. Intensity [0,1] - 0 silences it,
-    /// 1.0 puts it at full bass-drone. Game.razor pushes this from
-    /// "is any aggro entity within combat range" tally.
-    /// </summary>
-    /// <summary>
-    /// Hard-mute continuous ambient loops (wind / rain / danger). Call when
-    /// menus are open so oscillators do not keep humming at their last gain.
-    /// </summary>
-    public void SilenceAmbients()
-    {
-        if (_ctx is null) return;
-        try
-        {
-            if (_windGain is not null) SetGainNow(_windGain, _ctx, 0f);
-            if (_rainGain is not null) SetGainNow(_rainGain, _ctx, 0f);
-            if (_dangerGain is not null) SetGainNow(_dangerGain, _ctx, 0f);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Audio] SilenceAmbients failed: {ex.Message}");
-        }
-    }
-
-    public void UpdateDangerDrone(float intensity)
-    {
-        if (_ctx is null) return;
-        try
-        {
-            if (intensity > 0.02f && _dangerOsc is null)
-            {
-                _dangerOsc = _ctx.CreateOscillator();
-                _dangerGain = _ctx.CreateGain();
-                _dangerOsc.Type = "sine";
-                _dangerOsc.Frequency.SetValueAtTime(48f, _ctx.CurrentTime);
-                _dangerGain.Gain.SetValueAtTime(0f, _ctx.CurrentTime);
-                _dangerOsc.Connect(_dangerGain);
-                _dangerGain.Connect(Destination);
-                _dangerOsc.Start();
-            }
-            if (_dangerGain is not null)
-                SetGainNow(_dangerGain, _ctx, Math.Clamp(intensity * 0.06f, 0f, 0.06f));
-            if (intensity <= 0.02f && _dangerOsc is not null)
-            {
-                SetGainNow(_dangerGain!, _ctx, 0f);
-                _dangerOsc.Stop((float)(_ctx.CurrentTime + 0.05));
-                _dangerOsc.Dispose();
-                _dangerGain?.Dispose();
-                _dangerOsc = null;
-                _dangerGain = null;
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Audio] UpdateDangerDrone failed: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// Update the wind loop. Intensity [0,1] targets gain; phase drives a
-    /// slow 0.15 Hz sine modulation so the wind gusts. Call every frame
-    /// with a value derived from weather / elevation / time-of-day.
-    /// </summary>
-    public void UpdateWindAmbient(float intensity, float dt, float pitchBias = 0f)
-    {
-        if (_ctx is null) return;
-        try
-        {
-            if (intensity > 0.02f && _windOsc is null)
-            {
-                _windOsc = _ctx.CreateOscillator();
-                _windGain = _ctx.CreateGain();
-                // Sine - sawtooth harmonics were a constant buzz under gameplay.
-                _windOsc.Type = "sine";
-                _windOsc.Frequency.SetValueAtTime(70f, _ctx.CurrentTime);
-                _windGain.Gain.SetValueAtTime(0, _ctx.CurrentTime);
-                _windOsc.Connect(_windGain);
-                _windGain.Connect(Destination);
-                _windOsc.Start();
-            }
-            _windPhase += dt * 0.15f * MathF.PI * 2f;
-            if (_windGain is not null)
-            {
-                float gust = 0.5f + 0.5f * MathF.Sin(_windPhase);
-                SetGainNow(_windGain, _ctx, Math.Clamp(intensity * 0.02f * gust, 0, 0.035f));
-            }
-            if (_windOsc is not null)
-            {
-                float baseFreq = 65f + pitchBias * 15f;
-                double t = _ctx.CurrentTime;
-                _windOsc.Frequency.CancelScheduledValues(t);
-                _windOsc.Frequency.SetValueAtTime(baseFreq, t);
-            }
-            if (intensity <= 0.02f && _windOsc is not null)
-            {
-                SetGainNow(_windGain!, _ctx, 0f);
-                _windOsc.Stop((float)(_ctx.CurrentTime + 0.05));
-                _windOsc.Dispose();
-                _windGain?.Dispose();
-                _windOsc = null;
-                _windGain = null;
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Audio] UpdateWindAmbient failed: {ex.Message}");
-        }
-    }
-
-    // Persistent rain ambient - low rumble, not a 1200 Hz sawtooth (that
-    // read as a rising scream when LinearRamps stacked each frame).
     private OscillatorNode? _rainOsc;
     private GainNode? _rainGain;
+    private bool _ambientLoopsRetired;
+
+    private static void TearDownLoop(ref OscillatorNode? osc, ref GainNode? gain)
+    {
+        if (osc is null && gain is null) return;
+        try { osc?.Stop(); } catch { }
+        try { osc?.Disconnect(); } catch { }
+        try { gain?.Disconnect(); } catch { }
+        osc?.Dispose();
+        gain?.Dispose();
+        osc = null;
+        gain = null;
+    }
+
+    private void TearDownAllAmbientLoops()
+    {
+        if (_ambientLoopsRetired
+            && _windOsc is null && _rainOsc is null && _dangerOsc is null)
+            return;
+        TearDownLoop(ref _windOsc, ref _windGain);
+        TearDownLoop(ref _rainOsc, ref _rainGain);
+        TearDownLoop(ref _dangerOsc, ref _dangerGain);
+        _ambientLoopsRetired = true;
+    }
 
     /// <summary>
-    /// Update the rain ambient loop. Intensity is [0, 1]; 0 stops the loop,
-    /// >0 starts it (idempotent) and sets the gain envelope. Call this every
-    /// tick with WeatherService.RainIntensity; AudioService handles the
-    /// start / gain-ramp / stop plumbing internally.
+    /// Hard-stop any leftover continuous ambient loops. Menus and Update*
+    /// call this; new builds never start those loops.
     /// </summary>
-    public void UpdateRainAmbient(float intensity)
-    {
-        if (_ctx is null) return;
-        try
-        {
-            if (intensity > 0.05f && _rainOsc is null)
-            {
-                _rainOsc = _ctx.CreateOscillator();
-                _rainGain = _ctx.CreateGain();
-                // Soft low sine - triangle still had a noticeable buzz under rain.
-                _rainOsc.Type = "sine";
-                _rainOsc.Frequency.SetValueAtTime(90f, _ctx.CurrentTime);
-                _rainGain.Gain.SetValueAtTime(0f, _ctx.CurrentTime);
-                _rainOsc.Connect(_rainGain);
-                _rainGain.Connect(Destination);
-                _rainOsc.Start();
-            }
-            if (_rainGain is not null)
-                SetGainNow(_rainGain, _ctx, Math.Clamp(intensity * 0.02f, 0f, 0.025f));
-            if (intensity <= 0.05f && _rainOsc is not null)
-            {
-                SetGainNow(_rainGain!, _ctx, 0f);
-                _rainOsc.Stop((float)(_ctx.CurrentTime + 0.05));
-                _rainOsc.Dispose();
-                _rainGain?.Dispose();
-                _rainOsc = null;
-                _rainGain = null;
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Audio] UpdateRainAmbient failed: {ex.Message}");
-        }
-    }
+    public void SilenceAmbients() => TearDownAllAmbientLoops();
+
+    public void UpdateDangerDrone(float intensity) => TearDownAllAmbientLoops();
+
+    public void UpdateWindAmbient(float intensity, float dt, float pitchBias = 0f)
+        => TearDownAllAmbientLoops();
+
+    public void UpdateRainAmbient(float intensity) => TearDownAllAmbientLoops();
 
     public void Dispose()
     {
-        try { _rainOsc?.Stop(); } catch { }
-        try { _windOsc?.Stop(); } catch { }
-        try { _dangerOsc?.Stop(); } catch { }
-        _rainOsc?.Dispose();
-        _rainGain?.Dispose();
-        _windOsc?.Dispose();
-        _windGain?.Dispose();
-        _dangerOsc?.Dispose();
-        _dangerGain?.Dispose();
+        _ambientLoopsRetired = false;
+        TearDownAllAmbientLoops();
         _master?.Dispose();
         try { _ctx?.Close(); } catch { }
         _ctx?.Dispose();

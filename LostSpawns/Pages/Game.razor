@@ -2241,9 +2241,8 @@
         Time.Tick(deltaTime);
         Weather.Tick(deltaTime);
         Audio.UpdateRainAmbient(Weather.RainIntensity);
-        // Danger drone: ramp up when any hostile is charging within ~20
-        // blocks. Multiple chargers stack the intensity. Bears count
-        // double since they're the apex threat.
+        // Danger / wind / rain Update* tear down retired continuous loops
+        // (always-on low sine was the growing hum). One-shots still play.
         float dangerIntensity = 0f;
         foreach (var ent in Wildlife.Entities)
         {
@@ -2353,8 +2352,8 @@
                 Ground.Drop(new System.Numerics.Vector3(fx, fy, fz), item);
             }
         }
-        // Wind ambient: soft sine (sawtooth buzzed). Low baseline so the
-        // world isn't constantly humming; rain can still layer on top.
+        // Wind/rain/danger continuous loops retired in AudioService - these
+        // calls only tear down leftovers from older builds.
         float windPitch = -MathF.Cos(Time.DayFraction * MathF.PI * 2f);
         Audio.UpdateWindAmbient(0.08f + Weather.RainIntensity * 0.25f, deltaTime, windPitch);
 
