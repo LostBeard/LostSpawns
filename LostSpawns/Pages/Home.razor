@@ -50,7 +50,12 @@
     // The session is requested here, from the click; the game page picks it up when the world is ready
     private async Task EnterWorldInVrAsync()
     {
-        if (await Vr.BeginAsync()) Nav.NavigateTo("game");
+        if (await Vr.BeginAsync())
+        {
+            // The developer parameters (?time=, ?spawn=, ...) go on to the game page
+            int q = Nav.Uri.IndexOf('?');
+            Nav.NavigateTo(q >= 0 ? "game" + Nav.Uri[q..] : "game");
+        }
     }
 }
 

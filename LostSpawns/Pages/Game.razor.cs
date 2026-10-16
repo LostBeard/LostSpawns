@@ -70,6 +70,7 @@ public partial class Game
         _vrHandlersAttached = true;
         Stats.OnDamageTaken += VrOnDamage;
         Hud.OnNotified += VrOnNotified;
+        Wildlife.OnEntityHit += VrOnEntityHit;
     }
 
     private void DetachVrHandlers()
@@ -78,9 +79,17 @@ public partial class Game
         _vrHandlersAttached = false;
         Stats.OnDamageTaken -= VrOnDamage;
         Hud.OnNotified -= VrOnNotified;
+        Wildlife.OnEntityHit -= VrOnEntityHit;
     }
 
-    private void VrOnDamage(float amount) => _vrFlashLevel = MathF.Min(1f, 0.45f + amount * 2.5f);
+    private void VrOnDamage(float amount)
+    {
+        _vrFlashLevel = MathF.Min(1f, 0.45f + amount * 2.5f);
+        Vr.Session.Pulse(true, 0.8f, 140);
+        Vr.Session.Pulse(false, 0.8f, 140);
+    }
+
+    private void VrOnEntityHit(WanderingEntity e) => Vr.Session.Pulse(false, 0.7f, 60);
 
     private void VrOnNotified(string text, SpawnDev.GameUI.Elements.NotificationType type)
     {
@@ -214,7 +223,7 @@ public partial class Game
         {
             "Left stick: walk (click it, or squeeze a grip, to run)",
             "Right stick: turn (click it to switch smooth / snap turning)",
-            "Right trigger: swing the tool - chop, mine, hit (hold to keep going)",
+            "Right trigger: swing the tool - chop, mine, hit (hold to keep going); or just swing it",
             "Left trigger: eat or drink what is in your hand, or place a block",
             "A / B: next / previous hotbar slot",
             "Y: feed a campfire, or drink from water you point at",
@@ -309,6 +318,7 @@ public partial class Game
             if (f.RightSecondary && !_vrBWas) Inventory.ActiveHotbarIndex = (Inventory.ActiveHotbarIndex + 8) % 9;
             if (f.LeftSecondary && !_vrYWas) HandleFeedFire();
         }
+        VrPhysicalSwing(f, dt, aimOrigin, aimDir, playing);
         _vrRtWas = f.RightTrigger;
         _vrLtWas = f.LeftTrigger;
         _vrAWas = f.RightPrimary;
@@ -323,6 +333,55 @@ public partial class Game
 
         VrSurvivalTick(dt, f);
         VrUpdatePanels(f, dt, m, head);
+    }
+
+    // A real swing: the controller moving fast with the working end of the tool at something (an animal, a block) strikes it, as the trigger would
+    private Vector3? _vrHandRoomPrev;
+    private Vector3 _vrHandVelocity;
+    private float _vrSwingCooldown;
+
+    private void VrPhysicalSwing(XrFrameData f, float dt, Vector3 aimOrigin, Vector3 aimDir, bool allowed)
+    {
+        _vrSwingCooldown = MathF.Max(0f, _vrSwingCooldown - dt);
+        if (!f.RightHasRay || dt <= 0f) { _vrHandRoomPrev = null; return; }
+        // The speed is measured in the room (walking with the stick moves the whole room through the world, not the hand through the room)
+        var now = f.RightRayOrigin;
+        if (_vrHandRoomPrev is { } prev) _vrHandVelocity = Vector3.Lerp(_vrHandVelocity, (now - prev) / dt, 0.5f);
+        _vrHandRoomPrev = now;
+        if (!allowed || _vrSwingCooldown > 0f || _vrHandVelocity.Length() < 2.4f) return;
+
+        var held = Inventory.ActiveItem;
+        bool tool = held != null && HeldModels.For(held.Id) != null;
+        var reach = tool ? Vector3.Normalize(aimDir + Vector3.UnitY * 0.9f) : aimDir;
+        var tip = aimOrigin + reach * (tool ? 0.55f : 0.2f);
+
+        Vector3? target = null;
+        float nearest = 0.9f;
+        foreach (var e in Wildlife.Entities)
+        {
+            var centre = new Vector3(e.Position.X, e.Position.Y + EntityService.AimHeight(e.Kind), e.Position.Z);
+            float d = Vector3.Distance(tip, centre);
+            if (d < nearest) { nearest = d; target = centre; }
+        }
+        if (target == null)
+        {
+            for (float t = 0f; t <= 0.3f; t += 0.15f)
+            {
+                var p = tip + reach * t;
+                int bx = (int)MathF.Floor(p.X), by = (int)MathF.Floor(p.Y), bz = (int)MathF.Floor(p.Z);
+                if (World.IsSolidAt(bx, by, bz)) { target = new Vector3(bx + 0.5f, by + 0.5f, bz + 0.5f); break; }
+            }
+        }
+        if (target is not { } struck) return;
+
+        // Looked at from the hand, so the desktop handler finds what the tool met
+        var (yaw, pitch) = XrMath.AnglesOf(struck - aimOrigin);
+        Renderer.Camera.Yaw = yaw;
+        Renderer.Camera.Pitch = Math.Clamp(pitch, -89f, 89f);
+        _vrSwingCooldown = 0.5f;
+        Hud.TriggerSwing(1f);
+        Vr.Session.Pulse(false, 0.6f, 40);
+        HandleInteract();
     }
 
     // The left trigger: use what is in the hand (eat it, drink it) or put it down as a block

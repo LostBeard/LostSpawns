@@ -187,7 +187,7 @@ Navigate to `https://localhost:7272/game` and click the canvas to capture mouse 
 |-------|--------|
 | **Left stick** | Walk (click it, or squeeze a grip, to run) |
 | **Right stick** | Turn smoothly (click it for snap turns) |
-| **Right trigger** | Swing the tool: chop, mine, hit (hold to keep going) |
+| **Right trigger** | Swing the tool: chop, mine, hit (hold to keep going); or just swing it: a fast swing of the controller with the tool at an animal or a block strikes it (the controllers buzz on a hit) |
 | **Left trigger** | Eat or drink what is in your hand, or place a block |
 | **A / B** | Next / previous hotbar slot |
 | **Y** | Feed a campfire, or drink from water you point at |

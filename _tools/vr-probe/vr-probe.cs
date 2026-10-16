@@ -99,6 +99,17 @@ try
         await Shot("soak-end");
         return;
     }
+    // "swing": wave the right hand fast (no trigger) next to an animal that stands still ahead (url: ...&spawn=wolf&still=1&spawndist=1): does a real swing strike it?
+    if ((args.ElementAtOrDefault(3) ?? "") == "swing")
+    {
+        await page.EvaluateAsync("window.__xr.rayRight.p = [0, 0.6, -0.3]; window.__swing = setInterval(() => { window.__xr.rayRight.p[1] = 0.5 + 0.3 * (Math.floor(performance.now() / 16) % 2); }, 16)");
+        await Task.Delay(1000);
+        await Shot("2-swinging");
+        await Task.Delay(4000);
+        await Shot("3-later");
+        await page.EvaluateAsync("clearInterval(window.__swing)");
+        return;
+    }
     // "help": open the menu and its Controls page
     if ((args.ElementAtOrDefault(3) ?? "") == "help")
     {

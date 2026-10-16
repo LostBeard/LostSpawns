@@ -227,6 +227,7 @@ public sealed class XrSession : IDisposable
             bool primary = buttons.Length > 4 && buttons[4].Pressed;
             bool thumb = buttons.Length > 3 && buttons[3].Pressed;
             foreach (var b in buttons) b.Dispose();
+            PlayPendingPulse(gamepad, left);
             if (left) { data.LeftTrigger = trigger; data.LeftGrip = grip; data.LeftPrimary = primary; data.LeftSecondary = secondary; data.LeftThumb = thumb; }
             else { data.RightTrigger = trigger; data.RightGrip = grip; data.RightPrimary = primary; data.RightSecondary = secondary; data.RightThumb = thumb; }
             ReadRay(data, source, frame, left);
@@ -252,6 +253,35 @@ public sealed class XrSession : IDisposable
         catch (Exception ex)
         {
             if (_frames < 5) Console.WriteLine($"[Xr] no controller ray: {ex.Message}");
+        }
+    }
+
+    // --- Haptics: a request made between frames is played on that controller's actuator when the frame reads its gamepad ---
+    private (float Intensity, int Ms)? _pulseLeft, _pulseRight;
+
+    /// <summary>Buzz a controller (intensity 0..1, milliseconds) at the next frame. A headset without haptics ignores it.</summary>
+    public void Pulse(bool left, float intensity, int milliseconds)
+    {
+        if (left) _pulseLeft = (intensity, milliseconds); else _pulseRight = (intensity, milliseconds);
+    }
+
+    private void PlayPendingPulse(Gamepad gamepad, bool left)
+    {
+        var request = left ? _pulseLeft : _pulseRight;
+        if (request is not { } p) return;
+        if (left) _pulseLeft = null; else _pulseRight = null;
+        try
+        {
+            var actuators = gamepad.HapticActuators;
+            if (actuators == null || actuators.Length == 0) return;
+            var first = actuators[0];
+            if (!first.PulseSupported) { foreach (var a in actuators) a.Dispose(); return; }
+            // The reference stays in use until the pulse call returns
+            first.Pulse(p.Intensity, p.Ms).ContinueWith(_ => { foreach (var a in actuators) a.Dispose(); });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Xr] haptic pulse failed: {ex.Message}");
         }
     }
 
