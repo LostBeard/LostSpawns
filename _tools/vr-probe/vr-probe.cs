@@ -132,6 +132,23 @@ try
         await Shot("wrist-1-up");
         return;
     }
+    // "grip": the right grip at the right shoulder (draws slot 1), then pointing at a can of beans 2.5 m ahead (?loot=1) and gripping (picks it up)
+    if ((args.ElementAtOrDefault(3) ?? "") == "grip")
+    {
+        await page.EvaluateAsync("window.__xr.rayRight.p = [0.20, 1.5, 0.1]");
+        await Task.Delay(400);
+        await page.EvaluateAsync("window.__xr.rightGrip = true");
+        await Task.Delay(300);
+        await page.EvaluateAsync("window.__xr.rightGrip = false");
+        await Task.Delay(300);
+        await page.EvaluateAsync("window.__xr.rayRight.p = [0.25, 1.3, -0.2]; window.__xr.aimAt(0, 0.1, -2.5)");
+        await Task.Delay(500);
+        await page.EvaluateAsync("window.__xr.rightGrip = true");
+        await Task.Delay(300);
+        await page.EvaluateAsync("window.__xr.rightGrip = false");
+        await Task.Delay(800);
+        return;
+    }
     // "walk": push the left stick forward for a few seconds, a picture every 1.5 s (with ?poi=1 the player starts at a building: does the door let it in, the wall stop it?)
     if ((args.ElementAtOrDefault(3) ?? "") == "walk")
     {

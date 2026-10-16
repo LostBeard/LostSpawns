@@ -34,6 +34,7 @@ public partial class Game
     private float _vrLogAge = 99f;
     private bool _vrWristShown;
     private bool _vrHandlersAttached;
+    private bool _vrGripWas;
     private float _vrStandHeight;
     private Vector3? _vrStepFrom;
     private float _vrStepDistance;
@@ -301,8 +302,9 @@ public partial class Game
         p.AddChild(new UILabel { X = 24, Y = 16, Text = "Controls", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
         string[] lines =
         {
-            "Left stick: walk (click it, or squeeze a grip, to run)",
+            "Left stick: walk (click it, or squeeze the left grip, to run)",
             "Right stick: turn (click it to switch smooth / snap turning)",
+            "Right grip: at a shoulder, hip or the chest draws the hotbar slot carried there (1-5); at loot, picks it up",
             "Right trigger: swing the tool - chop, mine, hit (hold to keep going); or just swing it",
             "Left trigger: eat or drink what is in your hand, or place a block",
             "A / B: next / previous hotbar slot",
@@ -399,7 +401,10 @@ public partial class Game
             if (f.RightPrimary && !_vrAWas) Inventory.ActiveHotbarIndex = (Inventory.ActiveHotbarIndex + 1) % 9;
             if (f.RightSecondary && !_vrBWas) Inventory.ActiveHotbarIndex = (Inventory.ActiveHotbarIndex + 8) % 9;
             if (f.LeftSecondary && !_vrYWas) HandleFeedFire();
+            // The right grip: draw from the body (a shoulder, a hip, the chest), or take loot by hand
+            if (f.RightGrip && !_vrGripWas) VrGrip(f, aimOrigin, aimDir);
         }
+        _vrGripWas = f.RightGrip;
         VrPhysicalSwing(f, dt, aimOrigin, aimDir, playing);
         _vrRtWas = f.RightTrigger;
         _vrLtWas = f.LeftTrigger;
@@ -464,6 +469,48 @@ public partial class Game
         Hud.TriggerSwing(1f);
         Vr.Session.Pulse(false, 0.6f, 40);
         HandleInteract();
+    }
+
+    // Where on the body each of the first five hotbar slots is carried, from the head (metres; forward is where the body faces): the right shoulder, the left shoulder, the right hip, the left hip, the chest
+    private static readonly (float Right, float Up, float Forward)[] BodyZones =
+    {
+        (0.20f, -0.20f, -0.10f), (-0.20f, -0.20f, -0.10f), (0.22f, -0.72f, 0.05f), (-0.22f, -0.72f, 0.05f), (0.0f, -0.38f, 0.12f),
+    };
+
+    private void VrGrip(XrFrameData f, Vector3 aimOrigin, Vector3 aimDir)
+    {
+        if (!f.RightHasRay) return;
+        // The hand, in the room, against the body zones
+        var hand = f.RightHasGrip ? f.RightGripPosition : f.RightRayOrigin;
+        var fwd = Vector3.Transform(-Vector3.UnitZ, f.HeadOrientation);
+        fwd.Y = 0;
+        fwd = fwd.LengthSquared() < 1e-8f ? -Vector3.UnitZ : Vector3.Normalize(fwd);
+        var right = Vector3.Cross(fwd, Vector3.UnitY);
+        for (int i = 0; i < BodyZones.Length; i++)
+        {
+            var z = BodyZones[i];
+            var at = f.HeadPosition + right * z.Right + Vector3.UnitY * z.Up + fwd * z.Forward;
+            if (Vector3.Distance(hand, at) > 0.20f) continue;
+            if (Inventory.ActiveHotbarIndex != i) Inventory.ActiveHotbarIndex = i;
+            Console.WriteLine($"[Vr] drew hotbar slot {i + 1} from the body");
+            Vr.Session.Pulse(false, 0.35f, 35);
+            return;
+        }
+        // Otherwise loot: what the hand is at, or what the controller points at (so a seated player can too); it comes to the hand
+        GroundItem? best = null;
+        float bestAlong = float.MaxValue;
+        foreach (var g in Ground.Items)
+        {
+            var v = g.Position + Vector3.UnitY * 0.15f - aimOrigin;
+            float along = Vector3.Dot(v, aimDir);
+            if (along < -0.2f || along > 4.5f) continue;
+            float off = (v - aimDir * along).Length();
+            if (off > 0.35f + along * 0.04f) continue;
+            if (along < bestAlong) { bestAlong = along; best = g; }
+        }
+        if (best == null) return;
+        if (Ground.TryPickup(best, Inventory)) { Console.WriteLine($"[Vr] picked up {best.Payload.Name}"); Vr.Session.Pulse(false, 0.5f, 50); }
+        else Hud.NotifyWarning("Your pack is full");
     }
 
     // The left trigger: use what is in the hand (eat it, drink it) or put it down as a block

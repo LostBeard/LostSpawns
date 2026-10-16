@@ -1,7 +1,7 @@
 // A mock WebXR device (navigator.xr, XRWebGLLayer, a 60 Hz frame loop, a head at 0,1.7,0, two eyes 64 mm apart, two controllers).
 // Copied from AubsCraft.Viewer.Tests/ViewerXrTests.cs (Geordi), with the matrix and inverse a real XRRigidTransform has (LostSpawns reads them); injected before the page loads. Each frame is mirrored onto #xr-mirror.
 (() => {
-  const xr = window.__xr = { jitter: 0, left: [0, 0], right: [0, 0], leftY: false, rightB: false, x: false, trigger: false, leftTrigger: false, leftThumb: false, rightThumb: false, rightA: false, frames: 0, ended: false, mode: null, blend: 'opaque',
+  const xr = window.__xr = { jitter: 0, left: [0, 0], right: [0, 0], leftY: false, rightB: false, x: false, trigger: false, leftTrigger: false, leftThumb: false, rightGrip: false, rightThumb: false, rightA: false, frames: 0, ended: false, mode: null, blend: 'opaque',
     rayRight: { p: [0.25, 1.3, -0.2], q: [0, 0, 0, 1] }, rayLeft: { p: [-0.25, 1.3, -0.2], q: [-0.7071068, 0, 0, 0.7071068] } };
   // The right controller points from where it is at a point of the room (the left one points at the floor)
   xr.aimAt = (tx, ty, tz) => {
@@ -73,7 +73,7 @@
     const pad = (stick, down) => ({ axes: [0, 0, stick[0], stick[1]], buttons: [0,1,2,3,4,5].map(i => ({ pressed: !!down[i], touched: false, value: 0 })) });
     Object.defineProperty(s, 'inputSources', { get: () => [
       { handedness: 'left', targetRaySpace: { hand: 'left' }, gamepad: pad(xr.left, { 4: xr.x, 5: xr.leftY, 0: xr.leftTrigger, 3: xr.leftThumb }) },
-      { handedness: 'right', targetRaySpace: { hand: 'right' }, gamepad: pad(xr.right, { 5: xr.rightB, 0: xr.trigger, 3: xr.rightThumb, 4: xr.rightA }) },
+      { handedness: 'right', targetRaySpace: { hand: 'right' }, gamepad: pad(xr.right, { 5: xr.rightB, 0: xr.trigger, 1: xr.rightGrip, 3: xr.rightThumb, 4: xr.rightA }) },
     ] });
     s.end = async () => { xr.ended = true; clearTimeout(timer); s.dispatchEvent(new Event('end')); };
     return s;

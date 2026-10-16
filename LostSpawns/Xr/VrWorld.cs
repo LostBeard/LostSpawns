@@ -191,7 +191,7 @@ public sealed class VrWorld : IDisposable
         _thumbWasDown = f.RightThumb;
 
         // The sticks: left walks (a click or a grip runs), right turns
-        float speed = f.LeftThumb || f.LeftGrip || f.RightGrip ? RunSpeed : WalkSpeed;
+        float speed = f.LeftThumb || f.LeftGrip ? RunSpeed : WalkSpeed;
         StickEffort = MathF.Min(1f, MathF.Max(XrLocomotion.ApplyDeadzone(f.LeftStick).Length(), MathF.Abs(XrLocomotion.ApplyDeadzone(f.RightStick).X)));
         var m = _loco.Step(_worldFromRoom.Value, f.HeadPosition, f.HeadOrientation, f.LeftStick, f.RightStick, dt, speed);
 

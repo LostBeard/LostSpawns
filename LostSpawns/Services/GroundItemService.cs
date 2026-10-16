@@ -42,6 +42,20 @@ public class GroundItemService
     /// <summary>Fired after a successful pickup with the ground item id so UI can clean up per-id state (minimap markers, etc).</summary>
     public event Action<int>? OnPickedUpId;
 
+    /// <summary>Loot is picked up by walking over it (the desktop); off in the headset, where it is picked up by hand (<see cref="TryPickup"/>).</summary>
+    public bool AutoPickup { get; set; } = true;
+
+    /// <summary>Pick one item up into the inventory now (false: the pack is full). Fires the same events as walking over it.</summary>
+    public bool TryPickup(GroundItem g, InventoryService inventory)
+    {
+        if (!Items.Contains(g) || !inventory.TryAdd(g.Payload)) return false;
+        Items.Remove(g);
+        OnPickedUp?.Invoke(g.Payload);
+        OnPickedUpId?.Invoke(g.Id);
+        OnPickedUpAt?.Invoke(g.Payload, g.Position);
+        return true;
+    }
+
     public GroundItem Drop(Vector3 pos, InventoryItem payload)
     {
         var g = new GroundItem
@@ -61,6 +75,7 @@ public class GroundItemService
     /// </summary>
     public void Tick(Vector3 playerPos, InventoryService inventory)
     {
+        if (!AutoPickup) return;
         for (int i = Items.Count - 1; i >= 0; i--)
         {
             var g = Items[i];

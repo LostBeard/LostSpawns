@@ -271,6 +271,12 @@
         if (view.God) Stats.Invulnerable = true;
         if (view.Still) Wildlife.Frozen = true;
         Hud.ShowCreatureTags = view.Tags;
+        if (view.Loot)
+        {
+            var c = Renderer.Camera;
+            float lx = c.Position.X + MathF.Cos(c.Yaw * MathF.PI / 180f) * 2.5f, lz = c.Position.Z + MathF.Sin(c.Yaw * MathF.PI / 180f) * 2.5f;
+            Ground.Drop(new System.Numerics.Vector3(lx, World.GetHeightAt(lx, lz) + 1f, lz), new LostSpawns.Services.InventoryItem("consume.can_beans", "Canned Beans", 1, LostSpawns.Services.ItemCategory.Food));
+        }
         Renderer.OcclusionOverride = view.Occlusion;
         if (view.VrDrawRadius is { } vrRadius) { Vr.DrawRadius = vrRadius; Vr.AdaptiveDrawRadius = false; }
         if (view.Dig > 0) _ = DigForDebugAsync(view.Dig);
@@ -366,6 +372,7 @@
         _inVr = true;
         // Started from the pause menu: its screen would stay on top of the stack and count as a menu open, so no swing or placing would work
         Hud.HidePauseMenu();
+        Ground.AutoPickup = false;   // loot is picked up by hand in the headset
         _terraformMode = false;   // the desktop's carving brush has no controls in the headset: it would turn every swing into a carve
         Renderer.StopRenderLoop();
         var session = Vr.Session;
@@ -413,6 +420,7 @@
         Vr.Session.OnFrame -= OnXrFrame;
         Vr.Session.OnEnded -= LeaveVr;
         Renderer.BurstTap = null;
+        Ground.AutoPickup = true;
         DetachVrHandlers();
         if (_vr != null)
         {

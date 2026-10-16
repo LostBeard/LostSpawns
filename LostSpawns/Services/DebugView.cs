@@ -19,6 +19,8 @@ public sealed class DebugView
     public bool Still { get; private set; }
     /// <summary>Show the creature name tags and health bars (<c>?tags=1</c>): the admin view; off in the game.</summary>
     public bool Tags { get; private set; }
+    /// <summary>Drop a can of beans on the ground 2.5 blocks ahead of the camera (<c>?loot=1</c>), to pick up.</summary>
+    public bool Loot { get; private set; }
     /// <summary>Force the ambient occlusion on or off whatever the setting says (<c>?ao=0</c>, <c>?ao=1</c>), for comparing pictures.</summary>
     public bool? Occlusion { get; private set; }
     /// <summary>The headset's draw distance in columns (<c>?vrdd=5</c>).</summary>
@@ -52,6 +54,7 @@ public sealed class DebugView
                 case "rain" when TryFloat(value, out var r): view.Rain = r; break;
                 case "dig" when int.TryParse(value, out var d): view.Dig = d; break;
                 case "god": view.God = value != "0"; break;
+                case "loot": view.Loot = value != "0"; break;
                 case "tags": view.Tags = value != "0"; break;
                 case "still": view.Still = value != "0"; break;
                 case "menu": view.CraftingMenu = value == "craft"; break;
