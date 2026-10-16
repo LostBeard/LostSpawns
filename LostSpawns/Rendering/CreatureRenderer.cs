@@ -145,6 +145,7 @@ public sealed class CreatureRenderer : IDisposable
         var root = Root(e.Position.X, groundY, e.Position.Z, st.Yaw, scale);
 
         var tint = Vector3.One * (0.92f + 0.16f * e.ColorJitter);
+        if (e.Runner) tint = new Vector3(1.25f, 0.75f, 0.7f);   // a runner is flushed and raw
         if (e.HitFlashTimer > 0f) tint = new Vector3(1f, 0.35f, 0.35f);
 
         Reserve(model.Parts.Length);

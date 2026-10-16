@@ -1992,7 +1992,7 @@ public class HudService : IDisposable
             // (so distance matters) but clamps so far-off labels stay legible
             // and close-up ones don't balloon. Sits above the HP bar so they
             // don't overlap.
-            string label = e.Kind.ToString();
+            string label = e.Name;
             float textPx = Math.Clamp(22f * (size / 40f), 10f, 22f);
             float textW = _ui.Renderer.MeasureText(label, textPx);
             float textX = screenX - textW / 2f;
@@ -2555,7 +2555,7 @@ public class HudService : IDisposable
             // Charging entities get a "!" suffix so the minimap reads
             // their alert state at a glance even before the player sees
             // the in-world aggro indicator.
-            string label = e.Alert == AlertMode.Charge ? $"{e.Kind}!" : e.Kind.ToString();
+            string label = e.Alert == AlertMode.Charge ? $"{e.Name}!" : e.Name;
             Minimap.AddMarker(new MapMarker
             {
                 Id = markerId,

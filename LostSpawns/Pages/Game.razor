@@ -1225,7 +1225,7 @@
             LostSpawns.Services.EntityKind.Rabbit => 5,
             LostSpawns.Services.EntityKind.Crow   => 3,
             LostSpawns.Services.EntityKind.Deer   => 12,
-            LostSpawns.Services.EntityKind.Infected => 20,
+            LostSpawns.Services.EntityKind.Infected => e.Runner ? 30 : 20,
             _ => 1,
         };
 
@@ -1307,7 +1307,7 @@
             Stats.TryAwardAchievement("Bear Slayer");
 
         var drop = LootForEntityKind(e.Kind);
-        if (drop is null) { Hud.Notify($"Killed {e.Kind} (+{xp} XP)"); return; }
+        if (drop is null) { Hud.Notify($"Killed {e.Name} (+{xp} XP)"); return; }
 
         // Day-scaled wolf pelt bounty: wolves from later days drop more
         // pelts so the escalating threat has a matching escalating reward.

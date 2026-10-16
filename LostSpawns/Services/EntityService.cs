@@ -54,6 +54,10 @@ public sealed class WanderingEntity
     public float ColorJitter;
     /// <summary>Seconds before this entity may strike again (the infected hit once a second, not once a frame).</summary>
     public float AttackCooldown;
+    /// <summary>An infected that runs: quicker and frailer than a shambler.</summary>
+    public bool Runner;
+    /// <summary>What to call it on screen.</summary>
+    public string Name => Kind == EntityKind.Infected && Runner ? "Runner" : Kind.ToString();
 }
 
 /// <summary>
@@ -125,7 +129,7 @@ public class EntityService
     /// <summary>Fires when an entity is added to the world via Spawn.</summary>
     public event Action<WanderingEntity>? OnEntitySpawned;
 
-    public WanderingEntity Spawn(EntityKind kind, Vector3 pos, WorldService world)
+    public WanderingEntity Spawn(EntityKind kind, Vector3 pos, WorldService world, bool runner = false)
     {
         int ground = world.GetHeightAt(pos.X, pos.Z);
         float spawnY = kind == EntityKind.Crow ? ground + 5f : ground + 1f;
@@ -140,10 +144,12 @@ public class EntityService
                                        : 1.0f;
             hp *= mul;
         }
+        if (kind == EntityKind.Infected && runner) hp = 1.6f;
         var e = new WanderingEntity
         {
             Id = _nextId++,
             Kind = kind,
+            Runner = kind == EntityKind.Infected && runner,
             Position = new Vector3(pos.X, spawnY, pos.Z),
             WanderRetargetIn = (float)_rng.NextDouble() * WanderRetargetSeconds,
             Health = hp,
@@ -313,7 +319,7 @@ public class EntityService
                     if (len > 1e-3f)
                     {
                         var dir = toward / len;
-                        float speed = AlertSpeedForKind(e.Kind);
+                        float speed = AlertSpeedForKind(e.Kind) * (e.Runner ? 1.8f : 1f);
                         // Flee flips the sign so the entity runs the other way.
                         if (e.Alert == AlertMode.Flee) dir = -dir;
                         e.Velocity = dir * speed;
@@ -420,9 +426,11 @@ public class EntityService
         // Past day 7, wolf night bias grows so nights get actively worse.
         double roll = _rng.NextDouble();
         EntityKind kind;
+        bool nightRunner = false;
         if (isNight && DayNumber >= 1 && InfectedCount < 6 && _rng.NextDouble() < 0.25)
         {
             kind = EntityKind.Infected;
+            nightRunner = _rng.NextDouble() < 0.3;
         }
         else if (isNight)
         {
@@ -463,7 +471,7 @@ public class EntityService
         float dx = (float)Math.Cos(angle) * dist;
         float dz = (float)Math.Sin(angle) * dist;
         var pos = new Vector3(playerPos.X + dx, 0, playerPos.Z + dz);
-        Spawn(kind, pos, world);
+        Spawn(kind, pos, world, nightRunner);
     }
 
     /// <summary>

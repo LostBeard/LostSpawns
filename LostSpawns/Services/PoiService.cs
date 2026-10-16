@@ -88,7 +88,9 @@ public sealed class PoiService
         for (int i = 0; i < infected && _wildlife.InfectedCount < 12; i++)
         {
             var at = new Vector3(c.X + (i == 0 ? 0f : 1.5f), c.Y, c.Z);
-            var e = _wildlife.Spawn(EntityKind.Infected, at, _world);
+            // One in six of them runs
+            bool runner = TileNoise.Rand(plan.CellX * 13 + i, plan.CellZ * 7 + i, seed + 403) < 0.17f;
+            var e = _wildlife.Spawn(EntityKind.Infected, at, _world, runner);
             e.Position = new Vector3(e.Position.X, plan.FloorY + 1f, e.Position.Z);
         }
     }
