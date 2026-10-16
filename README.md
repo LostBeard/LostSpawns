@@ -22,7 +22,7 @@ The scope is intentionally ambitious: a full DayZ-scale persistent open world wi
 - **Weather** - 3D rain that stops at the first roof, a tree crown included (`WeatherPipeline`)
 - **Creatures** - wolf, deer, boar, bear, rabbit and crow as models of textured boxes with painted fur, a walk cycle from how far each has walked, head look-around, tail wag and ear twitch (`EntityRenderPipeline`)
 - **Props** - campfire (logs, stones, coals), torch, loot on the ground, and the tool in your hand (arm, axe, pickaxe, bow) swinging with the camera
-- **VR** - the home page has a VR button next to Enter World (it starts the headset session from the click, then loads the world behind it), and the pause menu has Enter VR for switching in the middle of a game (both shown when the browser has WebXR); leaving VR brings you back to the desktop view where you stood. Left stick walks along where you look (a click or a grip runs), right stick turns smoothly about your head (click it for snap turns), the floor follows the ground. Sky, terrain, wildlife, particles and rain are drawn per eye by the same renderers; the HUD and the tools are desktop-only so far
+- **VR** - the home page has a VR button next to Enter World (it starts the headset session from the click, then loads the world behind it), and the pause menu has Enter VR for switching in the middle of a game (both shown when the browser has WebXR); leaving VR brings you back to the desktop view where you stood. The game is playable in the headset, see Controls (VR) below: sky, terrain, wildlife, loot, fires, particles and rain are drawn per eye by the same renderers, the player's numbers float over the left wrist, a menu holds the hotbar, backpack, crafting and quick actions
 - **Particles** - flames, smoke, sparks and a glow round fires, fireflies over the meadow at night, dust where a block breaks, blood where a creature is hit (`ParticleRenderPipeline`)
 - **Day/Night Cycle**, **Weather**, **HUD** - GPU-rendered via SpawnDev.GameUI (no HTML overlays on canvas): status bars, hotbar, minimap, debug line, toasts, achievements panel, pause/settings, loading screen with tips
 
@@ -30,8 +30,10 @@ The scope is intentionally ambitious: a full DayZ-scale persistent open world wi
 - **Stats** — HP, hunger, thirst, stamina, temperature; hunger/thirst gate stamina regen, sprint drains thirst, hypothermia + heatstroke
 - **Combat** — Melee (axe/pick), bow with feather arrows, sneak attack 1.75x bonus, bleed status, knockback
 - **Wildlife** — Rabbit, boar, crow, deer, wolf, bear; pack behavior, herd panic, charging predators, wounded flee
+- **The infected** — grey, shambling, tough; they live in the ruined buildings and come out in the dark, notice you within 18 blocks (9 sneaking), follow until you are far off, and walk the real blocks (walls and trunks stop them, they climb a one block step or a window sill)
+- **Ruined buildings** — sheds, cabins, farmhouses (planks, cobble, tables, doors, windows, holes in the roof) and stone wells (a pool to drink from, `F`), all placed by a pure function of the cell and the seed; loot lies inside (canned food, bandages, water, cloth, rope, wood) and stays taken; a roof keeps the rain off you; the minimap marks them
 - **Day-night escalation** — Wolves spawn after dark, density + HP scale per day, dawn break-off
-- **Crafting** — C key, level-gated recipes, tier 2 stone tools, fur coat, bandage, torches, campfire, bonfire
+- **Crafting** — C key, level-gated recipes, tier 2 stone tools, fur coat, bandage, torches, campfire, bonfire, planks and cobblestone to build with (RMB)
 - **Campfires** — Fuel decay, auto-cook raw meat, warmth aura, sleep-to-dawn, mercy fire on respawn
 - **Inventory** — I key, hotbar (1-9), drag-drop, drop (Q), quick-eat (G), quick-drink (T), quick-bandage (H)
 - **Save/Load** — 10s autosave, F5 manual save, world-diff persistence (chops + placements + carves), tab-out save
@@ -179,6 +181,20 @@ Navigate to `https://localhost:7272/game` and click the canvas to capture mouse 
 | **F3** | Debug HUD |
 | **F5** | Manual quick-save |
 
+### Controls (VR)
+
+| Input | Action |
+|-------|--------|
+| **Left stick** | Walk (click it, or squeeze a grip, to run) |
+| **Right stick** | Turn smoothly (click it for snap turns) |
+| **Right trigger** | Swing the tool: chop, mine, hit (hold to keep going) |
+| **Left trigger** | Eat or drink what is in your hand, or place a block |
+| **A / B** | Next / previous hotbar slot |
+| **Y** | Feed a campfire, or drink from water you point at |
+| **X** | The menu: hotbar, eat, drink, heal, sleep, backpack, crafting, controls, leave VR (point the right controller at a button, trigger to press) |
+
+The right controller is the player's arm: its ray is where the tool hits and the block goes. Stats float over the left wrist; messages show low in the view; a hit reddens it.
+
 ## 🔍 Looking at the game from a known place
 
 Developer URL parameters, for checking the picture (nothing here changes a normal visit):
@@ -193,8 +209,11 @@ Developer URL parameters, for checking the picture (nothing here changes a norma
 | `?god=1` | The player takes no damage |
 | `?vrdd=5` | The headset's draw distance in columns (default 7), on the home or game page; the headset logs its frame times and draw counts every 240 frames |
 | `?dig=3` | Break 3 blocks along the view ray after loading (checks that an edit re-meshes) |
+| `?poi=1` | Stand at the nearest building's door (2 = the next nearest...); `&poikind=well` (shed, cabin, house, well) picks a kind, `&poiyaw=90` a side |
+| `?spawn=infected` `&spawndist=3.5` | Put an infected ahead, 3.5 blocks away (default 7) |
+| `?menu=craft` | Open the crafting screen |
 
-`_tools/render-probe` drives Chrome through Playwright, loads such a URL and saves a screenshot and the console log.
+`_tools/render-probe` drives Chrome through Playwright, loads such a URL and saves a screenshot and the console log. `_tools/vr-probe` does the same against a mock headset (modes `play`, `die`, `help`, `soak`); `reload-probe` loads a page twice in one browser to check that the save restores.
 
 ## 📦 NuGet Packages Used
 
