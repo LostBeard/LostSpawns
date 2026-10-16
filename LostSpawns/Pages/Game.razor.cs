@@ -17,11 +17,11 @@ namespace LostSpawns.Pages;
 public partial class Game
 {
     private VrUi? _vrUi;
-    private VrPanel? _vrWrist, _vrMenu, _vrToast, _vrFlash, _vrPack, _vrHelp, _vrSettings, _vrVignette;
+    private VrPanel? _vrWrist, _vrMenu, _vrFlash, _vrPack, _vrHelp, _vrSettings, _vrVignette;
     private UIButton? _vrTurnMode, _vrTurnSpeed, _vrSnapStep, _vrVignetteButton, _vrDrawRadius;
     private float _vrVignetteLevel;
     private UIPanel? _vrVigOuter, _vrVigInner;
-    private UILabel? _vrWristHeader, _vrWristHeld, _vrToastLabel, _vrMenuStatus;
+    private UILabel? _vrWristHeader, _vrWristHeld, _vrWristLog, _vrMenuStatus;
     private readonly (UIPanel Fill, UIPanel Back)[] _vrBars = new (UIPanel, UIPanel)[5];
     private readonly UIButton[] _vrHotbarButtons = new UIButton[9];
     private readonly UIButton[] _vrPackButtons = new UIButton[InventoryService.BackpackSize];
@@ -31,7 +31,8 @@ public partial class Game
     private bool _vrRtWas, _vrLtWas, _vrAWas, _vrBWas, _vrXWas, _vrYWas;
     private float _vrRepeat;
     private float _vrFlashLevel;
-    private float _vrToastAge = 99f;
+    private float _vrLogAge = 99f;
+    private bool _vrWristShown;
     private bool _vrHandlersAttached;
     private float _vrStandHeight;
     private Vector3? _vrStepFrom;
@@ -51,7 +52,6 @@ public partial class Game
         _vrUi = new VrUi();
         BuildVrFlash();
         BuildVrWrist();
-        BuildVrToast();
         BuildVrMenu();
         BuildVrPack();
         BuildVrHelp();
@@ -60,7 +60,6 @@ public partial class Game
         _vrUi.Panels.Add(_vrFlash!);
         _vrUi.Panels.Add(_vrVignette!);
         _vrUi.Panels.Add(_vrWrist!);
-        _vrUi.Panels.Add(_vrToast!);
         _vrUi.Panels.Add(_vrMenu!);
         _vrUi.Panels.Add(_vrPack!);
         _vrUi.Panels.Add(_vrHelp!);
@@ -71,7 +70,6 @@ public partial class Game
         AttachVrHandlers();
         ApplyVrOptions();
         _vr.OnTurnModeToggled += smooth => { Vr.Options.SmoothTurn = smooth; Vr.SaveOptions(); };
-        Hud.Notify("Press X for the menu: hotbar, crafting, controls");
     }
 
     private void AttachVrHandlers()
@@ -95,7 +93,7 @@ public partial class Game
 
     private void VrOnDamage(float amount)
     {
-        _vrFlashLevel = MathF.Min(1f, 0.45f + amount * 2.5f);
+        _vrFlashLevel = MathF.Min(0.6f, 0.25f + amount * 1.5f);
         Vr.Session.Pulse(true, 0.8f, 140);
         Vr.Session.Pulse(false, 0.8f, 140);
     }
@@ -104,9 +102,10 @@ public partial class Game
 
     private void VrOnNotified(string text, SpawnDev.GameUI.Elements.NotificationType type)
     {
-        if (_vrToastLabel == null) return;
-        _vrToastLabel.Text = text;
-        _vrToastLabel.Color = type switch
+        // A message is a line in the wrist display, read when looking at it: nothing is put in front of the eyes
+        if (_vrWristLog == null) return;
+        _vrWristLog.Text = text.Length > 34 ? text[..33] + "." : text;
+        _vrWristLog.Color = type switch
         {
             SpawnDev.GameUI.Elements.NotificationType.Success => Color.FromArgb(255, 130, 230, 130),
             SpawnDev.GameUI.Elements.NotificationType.Warning => Color.FromArgb(255, 245, 210, 90),
@@ -114,7 +113,7 @@ public partial class Game
             SpawnDev.GameUI.Elements.NotificationType.Achievement => Color.FromArgb(255, 255, 215, 90),
             _ => Color.FromArgb(255, 225, 235, 245),
         };
-        _vrToastAge = 0f;
+        _vrLogAge = 0f;
     }
 
     // --- The panels ---
@@ -129,7 +128,8 @@ public partial class Game
 
     private void BuildVrWrist()
     {
-        _vrWrist = new VrPanel(300, 226) { ReadOnly = true, IsOpen = true };
+        // The size of a wrist display: 13 x 11 cm
+        _vrWrist = new VrPanel(300, 250, 0.00045f) { ReadOnly = true };
         var p = _vrWrist.Panel;
         _vrWristHeader = new UILabel { X = 12, Y = 8, Text = "", FontSize = FontSize.Body, Color = Color.FromArgb(255, 225, 235, 245) };
         p.AddChild(_vrWristHeader);
@@ -145,18 +145,13 @@ public partial class Game
         }
         _vrWristHeld = new UILabel { X = 12, Y = 196, Text = "", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 235, 215, 160) };
         p.AddChild(_vrWristHeld);
-    }
-
-    private void BuildVrToast()
-    {
-        _vrToast = new VrPanel(620, 64, 0.0013f) { ReadOnly = true };
-        _vrToastLabel = new UILabel { X = 20, Y = 14, Width = 580, Height = 36, Text = "", FontSize = FontSize.Heading, Color = Color.White };
-        _vrToast.Panel.AddChild(_vrToastLabel);
+        _vrWristLog = new UILabel { X = 12, Y = 220, Width = 280, Text = "", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 200, 210, 222) };
+        p.AddChild(_vrWristLog);
     }
 
     private void BuildVrMenu()
     {
-        _vrMenu = new VrPanel(800, 620, 0.0011f);
+        _vrMenu = new VrPanel(800, 620, 0.0009f);
         var p = _vrMenu.Panel;
         p.AddChild(new UILabel { X = 24, Y = 16, Text = "Lost Spawns", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
         _vrMenuStatus = new UILabel { X = 24, Y = 56, Width = 740, Height = 24, Text = "", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 170, 190, 210) };
@@ -215,7 +210,7 @@ public partial class Game
     // The backpack: a click on a slot swaps it with the slot of the hotbar in the hand
     private void BuildVrPack()
     {
-        _vrPack = new VrPanel(800, 400, 0.0011f);
+        _vrPack = new VrPanel(800, 400, 0.0009f);
         var p = _vrPack.Panel;
         p.AddChild(new UILabel { X = 24, Y = 16, Text = "Backpack", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
         p.AddChild(new UILabel { X = 24, Y = 56, Width = 740, Text = "Pick a slot to swap it with the hotbar slot in your hand", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 170, 190, 210) });
@@ -233,7 +228,7 @@ public partial class Game
     // The headset's own settings: how to turn, how far to draw, whether the edges darken while moving; kept between visits
     private void BuildVrSettings()
     {
-        _vrSettings = new VrPanel(800, 470, 0.0011f);
+        _vrSettings = new VrPanel(800, 470, 0.0009f);
         var p = _vrSettings.Panel;
         var o = Vr.Options;
         p.AddChild(new UILabel { X = 24, Y = 16, Text = "VR settings", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
@@ -301,7 +296,7 @@ public partial class Game
     // How to play, for anyone handed the headset
     private void BuildVrHelp()
     {
-        _vrHelp = new VrPanel(800, 520, 0.0011f);
+        _vrHelp = new VrPanel(800, 520, 0.0009f);
         var p = _vrHelp.Panel;
         p.AddChild(new UILabel { X = 24, Y = 16, Text = "Controls", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
         string[] lines =
@@ -536,7 +531,7 @@ public partial class Game
         var fwd = Vector3.Transform(-Vector3.UnitZ, f.HeadOrientation);
         fwd.Y = 0;
         fwd = fwd.LengthSquared() < 1e-8f ? -Vector3.UnitZ : Vector3.Normalize(fwd);
-        var at = f.HeadPosition + fwd * 0.75f - Vector3.UnitY * 0.12f;
+        var at = f.HeadPosition + fwd * 0.7f - Vector3.UnitY * 0.1f;
         _vrMenu!.Model = VrPanel.FacingUpright(at, f.HeadPosition);
         _vrMenu.IsOpen = true;
     }
@@ -556,19 +551,27 @@ public partial class Game
         _vrWristHeader!.Text = $"Day {Time.DayNumber + 1}   {minutes / 60:D2}:{minutes % 60:D2}   Lv {Stats.Level}";
         var held = Inventory.ActiveItem;
         _vrWristHeld!.Text = held == null ? $"[{Inventory.ActiveHotbarIndex + 1}] empty hands" : $"[{Inventory.ActiveHotbarIndex + 1}] {held.Name}" + (held.Count > 1 ? $" x{held.Count}" : "");
-        _vrWrist!.Model = f.LeftHasRay
-            ? VrPanel.Facing(f.LeftRayOrigin + Vector3.UnitY * 0.13f + (headRoom - f.LeftRayOrigin) * 0.12f, headRoom)
-            : VrPanel.Facing(headRoom + fwdRoom * 0.55f - rightRoom * 0.32f - upRoom * 0.30f, headRoom);
-
-        // The latest message, low in front of the eyes for a few seconds
-        _vrToastAge += dt;
-        _vrToast!.IsOpen = _vrToastAge < 3.5f;
-        _vrToast.Model = VrPanel.Facing(headRoom + fwdRoom * 0.9f - upRoom * 0.22f, headRoom);
+        // Like a Pip-Boy: on the left forearm, a hand's length back from the grip, turned to the eyes, and shown only while the eyes are on it
+        Vector3 wrist;
+        if (f.LeftHasRay)
+        {
+            var back = -f.LeftRayDirection;
+            var from = f.LeftHasGrip ? f.LeftGripPosition : f.LeftRayOrigin - f.LeftRayDirection * 0.10f;
+            wrist = from + back * 0.09f + Vector3.UnitY * 0.035f;
+            wrist += Vector3.Normalize(headRoom - wrist) * 0.03f;
+        }
+        else wrist = headRoom + fwdRoom * 0.45f - rightRoom * 0.30f - upRoom * 0.32f;
+        _vrWrist!.Model = VrPanel.Facing(wrist, headRoom);
+        float looking = Vector3.Dot(Vector3.Normalize(fwdRoom), Vector3.Normalize(wrist - headRoom));
+        _vrWristShown = looking > (_vrWristShown ? 0.68f : 0.78f);
+        _vrWrist.IsOpen = _vrWristShown;
+        _vrLogAge += dt;
+        if (_vrLogAge > 12f && _vrWristLog!.Text.Length > 0) _vrWristLog.Text = "";
 
         // A hit reddens the view for a moment
         _vrFlashLevel = MathF.Max(0f, _vrFlashLevel - dt * 2.2f);
         _vrFlash!.IsOpen = _vrFlashLevel > 0.01f;
-        _vrFlash.Panel.BackgroundColor = Color.FromArgb((int)(150 * _vrFlashLevel), 200, 20, 20);
+        _vrFlash.Panel.BackgroundColor = Color.FromArgb((int)(120 * _vrFlashLevel), 200, 20, 20);
         _vrFlash.Model = VrPanel.Facing(headRoom + fwdRoom * 0.35f, headRoom);
 
         if (_vrPack!.IsOpen)

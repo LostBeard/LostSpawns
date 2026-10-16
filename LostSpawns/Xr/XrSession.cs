@@ -254,6 +254,23 @@ public sealed class XrSession : IDisposable
         {
             if (_frames < 5) Console.WriteLine($"[Xr] no controller ray: {ex.Message}");
         }
+        // Where the controller is held (the palm), which is behind the ray's origin: the wrist is a little further back still
+        try
+        {
+            using var grip = source.GripSpace;
+            if (grip == null) return;
+            using var pose = frame.GetPose(grip, _refSpace!);
+            if (pose == null) return;
+            using var transform = pose.Transform;
+            var p = transform.Position;
+            var position = new Vector3((float)p.X, (float)p.Y, (float)p.Z);
+            if (left) { data.LeftGripPosition = position; data.LeftHasGrip = true; }
+            else { data.RightGripPosition = position; data.RightHasGrip = true; }
+        }
+        catch (Exception ex)
+        {
+            if (_frames < 5) Console.WriteLine($"[Xr] no controller ray: {ex.Message}");
+        }
     }
 
     // --- Haptics: a request made between frames is played on that controller's actuator when the frame reads its gamepad ---
@@ -321,6 +338,11 @@ public sealed class XrFrameData
     public bool RightHasRay { get; set; }
     public Vector3 LeftRayOrigin { get; set; }
     public Vector3 LeftRayDirection { get; set; }
+    /// <summary>Where each controller is held, in the room (null-like: Has says the headset gave it).</summary>
+    public Vector3 LeftGripPosition { get; set; }
+    public Vector3 RightGripPosition { get; set; }
+    public bool LeftHasGrip { get; set; }
+    public bool RightHasGrip { get; set; }
     public Vector3 RightRayOrigin { get; set; }
     public Vector3 RightRayDirection { get; set; }
 }
