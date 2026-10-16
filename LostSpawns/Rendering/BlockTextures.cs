@@ -10,7 +10,8 @@ public static class BlockTiles
     /// <summary>Eight frames of the water surface, a seamless loop.</summary>
     public const int Water0 = 8, WaterFrames = 8;
     public const int Gravel = 16, Granite = 17, TallGrass = 18, Fern = 19, Dandelion = 20, Aster = 21;
-    public const int Count = 22;
+    public const int BirchSide = 22, BirchTop = 23;
+    public const int Count = 24;
 }
 
 /// <summary>
@@ -37,6 +38,8 @@ public static class BlockTextures
         Paint(rgba, BlockTiles.LogSide, (u, v) => new Vector4(LogSide(u, v), 1f));
         Paint(rgba, BlockTiles.LogTop, (u, v) => new Vector4(LogTop(u, v), 1f));
         Paint(rgba, BlockTiles.Leaves, Leaves);
+        Paint(rgba, BlockTiles.BirchSide, (u, v) => new Vector4(BirchBark(u, v), 1f));
+        Paint(rgba, BlockTiles.BirchTop, (u, v) => new Vector4(BirchTop(u, v), 1f));
         Paint(rgba, BlockTiles.Gravel, (u, v) => new Vector4(Gravel(u, v), 1f));
         Paint(rgba, BlockTiles.Granite, (u, v) => new Vector4(Granite(u, v), 1f));
         Paint(rgba, BlockTiles.TallGrass, GrassTuft);
@@ -208,6 +211,34 @@ public static class BlockTextures
         float caustic = MathF.Pow(ridge, 6f);
         float l = 0.66f + 0.20f * n + 0.30f * caustic;
         return new Vector3(l * 0.95f, l, l);
+    }
+
+    // --- birch: white bark with dark horizontal scars ---
+
+    private static Vector3 BirchBark(float u, float v)
+    {
+        var white = new Vector3(0.86f, 0.85f, 0.80f);
+        float tone = 0.90f + 0.14f * Value(u, v, 8, 16, 721);
+        var c = white * tone;
+        // The dark marks: short wide dashes, a few to a block, hugging the trunk
+        float row = v * 8f;
+        int r = (int)MathF.Floor(row);
+        float dashStart = Rand(r, 0, 722), dashLen = 0.25f + 0.35f * Rand(r, 1, 723);
+        float inRow = row - r;
+        bool has = Rand(r, 2, 724) > 0.35f;
+        float uu = (u - dashStart + 1f) % 1f;
+        if (has && inRow > 0.25f && inRow < 0.55f && uu < dashLen) c = Mix(c, new Vector3(0.12f, 0.11f, 0.10f), 0.9f);
+        if (Value(u, v, 24, 24, 725) > 0.88f) c *= 0.8f;
+        return c;
+    }
+
+    private static Vector3 BirchTop(float u, float v)
+    {
+        float dx = u - 0.5f, dy = v - 0.5f;
+        float d = MathF.Sqrt(dx * dx + dy * dy);
+        if (d > 0.45f) return BirchBark(u, v) * 0.92f;
+        float rings = MathF.Sin((d + 0.04f * Fbm(u, v, 3, 3, 2, 731)) * MathF.Tau * 5f) * 0.5f + 0.5f;
+        return Mix(new Vector3(0.80f, 0.70f, 0.52f), new Vector3(0.66f, 0.54f, 0.38f), rings * rings);
     }
 
     // --- rock and pebbles ---

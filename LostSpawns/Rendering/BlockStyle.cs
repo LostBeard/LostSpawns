@@ -26,6 +26,7 @@ public static class BlockStyle
         c[(int)BlockType.Water] = BlockClass.Water;
         c[(int)BlockType.Wood] = BlockClass.Opaque;
         c[(int)BlockType.Leaves] = BlockClass.Cutout;   // holes in the leaves show what is behind them
+        c[(int)BlockType.Birch] = BlockClass.Opaque;
         c[(int)BlockType.Gravel] = BlockClass.Opaque;
         c[(int)BlockType.Granite] = BlockClass.Opaque;
         c[(int)BlockType.TallGrass] = BlockClass.Cross; // crossed planes; nothing is hidden by them
@@ -58,6 +59,9 @@ public static class BlockStyle
         m[(int)BlockType.Leaves] = BlockMaterial.Uniform((ushort)BlockTiles.Leaves, Vector3.One,
             BlockMaterial.FlagTinted | BlockMaterial.TintFoliage);
 
+        m[(int)BlockType.Birch] = BlockMaterial.Create(
+            (ushort)BlockTiles.BirchSide, (ushort)BlockTiles.BirchSide, (ushort)BlockTiles.BirchSide, (ushort)BlockTiles.BirchSide,
+            (ushort)BlockTiles.BirchTop, (ushort)BlockTiles.BirchTop);
         m[(int)BlockType.Gravel] = BlockMaterial.Uniform((ushort)BlockTiles.Gravel);
         m[(int)BlockType.Granite] = BlockMaterial.Uniform((ushort)BlockTiles.Granite);
         // Grass tufts and ferns are grayscale sprites coloured by the biome's grass colour; the flowers carry their own colours

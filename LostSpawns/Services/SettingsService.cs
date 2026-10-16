@@ -14,6 +14,8 @@ public class SettingsService
     public int DrawDistance { get; private set; } = 12;      // chunks (192m view radius)
     public float FieldOfView { get; private set; } = 70f;    // degrees
     public bool Vsync { get; private set; } = true;
+    /// <summary>Screen-space ambient occlusion: contact shadows from the depth buffer (costs some GPU time).</summary>
+    public bool AmbientOcclusion { get; private set; } = true;
 
     // Audio
     public float MasterVolume { get; private set; } = 1f;    // [0, 1]
@@ -41,6 +43,7 @@ public class SettingsService
         DrawDistance = Math.Clamp(storedDraw, 4, 32);
         FieldOfView = GetFloat("lost.settings.fov", 70f);
         Vsync = GetBool("lost.settings.vsync", true);
+        AmbientOcclusion = GetBool("lost.settings.ao", true);
         MasterVolume = Math.Clamp(GetFloat("lost.settings.volume", 1f), 0f, 1f);
         AlwaysShowVitals = GetBool("lost.settings.alwaysShowVitals", false);
         CompassAutoFade = GetBool("lost.settings.compassFade", true);
@@ -52,6 +55,12 @@ public class SettingsService
         Set("lost.settings.drawDistance", drawDistance.ToString());
         Set("lost.settings.fov", fov.ToString("F2"));
         Set("lost.settings.vsync", vsync ? "1" : "0");
+    }
+
+    public void SaveAmbientOcclusion(bool on)
+    {
+        AmbientOcclusion = on;
+        Set("lost.settings.ao", on ? "1" : "0");
     }
 
     public void SaveVolume(float volume)

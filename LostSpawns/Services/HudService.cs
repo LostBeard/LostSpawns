@@ -1388,6 +1388,19 @@ public class HudService : IDisposable
             _settings.SaveVideo(_settings.DrawDistance, _settings.FieldOfView, on);
         panel.AddChild(vsync);
 
+        // Ambient occlusion checkbox: the contact shadows (some GPU cost)
+        var occlusion = new UICheckbox
+        {
+            Text = "Ambient occlusion",
+            IsChecked = _settings.AmbientOcclusion,
+            Width = 380,
+            Height = 28,
+            X = 20,
+            Y = 246,
+        };
+        occlusion.OnChanged = on => _settings.SaveAmbientOcclusion(on);
+        panel.AddChild(occlusion);
+
         // Close button
         var close = new UIButton
         {

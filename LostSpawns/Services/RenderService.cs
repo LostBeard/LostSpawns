@@ -28,8 +28,7 @@ public class RenderService : IDisposable
     private GPUCanvasContext? _context;
     private string _canvasFormat = "bgra8unorm";
 
-    private GPUTexture? _depthTexture;
-    private GPUTextureView? _depthView;
+    private PostProcessor? _post;
     private string? _canvasId;
     private int _canvasWidth;
     private int _canvasHeight;
@@ -51,6 +50,9 @@ public class RenderService : IDisposable
     private ActionCallback<double>? _rafCallback;
 
     public Camera Camera { get; } = new();
+
+    /// <summary>Forces the ambient occlusion on or off whatever the setting says (a developer view).</summary>
+    public bool? OcclusionOverride { get; set; }
 
     /// <summary>What the player holds and how it moves, asked for each frame (the game supplies it).</summary>
     public Func<HeldView>? HeldProvider { get; set; }
@@ -135,7 +137,10 @@ public class RenderService : IDisposable
         _particles = new ParticleRenderer();
         _particles.Init(_device, _queue, _canvasFormat, _terrain.FrameBuffer);
 
-        CreateDepthTexture();
+        // The world is drawn into the post-processor's colour and depth textures; it finishes the picture onto the canvas
+        _post = new PostProcessor();
+        _post.Init(_device, _queue, _canvasFormat);
+        _post.Resize(_canvasWidth, _canvasHeight);
 
         IsInitialized = true;
         Console.WriteLine($"[Render] Pipeline ready ({_canvasWidth}x{_canvasHeight})");
@@ -191,10 +196,14 @@ public class RenderService : IDisposable
                     _canvasHeight = ch;
                     canvasEl.Width = cw;
                     canvasEl.Height = ch;
-                    CreateDepthTexture();
+                    _post!.Resize(cw, ch);
                 }
             }
         }
+
+        // The settings' field of view and occlusion switch
+        Camera.FieldOfView = _settings.FieldOfView;
+        _post!.OcclusionEnabled = OcclusionOverride ?? _settings.AmbientOcclusion;
 
         float aspect = (float)_canvasWidth / _canvasHeight;
         var vp = Camera.GetVpMatrix(aspect);
@@ -244,7 +253,9 @@ public class RenderService : IDisposable
         // Single encoder, single render pass, single submit
         using var encoder = _device.CreateCommandEncoder();
         // Cleared to the fog colour: what lies past the fog (not drawn) looks exactly like fogged terrain
-        using var pass = _terrain.BeginRenderPass(encoder, colorView, _depthView!, sky.Fog);
+        // With occlusion on the world goes to an offscreen picture that the post-processor finishes onto the canvas; off, straight to the canvas
+        var worldTarget = _post.OcclusionEnabled ? _post.SceneColorView! : colorView;
+        using var pass = _terrain.BeginRenderPass(encoder, worldTarget, _post.DepthView!, sky.Fog);
 
         // The sky first, under everything
         _sky.Draw(pass, in vp, cameraPos, in sky, rain, MoonPhase(), _worldTime.DayFraction);
@@ -262,6 +273,8 @@ public class RenderService : IDisposable
         _weatherView!.Draw(pass, _world, in vp, cameraPos, rain, sky.Daylight);
 
         pass.End();
+        if (_post.OcclusionEnabled)
+            _post.Run(encoder, colorView, Camera.FieldOfView * MathF.PI / 180f, 0.1f);
         using var cmdBuf = encoder.Finish();
         _queue!.Submit(new[] { cmdBuf });
 
@@ -277,21 +290,6 @@ public class RenderService : IDisposable
 
     // One phase of the moon (0 full .. 7) a few nights at a time
     private int MoonPhase() => _worldTime.DayNumber % 8;
-
-    private void CreateDepthTexture()
-    {
-        _depthView?.Dispose();
-        _depthTexture?.Destroy();
-        _depthTexture?.Dispose();
-
-        _depthTexture = _device!.CreateTexture(new GPUTextureDescriptor
-        {
-            Size = new[] { _canvasWidth, _canvasHeight },
-            Format = "depth32float",
-            Usage = GPUTextureUsage.RenderAttachment,
-        });
-        _depthView = _depthTexture.CreateView();
-    }
 
     public void Dispose()
     {
@@ -313,11 +311,8 @@ public class RenderService : IDisposable
         _terrain?.Dispose();
         _terrain = null;
 
-        _depthView?.Dispose();
-        _depthView = null;
-        _depthTexture?.Destroy();
-        _depthTexture?.Dispose();
-        _depthTexture = null;
+        _post?.Dispose();
+        _post = null;
 
         _context?.Unconfigure();
         _context?.Dispose();

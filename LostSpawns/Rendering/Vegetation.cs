@@ -51,6 +51,7 @@ public static class Vegetation
     public static void Place(ChunkData chunk, int cx, int cz, SurfaceFn surface, int seaLevel, int worldSeed)
     {
         PlaceTrees(chunk, cx, cz, surface, seaLevel, worldSeed);
+        PlaceBoulders(chunk, cx, cz, surface, seaLevel, worldSeed);
         PlaceCover(chunk, cx, cz, worldSeed);
     }
 
@@ -77,7 +78,13 @@ public static class Vegetation
 
             bool broadleaf = Broadleaf(wx, wz) * forest > 0.30f || (forest < 0.2f && Hash01(gx, gz, seed + 14) < 0.55f);
             float roll = Hash01(gx, gz, seed + 15);
-            if (broadleaf) Oak(chunk, x0, z0, wx, groundY, wz, roll);
+            if (broadleaf)
+            {
+                // Half of the broadleaf groves are birch
+                if (Hash01(gx, gz, seed + 16) < 0.5f) Birch(chunk, x0, z0, wx, groundY, wz, roll);
+                else Oak(chunk, x0, z0, wx, groundY, wz, roll);
+            }
+            else if (Hash01(gx, gz, seed + 17) < 0.06f) Snag(chunk, x0, z0, wx, groundY, wz, roll);
             else Spruce(chunk, x0, z0, wx, groundY, wz, roll);
         }
     }
@@ -147,6 +154,81 @@ public static class Vegetation
                 // Rag the edge a little so the crown is not a perfect ball (stable per block)
                 if (r >= 2 && dx * dx + dz * dz >= r * r && Hash01(wx + dx, wz + dz + y * 31, 77) < 0.35f) continue;
                 Put(chunk, x0, z0, wx + dx, y, wz + dz, BlockType.Leaves);
+            }
+        }
+    }
+
+    // A birch: white trunk, slim, an oval crown
+    private static void Birch(ChunkData chunk, int x0, int z0, int wx, int groundY, int wz, float roll)
+    {
+        int trunk = 6 + (int)(roll * 4f);               // 6..9
+        int top = groundY + trunk;
+        for (int y = groundY + 1; y <= top; y++)
+            Put(chunk, x0, z0, wx, y, wz, BlockType.Birch);
+        ReadOnlySpan<int> radii = stackalloc int[] { 1, 2, 2, 2, 1, 1 };
+        for (int layer = 0; layer < radii.Length; layer++)
+        {
+            int r = radii[layer];
+            int y = top - 2 + layer;
+            for (int dz = -r; dz <= r; dz++)
+            for (int dx = -r; dx <= r; dx++)
+            {
+                if (dx == 0 && dz == 0 && y <= top) continue;
+                if (dx * dx + dz * dz > r * r + 1) continue;
+                if (r >= 2 && dx * dx + dz * dz >= r * r + 1 && Hash01(wx + dx, wz + dz + y * 29, 78) < 0.5f) continue;
+                Put(chunk, x0, z0, wx + dx, y, wz + dz, BlockType.Leaves);
+            }
+        }
+    }
+
+    // A dead spruce, still standing: a bare trunk with a few broken branches (the burned and storm-felled woods of a bad year)
+    private static void Snag(ChunkData chunk, int x0, int z0, int wx, int groundY, int wz, float roll)
+    {
+        int height = 7 + (int)(roll * 5f);
+        for (int y = groundY + 1; y <= groundY + height; y++)
+            Put(chunk, x0, z0, wx, y, wz, BlockType.Wood);
+        for (int i = 0; i < 4; i++)
+        {
+            int y = groundY + 3 + (int)(Hash01(wx, wz + i * 7, 79) * (height - 3));
+            int dir = (int)(Hash01(wx + i * 5, wz, 80) * 4f);
+            int dx = dir == 0 ? 1 : dir == 1 ? -1 : 0, dz = dir == 2 ? 1 : dir == 3 ? -1 : 0;
+            Put(chunk, x0, z0, wx + dx, y, wz + dz, BlockType.Wood);
+            if (Hash01(wx + i, wz - i, 81) < 0.5f) Put(chunk, x0, z0, wx + dx * 2, y + 1, wz + dz * 2, BlockType.Wood);
+        }
+    }
+
+    /// <summary>
+    /// Boulders: clumps of granite half sunk in the ground, thicker along the shore. Placed per 8 x 8 cell like the trees, so a boulder
+    /// that reaches over a chunk border is the same from both chunks.
+    /// </summary>
+    public static void PlaceBoulders(ChunkData chunk, int cx, int cz, SurfaceFn surface, int seaLevel, int seed)
+    {
+        const int Cell = 8;
+        int x0 = cx * ChunkData.SizeXZ, z0 = cz * ChunkData.SizeXZ;
+        int cellX0 = FloorDiv(x0 - 3, Cell), cellX1 = FloorDiv(x0 + ChunkData.SizeXZ + 2, Cell);
+        int cellZ0 = FloorDiv(z0 - 3, Cell), cellZ1 = FloorDiv(z0 + ChunkData.SizeXZ + 2, Cell);
+        for (int gz = cellZ0; gz <= cellZ1; gz++)
+        for (int gx = cellX0; gx <= cellX1; gx++)
+        {
+            int wx = gx * Cell + (int)(Hash01(gx, gz, seed + 31) * Cell);
+            int wz = gz * Cell + (int)(Hash01(gx, gz, seed + 32) * Cell);
+            var (groundY, top) = surface(wx, wz);
+            if (groundY <= seaLevel) continue;
+            float shore = 1f - TileNoise.SmoothStep(2f, 12f, groundY - seaLevel);   // 1 at the water's edge, 0 inland
+            float chance = 0.025f + 0.22f * shore + (top == BlockType.Granite ? 0.12f : 0f);
+            if (Hash01(gx, gz, seed + 33) > chance) continue;
+
+            float rx = 1.2f + 1.6f * Hash01(gx, gz, seed + 34), rz = 1.2f + 1.4f * Hash01(gx, gz, seed + 35), ry = 0.9f + 1.0f * Hash01(gx, gz, seed + 36);
+            int reach = 3;
+            for (int dz = -reach; dz <= reach; dz++)
+            for (int dx = -reach; dx <= reach; dx++)
+            for (int dy = -1; dy <= 2; dy++)
+            {
+                float e = dx * dx / (rx * rx) + dz * dz / (rz * rz) + (dy - 0.3f) * (dy - 0.3f) / (ry * ry);
+                if (e > 1f) continue;
+                // Ragged, not a perfect ellipsoid
+                if (e > 0.65f && Hash01(wx + dx, wz + dz + dy * 17, 82) < 0.4f) continue;
+                Put(chunk, x0, z0, wx + dx, groundY + 1 + dy, wz + dz, BlockType.Granite);
             }
         }
     }

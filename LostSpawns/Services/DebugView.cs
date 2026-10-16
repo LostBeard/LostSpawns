@@ -17,6 +17,8 @@ public sealed class DebugView
     public bool God { get; private set; }
     /// <summary>The wildlife stands still (<c>?still=1</c>).</summary>
     public bool Still { get; private set; }
+    /// <summary>Force the ambient occlusion on or off whatever the setting says (<c>?ao=0</c>, <c>?ao=1</c>), for comparing pictures.</summary>
+    public bool? Occlusion { get; private set; }
     /// <summary>Creatures to place in a row a few blocks ahead of the camera, standing still (<c>?spawn=wolf,deer,rabbit</c>).</summary>
     public List<EntityKind> Spawn { get; } = new();
     public (float x, float z, float yaw, float pitch, float up)? Camera { get; private set; }
@@ -38,6 +40,7 @@ public sealed class DebugView
                 case "dig" when int.TryParse(value, out var d): view.Dig = d; break;
                 case "god": view.God = value != "0"; break;
                 case "still": view.Still = value != "0"; break;
+                case "ao": view.Occlusion = value != "0"; break;
                 case "spawn":
                     foreach (var name in value.Split(',', StringSplitOptions.RemoveEmptyEntries))
                         if (Enum.TryParse<EntityKind>(name, ignoreCase: true, out var kind)) view.Spawn.Add(kind);

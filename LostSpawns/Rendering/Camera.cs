@@ -13,6 +13,8 @@ public class Camera
     public float Yaw { get; set; } = -90f;   // degrees, -90 = looking along -Z
     public float Pitch { get; set; } = -15f;  // degrees
 
+    /// <summary>The vertical field of view in degrees (the settings slider sets it), used when a caller does not give one.</summary>
+    public float FieldOfView { get; set; } = 70f;
     public float MovementSpeed { get; set; } = 20f;
     public float SprintMultiplier { get; set; } = 2.5f;
     public float MouseSensitivity { get; set; } = 0.15f;
@@ -84,27 +86,27 @@ public class Camera
     }
 
     /// <summary>Returns reversed-Z infinite perspective projection for VertexPullPipeline.</summary>
-    public Matrix4x4 GetProjectionMatrix(float aspectRatio, float fovDegrees = 70f, float near = 0.1f)
+    public Matrix4x4 GetProjectionMatrix(float aspectRatio, float? fovDegrees = null, float near = 0.1f)
     {
-        float fovRad = fovDegrees * MathF.PI / 180f;
+        float fovRad = (fovDegrees ?? FieldOfView) * MathF.PI / 180f;
         return ReversedZHelper.CreateInfinitePerspective(fovRad, aspectRatio, near);
     }
 
     /// <summary>Returns the combined View*Projection matrix (for frustum culling).</summary>
-    public Matrix4x4 GetVpMatrix(float aspectRatio, float fovDegrees = 70f)
+    public Matrix4x4 GetVpMatrix(float aspectRatio, float? fovDegrees = null)
     {
         return GetViewMatrix() * GetProjectionMatrix(aspectRatio, fovDegrees);
     }
 
     /// <summary>Returns the combined MVP matrix as a float[16] column-major array for GPU upload.</summary>
-    public float[] GetMvpArray(float aspectRatio, float fovDegrees = 70f)
+    public float[] GetMvpArray(float aspectRatio, float? fovDegrees = null)
     {
         var vp = GetViewMatrix() * GetProjectionMatrix(aspectRatio, fovDegrees);
         return MatrixToArray(vp);
     }
 
     /// <summary>Writes the MVP matrix into an existing float[16] buffer (zero-allocation).</summary>
-    public void WriteMvp(float[] buffer, float aspectRatio, float fovDegrees = 70f)
+    public void WriteMvp(float[] buffer, float aspectRatio, float? fovDegrees = null)
     {
         var vp = GetViewMatrix() * GetProjectionMatrix(aspectRatio, fovDegrees);
         WriteMatrixToArray(vp, buffer);

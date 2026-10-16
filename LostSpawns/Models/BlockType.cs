@@ -22,6 +22,8 @@ public enum BlockType : byte
     Gravel,
     /// <summary>Exposed rock: cliffs and shores. Mines like stone.</summary>
     Granite,
+    /// <summary>The white log of a birch; chops like wood.</summary>
+    Birch,
 }
 
 /// <summary>What a block type means for play, apart from how it looks.</summary>
@@ -35,6 +37,7 @@ public static class BlockTypes
     {
         BlockType.Granite => BlockType.Stone,
         BlockType.Gravel => BlockType.Sand,
+        BlockType.Birch => BlockType.Wood,
         _ => t,
     };
 }
