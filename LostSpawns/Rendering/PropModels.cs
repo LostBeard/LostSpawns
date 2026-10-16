@@ -159,8 +159,8 @@ public static class PropModels
     {
         "food.mushroom" => (Mushroom, 1.0f),
         "food.berry" => (Berries, 1.0f),
-        "material.wood" => (Log, 0.9f),
-        "material.stone" => (Pebbles, 0.9f),
+        "material.wood" or "material.planks" => (Log, 0.9f),
+        "material.stone" or "material.cobble" => (Pebbles, 0.9f),
         "material.leaves" or "material.dirt" or "material.sand" => (Pile, 0.9f),
         "material.pelt" => (Pelt, 1.0f),
         "material.cloth" => (Bandage, 0.9f),

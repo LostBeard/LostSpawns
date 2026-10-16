@@ -26,6 +26,10 @@ public sealed class PoiService
         _wildlife = wildlife;
     }
 
+    /// <summary>The buildings within about 120 blocks of the player, refreshed every second (for the minimap).</summary>
+    public IReadOnlyList<Structures.Plan> Nearby => _nearby;
+    private List<Structures.Plan> _nearby = new();
+
     /// <summary>The buildings whose loot has been laid out (saved).</summary>
     public IReadOnlyCollection<string> Placed => _placed;
 
@@ -43,6 +47,11 @@ public sealed class PoiService
         _sinceCheck = 0f;
 
         int pcx = (int)MathF.Floor(playerPos.X / Structures.CellSize), pcz = (int)MathF.Floor(playerPos.Z / Structures.CellSize);
+        var near = new List<Structures.Plan>();
+        for (int dz = -2; dz <= 2; dz++)
+        for (int dx = -2; dx <= 2; dx++)
+            if (_world.StructureAt(pcx + dx, pcz + dz) is { } np) near.Add(np);
+        _nearby = near;
         // 3 x 3 cells around the player cover the range
         for (int dz = -1; dz <= 1; dz++)
         for (int dx = -1; dx <= 1; dx++)

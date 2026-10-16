@@ -27,6 +27,8 @@ public sealed class DebugView
     public float SpawnDistance { get; private set; } = 7f;
     /// <summary>Stand 14 blocks from the Nth nearest building, looking at it (<c>?poi=1</c>); <c>?poiyaw=</c> turns the view round it.</summary>
     public int Poi { get; private set; }
+    /// <summary>Open the crafting screen once loaded (<c>?menu=craft</c>), to look at it.</summary>
+    public bool CraftingMenu { get; private set; }
     public float PoiYaw { get; private set; }
     public (float x, float z, float yaw, float pitch, float up)? Camera { get; private set; }
 
@@ -47,6 +49,7 @@ public sealed class DebugView
                 case "dig" when int.TryParse(value, out var d): view.Dig = d; break;
                 case "god": view.God = value != "0"; break;
                 case "still": view.Still = value != "0"; break;
+                case "menu": view.CraftingMenu = value == "craft"; break;
                 case "poi" when int.TryParse(value, out var pn): view.Poi = pn; break;
                 case "poiyaw" when TryFloat(value, out var py): view.PoiYaw = py; break;
                 case "spawndist" when TryFloat(value, out var sd): view.SpawnDistance = sd; break;

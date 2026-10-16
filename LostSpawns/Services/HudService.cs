@@ -31,6 +31,8 @@ public class HudService : IDisposable
     private readonly EntityService _entities;
     private readonly CampfireService _fires;
     private readonly GroundItemService _ground;
+    private readonly PoiService? _pois;
+    private readonly HashSet<string> _buildingMarkers = new();
 
     // Rain particle state. Each particle stores its current Y, per-particle speed,
     // and X (randomized once at spawn). Updated in Update(dt); drawn in OnPostRender
@@ -349,8 +351,9 @@ public class HudService : IDisposable
     /// <summary>True while the death screen is on top of the screen stack.</summary>
     public bool IsDead => _ui.Screens.ActiveScreen == "death";
 
-    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather, EntityService entities, CampfireService fires, GroundItemService ground)
+    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather, EntityService entities, CampfireService fires, GroundItemService ground, PoiService pois)
     {
+        _pois = pois;
         _ui = ui;
         _stats = stats;
         _inventory = inventory;
@@ -916,8 +919,12 @@ public class HudService : IDisposable
         int rowCount = _crafting.Recipes.Count;
         float rowHeight = 56;
         float rowGap = 8;
-        int panelWidth = 440;
-        int panelHeight = (int)(72 + rowCount * (rowHeight + rowGap) + 36);
+        // Many recipes: two columns, so the panel stays on the screen
+        int columns = rowCount > 9 ? 2 : 1;
+        int perColumn = (rowCount + columns - 1) / columns;
+        int columnWidth = 440;
+        int panelWidth = columnWidth * columns;
+        int panelHeight = (int)(72 + perColumn * (rowHeight + rowGap) + 36);
 
         var panel = new UIPanel
         {
@@ -945,7 +952,8 @@ public class HudService : IDisposable
         for (int i = 0; i < rowCount; i++)
         {
             var recipe = _crafting.Recipes[i];
-            float rowY = 64 + i * (rowHeight + rowGap);
+            float rowY = 64 + (i % perColumn) * (rowHeight + rowGap);
+            int colX = (i / perColumn) * columnWidth;
 
             string ingredients = string.Join(" + ",
                 recipe.Inputs.Select(inp => $"{inp.Count}x {ItemShortName(inp.Id)}"));
@@ -955,7 +963,7 @@ public class HudService : IDisposable
                 FontSize = FontSize.Body,
                 Width = 260,
                 Height = (int)rowHeight,
-                X = 20,
+                X = colX + 20,
                 Y = (int)rowY + 14,
                 Align = TextAlign.Left,
             };
@@ -966,7 +974,7 @@ public class HudService : IDisposable
                 Text = recipe.DisplayName,
                 Width = 120,
                 Height = (int)rowHeight,
-                X = panelWidth - 140,
+                X = colX + columnWidth - 140,
                 Y = (int)rowY,
             };
             var captured = recipe; // avoid loop variable capture
@@ -2561,6 +2569,30 @@ public class HudService : IDisposable
                 WorldPosition = new Vector2(f.Position.X, f.Position.Z),
                 Type = MapMarkerType.POI,
             });
+        }
+
+        // The buildings round about, so there is somewhere to head for
+        if (_pois != null)
+        {
+            var seen = new HashSet<string>();
+            foreach (var b in _pois.Nearby)
+            {
+                var c = b.Centre;
+                string id = $"building.{b.Id}";
+                seen.Add(id);
+                Minimap.AddMarker(new MapMarker
+                {
+                    Id = id,
+                    Label = b.Kind.ToString(),
+                    WorldPosition = new Vector2(c.X, c.Z),
+                    Type = MapMarkerType.POI,
+                });
+            }
+            // Ones that have fallen out of range come off the map
+            foreach (var old in _buildingMarkers)
+                if (!seen.Contains(old)) Minimap.RemoveMarker(old);
+            _buildingMarkers.Clear();
+            foreach (var id in seen) _buildingMarkers.Add(id);
         }
 
         // Ground loot markers - one per uncollected drop. Removed once the

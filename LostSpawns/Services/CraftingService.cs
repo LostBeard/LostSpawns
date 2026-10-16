@@ -88,6 +88,15 @@ public class CraftingService
                 new[] { ("material.wood", 2), ("material.stone", 3) },
                 new InventoryItem("tool.stone_axe", "Stone Axe", 1, ItemCategory.Tool, UsesRemaining: 200),
                 RequiredLevel: 3),
+            // Building blocks: boards from wood, laid stone from stone. Both place like any block (right click).
+            new CraftingRecipe(
+                "Planks",
+                new[] { ("material.wood", 1) },
+                new InventoryItem("material.planks", "Planks", 2, ItemCategory.Material)),
+            new CraftingRecipe(
+                "Cobblestone",
+                new[] { ("material.stone", 2) },
+                new InventoryItem("material.cobble", "Cobblestone", 3, ItemCategory.Material)),
             new CraftingRecipe(
                 "Stone Pick",
                 new[] { ("material.wood", 1), ("material.stone", 4) },

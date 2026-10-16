@@ -266,6 +266,7 @@
             _peakFallSpeed = 0;
         }
         if (view.Poi > 0) GoToBuildingForDebug(view.Poi, view.PoiYaw);
+        if (view.CraftingMenu) Hud.ToggleCrafting();
         if (view.God) Stats.Invulnerable = true;
         if (view.Still) Wildlife.Frozen = true;
         Renderer.OcclusionOverride = view.Occlusion;
@@ -1997,6 +1998,8 @@
         "material.dirt"   => LostSpawns.Models.BlockType.Dirt,
         "material.sand"   => LostSpawns.Models.BlockType.Sand,
         "material.leaves" => LostSpawns.Models.BlockType.Leaves,
+        "material.planks" => LostSpawns.Models.BlockType.Planks,
+        "material.cobble" => LostSpawns.Models.BlockType.Cobblestone,
         _ => null,
     };
 
