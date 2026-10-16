@@ -86,10 +86,12 @@ try
         await Task.Delay(500);
         await Shot("2-menu");
         // the menu is 0.75 m ahead of the head, a little low; its hotbar buttons are on the left
-        await page.EvaluateAsync("window.__xr.aimAt(-0.2, 1.5, -0.75)");
+        await page.EvaluateAsync("window.__xr.aimAt(-0.188, 1.449, -0.75)");
         await Task.Delay(700);
         await Shot("3-pointing");
         await Press("trigger");
+        await Task.Delay(500);
+        await Shot("3b-backpack");
         await Press("x");
         // menu shut: aim at the ground ahead and swing
         await page.EvaluateAsync("window.__xr.aimAt(0.3, 0.2, -2.5)");

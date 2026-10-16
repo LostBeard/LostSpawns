@@ -17,10 +17,11 @@ namespace LostSpawns.Pages;
 public partial class Game
 {
     private VrUi? _vrUi;
-    private VrPanel? _vrWrist, _vrMenu, _vrToast, _vrFlash;
+    private VrPanel? _vrWrist, _vrMenu, _vrToast, _vrFlash, _vrPack;
     private UILabel? _vrWristHeader, _vrWristHeld, _vrToastLabel, _vrMenuStatus;
     private readonly (UIPanel Fill, UIPanel Back)[] _vrBars = new (UIPanel, UIPanel)[5];
     private readonly UIButton[] _vrHotbarButtons = new UIButton[9];
+    private readonly UIButton[] _vrPackButtons = new UIButton[InventoryService.BackpackSize];
     private readonly List<(UIButton Button, LostSpawns.Services.CraftingRecipe Recipe)> _vrCraftButtons = new();
     private UIButton? _vrRespawn;
     private double _vrLastTime = -1;
@@ -45,10 +46,12 @@ public partial class Game
         BuildVrWrist();
         BuildVrToast();
         BuildVrMenu();
+        BuildVrPack();
         _vrUi.Panels.Add(_vrFlash!);
         _vrUi.Panels.Add(_vrWrist!);
         _vrUi.Panels.Add(_vrToast!);
         _vrUi.Panels.Add(_vrMenu!);
+        _vrUi.Panels.Add(_vrPack!);
         _vr.Ui = _vrUi;
         _vr.UiRenderer = () => Hud.UiRenderer;
         _vr.HeldProvider = () => new HeldView(Inventory.ActiveItem?.Id, Hud.SwingArc, Hud.SwingStrength, 0f, 0f);
@@ -151,10 +154,11 @@ public partial class Game
         Button(p, "Sleep", 152, 358, () => HandleSleep());
         Button(p, "Drop item", 280, 358, () => HandleDropActive());
         Button(p, "Save", 24, 416, () => HandleQuickSave());
-        Button(p, "Leave VR", 152, 416, () => { _ = Vr.Session.ExitAsync(); });
-        Button(p, "Close", 280, 416, () => _vrMenu!.IsOpen = false);
+        Button(p, "Backpack", 152, 416, () => { _vrPack!.Model = _vrMenu!.Model; _vrMenu.IsOpen = false; _vrPack.IsOpen = true; });
+        Button(p, "Leave VR", 280, 416, () => { _ = Vr.Session.ExitAsync(); });
+        Button(p, "Close", 24, 474, () => _vrMenu!.IsOpen = false);
 
-        _vrRespawn = new UIButton { Text = "Respawn", X = 24, Y = 490, Width = 360, Height = 70, Visible = false };
+        _vrRespawn = new UIButton { Text = "Respawn", X = 152, Y = 474, Width = 248, Height = 50, Visible = false };
         _vrRespawn.OnClick = VrRespawn;
         p.AddChild(_vrRespawn);
 
@@ -174,6 +178,26 @@ public partial class Game
             n++;
         }
     }
+
+    // The backpack: a click on a slot swaps it with the slot of the hotbar in the hand
+    private void BuildVrPack()
+    {
+        _vrPack = new VrPanel(800, 400);
+        var p = _vrPack.Panel;
+        p.AddChild(new UILabel { X = 24, Y = 16, Text = "Backpack", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
+        p.AddChild(new UILabel { X = 24, Y = 56, Width = 740, Text = "Pick a slot to swap it with the hotbar slot in your hand", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 170, 190, 210) });
+        for (int i = 0; i < InventoryService.BackpackSize; i++)
+        {
+            int slot = i;
+            var b = new UIButton { Text = "", X = 24 + (i % InventoryService.BackpackColumns) * 94, Y = 88 + (i / InventoryService.BackpackColumns) * 52, Width = 88, Height = 46 };
+            b.OnClick = () => Inventory.MoveSlot(false, slot, true, Inventory.ActiveHotbarIndex);
+            _vrPackButtons[i] = b;
+            p.AddChild(b);
+        }
+        Button(p, "Back", 24, 320, () => { _vrMenu!.Model = _vrPack!.Model; _vrPack.IsOpen = false; _vrMenu.IsOpen = true; });
+    }
+
+    private static string Short(string name, int max) => name.Length <= max ? name : name[..(max - 1)] + ".";
 
     private static void Button(UIPanel parent, string text, float x, float y, Action onClick)
     {
@@ -211,29 +235,31 @@ public partial class Game
         Renderer.Camera.Pitch = Math.Clamp(pitch, -89f, 89f);
 
         bool dead = Hud.IsDead;
-        if (dead && !_vrMenu!.IsOpen) OpenVrMenu(f);
+        if (dead && !_vrMenu!.IsOpen) { _vrPack!.IsOpen = false; OpenVrMenu(f); }
         _vrRespawn!.Visible = dead;
 
         // The menu: X opens and closes it; the right ray points at it and the trigger clicks
         if (f.LeftPrimary && !_vrXWas && !dead)
         {
-            if (_vrMenu!.IsOpen) _vrMenu.IsOpen = false; else OpenVrMenu(f);
+            if (_vrMenu!.IsOpen || _vrPack!.IsOpen) { _vrMenu.IsOpen = false; _vrPack!.IsOpen = false; } else OpenVrMenu(f);
         }
         _vrXWas = f.LeftPrimary;
         Vector3? ro = f.RightHasRay ? f.RightRayOrigin : null;
         Vector3? rd = f.RightHasRay ? f.RightRayDirection : null;
-        bool onMenu = _vrMenu!.IsOpen && _vrMenu.Step(ro, rd, f.RightTrigger, dt);
-        _vrUi!.ShowRay = _vrMenu.IsOpen && ro != null;
+        var pointed = _vrPack!.IsOpen ? _vrPack : _vrMenu!;
+        bool menuOpen = _vrMenu!.IsOpen || _vrPack.IsOpen;
+        bool onMenu = menuOpen && pointed.Step(ro, rd, f.RightTrigger, dt);
+        _vrUi!.ShowRay = menuOpen && ro != null;
         if (ro is { } rayO && rd is { } rayD)
         {
             _vrUi.RayOrigin = rayO;
             _vrUi.RayDirection = rayD;
             _vrUi.RayHovering = onMenu;
-            if (_vrMenu.RayToPanelPixel(rayO, rayD, out float hitDistance) != null) _vrUi.RayHit = hitDistance;
+            if (pointed.RayToPanelPixel(rayO, rayD, out float hitDistance) != null) _vrUi.RayHit = hitDistance;
         }
 
         // Play: only with the menu shut and the player alive
-        bool playing = !_vrMenu.IsOpen && !dead;
+        bool playing = !menuOpen && !dead;
         if (playing)
         {
             if (f.RightTrigger)
@@ -334,6 +360,13 @@ public partial class Game
         _vrFlash.Panel.BackgroundColor = Color.FromArgb((int)(150 * _vrFlashLevel), 200, 20, 20);
         _vrFlash.Model = VrPanel.Facing(headRoom + fwdRoom * 0.35f, headRoom);
 
+        if (_vrPack!.IsOpen)
+            for (int i = 0; i < InventoryService.BackpackSize; i++)
+            {
+                var it = Inventory.Backpack[i];
+                _vrPackButtons[i].Text = it == null ? "-" : Short(it.Name, 9) + (it.Count > 1 ? $" x{it.Count}" : "");
+            }
+
         // The menu's live parts
         if (_vrMenu!.IsOpen)
         {
@@ -341,7 +374,7 @@ public partial class Game
             for (int i = 0; i < 9; i++)
             {
                 var it = i < Inventory.Hotbar.Count ? Inventory.Hotbar[i] : null;
-                string name = it == null ? "-" : it.Name + (it.Count > 1 ? $" x{it.Count}" : "");
+                string name = it == null ? "-" : Short(it.Name, 9) + (it.Count > 1 ? $" x{it.Count}" : "");
                 _vrHotbarButtons[i].Text = (i == Inventory.ActiveHotbarIndex ? "> " : "") + (i + 1) + " " + name;
             }
             foreach (var (button, recipe) in _vrCraftButtons) button.Enabled = Crafter.CanCraft(recipe);
