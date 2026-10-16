@@ -15,6 +15,7 @@
 @inject EntityService Wildlife
 @inject CampfireService Fires
 @inject GroundItemService Ground
+@inject PoiService Pois
 @inject AudioService Audio
 @inject CraftingService Crafter
 @inject InventoryService Inventory
@@ -264,12 +265,46 @@
             _verticalVelocity = 0;
             _peakFallSpeed = 0;
         }
+        if (view.Poi > 0) GoToBuildingForDebug(view.Poi, view.PoiYaw);
         if (view.God) Stats.Invulnerable = true;
         if (view.Still) Wildlife.Frozen = true;
         Renderer.OcclusionOverride = view.Occlusion;
         if (view.VrDrawRadius is { } vrRadius) Vr.DrawRadius = vrRadius;
         if (view.Dig > 0) _ = DigForDebugAsync(view.Dig);
         if (view.Spawn.Count > 0) SpawnForDebug(view.Spawn);
+    }
+
+    /// <summary>?poi=N: stand 14 blocks from the Nth nearest building to the player, looking at it, so it can be looked at.</summary>
+    private void GoToBuildingForDebug(int n, float aroundDegrees)
+    {
+        var from = Renderer.Camera.Position;
+        int cx0 = (int)MathF.Floor(from.X / LostSpawns.Rendering.Structures.CellSize), cz0 = (int)MathF.Floor(from.Z / LostSpawns.Rendering.Structures.CellSize);
+        var found = new List<(float d, LostSpawns.Rendering.Structures.Plan plan)>();
+        for (int dz = -12; dz <= 12; dz++)
+        for (int dx = -12; dx <= 12; dx++)
+            if (World.StructureAt(cx0 + dx, cz0 + dz) is { } p)
+            {
+                var c = p.Centre;
+                found.Add((MathF.Abs(c.X - from.X) + MathF.Abs(c.Z - from.Z), p));
+            }
+        found.Sort((a, b) => a.d.CompareTo(b.d));
+        Console.WriteLine($"[Poi] {found.Count} buildings within 12 cells");
+        if (found.Count == 0) return;
+        var plan = found[Math.Min(n, found.Count) - 1].plan;
+        var centre = plan.Centre;
+        // Just outside the door, looking in; ?poiyaw= (degrees) moves the stand round to another side instead
+        float a = aroundDegrees * MathF.PI / 180f;
+        float dist = 5f + plan.Depth * 0.5f;
+        int side = plan.DoorSide;
+        float outX = side == 2 ? -1f : side == 3 ? 1f : 0f, outZ = side == 0 ? -1f : side == 1 ? 1f : 0f;
+        if (aroundDegrees != 0f) { outX = -MathF.Cos(a); outZ = -MathF.Sin(a); }
+        float cx = centre.X + outX * (plan.Width * 0.5f + 0.5f), cz = centre.Z + outZ * (plan.Depth * 0.5f + 0.5f);
+        Console.WriteLine($"[Poi] {plan.Kind} at {plan.X0},{plan.Z0} size {plan.Width}x{plan.Depth} floor {plan.FloorY} door side {plan.DoorSide}");
+        Renderer.Camera.Position = new System.Numerics.Vector3(cx, plan.FloorY + 1.7f, cz);
+        Renderer.Camera.Yaw = MathF.Atan2(-outZ, -outX) * 180f / MathF.PI;
+        Renderer.Camera.Pitch = -14f;
+        _verticalVelocity = 0;
+        _peakFallSpeed = 0;
     }
 
     /// <summary>?spawn=wolf,deer: place these creatures in a row, about 7 blocks ahead of the camera, so they can be looked at.</summary>
@@ -2773,6 +2808,7 @@
         // force the player to either cover the fire or stockpile wood.
         Fires.FuelDecayMultiplier = 1f + Weather.RainIntensity * 1.5f;
         Fires.Tick(deltaTime, Renderer.Camera.Position, Inventory);
+        Pois.Tick(deltaTime, Renderer.Camera.Position);
         Ground.Tick(Renderer.Camera.Position, Inventory);
 
         // Auto-save every SaveService.AutoSaveIntervalSeconds seconds of active

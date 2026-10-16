@@ -11,6 +11,8 @@ namespace LostSpawns.Services;
 /// </summary>
 public class HeightmapLoader
 {
+    public int SeaLevel => _seaLevelVoxel;
+
     /// <summary>The world seed the trees and ground cover are placed with.</summary>
     public int WorldSeed { get; set; } = 42;
 
@@ -168,6 +170,7 @@ public class HeightmapLoader
         }
 
         Vegetation.Place(chunk, chunkX, chunkZ, SurfaceAt, _seaLevelVoxel, WorldSeed);
+        Structures.Place(chunk, chunkX, chunkZ, SurfaceAt, _seaLevelVoxel, WorldSeed);
         return chunk;
     }
 

@@ -134,6 +134,16 @@ public static class PropModels
         },
     };
 
+    public static readonly CreatureModel Can = new()
+    {
+        Name = "can", Palette = None,
+        Parts = new[]
+        {
+            P("tin", PartLook.Steel, -2, 19, -2, 4, 5, 4),
+            P("label", PartLook.Berry, -2.2f, 20.4f, -2.2f, 4.4f, 2.2f, 4.4f),
+        },
+    };
+
     public static readonly CreatureModel Bandage = new()
     {
         Name = "bandage", Palette = None,
@@ -154,6 +164,7 @@ public static class PropModels
         "material.leaves" or "material.dirt" or "material.sand" => (Pile, 0.9f),
         "material.pelt" => (Pelt, 1.0f),
         "material.cloth" => (Bandage, 0.9f),
+        _ when id.StartsWith("consume.can") => (Can, 1.0f),
         _ when id.StartsWith("food.") && id.EndsWith("_cooked") => (CookedMeat, 0.9f),
         _ when id.StartsWith("food.") && id.Contains("meat") => (RawMeat, 0.9f),
         _ when id.StartsWith("med.") => (Bandage, 0.9f),
@@ -165,7 +176,7 @@ public static class PropModels
 
     public static IEnumerable<CreatureModel> All => new[]
     {
-        Campfire, Torch, Mushroom, Berries, RawMeat, CookedMeat, Pelt, Log, Pebbles, Pile, Bundle, Bandage,
+        Campfire, Torch, Mushroom, Berries, RawMeat, CookedMeat, Pelt, Log, Pebbles, Pile, Bundle, Bandage, Can,
     };
 }
 

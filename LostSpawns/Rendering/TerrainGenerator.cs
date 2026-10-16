@@ -86,9 +86,10 @@ public class TerrainGenerator
     private void PlaceTrees(ChunkData chunk, int chunkX, int chunkZ)
     {
         Vegetation.Place(chunk, chunkX, chunkZ, SurfaceAt, SeaLevel, _seed);
+        Structures.Place(chunk, chunkX, chunkZ, SurfaceAt, SeaLevel, _seed);
     }
 
-    private (int y, BlockType type) SurfaceAt(int worldX, int worldZ)
+    public (int y, BlockType type) SurfaceAt(int worldX, int worldZ)
     {
         int h = GetHeight(worldX, worldZ);
         return (h, h <= SeaLevel + 1 ? BlockType.Sand : BlockType.Grass);

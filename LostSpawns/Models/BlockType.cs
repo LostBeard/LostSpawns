@@ -24,6 +24,10 @@ public enum BlockType : byte
     Granite,
     /// <summary>The white log of a birch; chops like wood.</summary>
     Birch,
+    /// <summary>Boards: the floors, walls and roofs of the buildings; chops like wood.</summary>
+    Planks,
+    /// <summary>Laid stone: the foundations and the foot of a farmhouse wall; mines like stone.</summary>
+    Cobblestone,
 }
 
 /// <summary>What a block type means for play, apart from how it looks.</summary>
@@ -38,6 +42,8 @@ public static class BlockTypes
         BlockType.Granite => BlockType.Stone,
         BlockType.Gravel => BlockType.Sand,
         BlockType.Birch => BlockType.Wood,
+        BlockType.Planks => BlockType.Wood,
+        BlockType.Cobblestone => BlockType.Stone,
         _ => t,
     };
 }

@@ -23,6 +23,9 @@ public sealed class DebugView
     public int? VrDrawRadius { get; private set; }
     /// <summary>Creatures to place in a row a few blocks ahead of the camera, standing still (<c>?spawn=wolf,deer,rabbit</c>).</summary>
     public List<EntityKind> Spawn { get; } = new();
+    /// <summary>Stand 14 blocks from the Nth nearest building, looking at it (<c>?poi=1</c>); <c>?poiyaw=</c> turns the view round it.</summary>
+    public int Poi { get; private set; }
+    public float PoiYaw { get; private set; }
     public (float x, float z, float yaw, float pitch, float up)? Camera { get; private set; }
 
     public static DebugView Parse(string uri)
@@ -42,6 +45,8 @@ public sealed class DebugView
                 case "dig" when int.TryParse(value, out var d): view.Dig = d; break;
                 case "god": view.God = value != "0"; break;
                 case "still": view.Still = value != "0"; break;
+                case "poi" when int.TryParse(value, out var pn): view.Poi = pn; break;
+                case "poiyaw" when TryFloat(value, out var py): view.PoiYaw = py; break;
                 case "ao": view.Occlusion = value != "0"; break;
                 case "vrdd" when int.TryParse(value, out var vd): view.VrDrawRadius = Math.Clamp(vd, 2, 16); break;
                 case "spawn":

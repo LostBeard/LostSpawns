@@ -33,6 +33,7 @@ public class SaveService
     private readonly WorldService _world;
     private readonly CampfireService _fires;
     private readonly GroundItemService _ground;
+    private readonly PoiService _pois;
 
     private static readonly JsonSerializerOptions _json = new()
     {
@@ -41,7 +42,7 @@ public class SaveService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public SaveService(SpawnJSRuntime js, PlayerStatsService stats, InventoryService inventory, WorldTimeService worldTime, WorldService world, CampfireService fires, GroundItemService ground)
+    public SaveService(SpawnJSRuntime js, PlayerStatsService stats, InventoryService inventory, WorldTimeService worldTime, WorldService world, CampfireService fires, GroundItemService ground, PoiService pois)
     {
         _js = js;
         _stats = stats;
@@ -50,6 +51,7 @@ public class SaveService
         _world = world;
         _fires = fires;
         _ground = ground;
+        _pois = pois;
     }
 
     /// <summary>
@@ -116,6 +118,7 @@ public class SaveService
                 DayFraction = _worldTime.DayFraction,
                 DayNumber = _worldTime.DayNumber,
                 WorldEdits = _world.GetEditsSnapshot(),
+                PoisPlaced = _pois.Placed.ToArray(),
                 Campfires = _fires.Fires.Select(f => new CampfireDto
                 {
                     X = f.Position.X,
@@ -265,6 +268,9 @@ public class SaveService
                 }
             }
 
+            // Buildings already looted stay looted
+            _pois.Restore(state.PoisPlaced);
+
             var pos = new System.Numerics.Vector3(state.PosX, state.PosY, state.PosZ);
             return (pos, state.Yaw, state.Pitch);
         }
@@ -371,6 +377,8 @@ public class SaveService
         public Dictionary<string, Dictionary<int, byte>>? WorldEdits { get; set; }
         public CampfireDto[]? Campfires { get; set; }
         public GroundItemDto[]? GroundItems { get; set; }
+        /// <summary>Ids of the buildings whose loot has been laid out.</summary>
+        public string[]? PoisPlaced { get; set; }
     }
 
     public sealed class InventoryItemDto

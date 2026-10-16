@@ -33,6 +33,7 @@ builder.Services.AddSingleton<WeatherService>();
 builder.Services.AddSingleton<CampfireService>();
 builder.Services.AddSingleton<GroundItemService>();
 builder.Services.AddSingleton<AudioService>();
+builder.Services.AddSingleton<PoiService>();
 builder.Services.AddSingleton<SaveService>();
 builder.Services.AddSingleton<VrService>();
 builder.Services.AddSingleton<HudService>();

@@ -100,6 +100,8 @@ public class InventoryService
     {
         ["consume.water"]    = new(Thirst: 0.30f, Warmth: -0.03f, DisplayVerb: "Drank"),
         ["consume.beans"]    = new(Hunger: 0.30f, DisplayVerb: "Ate"),
+        ["consume.can_beans"]   = new(Hunger: 0.35f, Thirst: 0.05f, DisplayVerb: "Ate"),
+        ["consume.can_peaches"] = new(Hunger: 0.20f, Thirst: 0.15f, Health: 0.05f, DisplayVerb: "Ate"),
         ["med.bandage"]      = new(Health: 0.30f, DisplayVerb: "Applied"),
         ["med.painkiller"]   = new(Health: 0.20f, Stamina: 0.15f, DisplayVerb: "Took"),
         // Raw meat: restores hunger but much less than cooked would. Slightly

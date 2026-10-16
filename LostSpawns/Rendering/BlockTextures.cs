@@ -11,7 +11,8 @@ public static class BlockTiles
     public const int Water0 = 8, WaterFrames = 8;
     public const int Gravel = 16, Granite = 17, TallGrass = 18, Fern = 19, Dandelion = 20, Aster = 21;
     public const int BirchSide = 22, BirchTop = 23;
-    public const int Count = 24;
+    public const int Planks = 24, Cobblestone = 25;
+    public const int Count = 26;
 }
 
 /// <summary>
@@ -40,6 +41,8 @@ public static class BlockTextures
         Paint(rgba, BlockTiles.Leaves, Leaves);
         Paint(rgba, BlockTiles.BirchSide, (u, v) => new Vector4(BirchBark(u, v), 1f));
         Paint(rgba, BlockTiles.BirchTop, (u, v) => new Vector4(BirchTop(u, v), 1f));
+        Paint(rgba, BlockTiles.Planks, (u, v) => new Vector4(PlanksTexel(u, v), 1f));
+        Paint(rgba, BlockTiles.Cobblestone, (u, v) => new Vector4(CobbleTexel(u, v), 1f));
         Paint(rgba, BlockTiles.Gravel, (u, v) => new Vector4(Gravel(u, v), 1f));
         Paint(rgba, BlockTiles.Granite, (u, v) => new Vector4(Granite(u, v), 1f));
         Paint(rgba, BlockTiles.TallGrass, GrassTuft);
@@ -211,6 +214,37 @@ public static class BlockTextures
         float caustic = MathF.Pow(ridge, 6f);
         float l = 0.66f + 0.20f * n + 0.30f * caustic;
         return new Vector3(l * 0.95f, l, l);
+    }
+
+    // --- boards and cobble: the buildings ---
+
+    private static Vector3 PlanksTexel(float u, float v)
+    {
+        // Four boards one above the other, each its own weathered tone, a dark gap between, a nail at each end
+        int board = (int)(v * 4f);
+        float inBoard = v * 4f - board;
+        float tone = 0.65f + 0.55f * Rand(board, 0, 731);
+        // Grain runs along the board; a shift along it per board makes the knots differ
+        float grain = Value(u + board * 0.31f, inBoard, 14, 3, 732) * 0.5f + Value(u, inBoard, 40, 2, 733) * 0.3f;
+        var c = new Vector3(0.50f, 0.40f, 0.29f) * tone * (0.70f + 0.6f * grain);
+        // Grey with age
+        c = Mix(c, new Vector3(0.45f, 0.43f, 0.40f), 0.28f);
+        if (inBoard < 0.07f || inBoard > 0.95f) c *= 0.42f;
+        float nailX = MathF.Min(u, 1f - u);
+        if (MathF.Abs(inBoard - 0.5f) < 0.07f && nailX > 0.04f && nailX < 0.10f) c = new Vector3(0.22f, 0.21f, 0.21f);
+        return c;
+    }
+
+    private static Vector3 CobbleTexel(float u, float v)
+    {
+        var (f1, f2) = Cell(u, v, 4, 741);
+        float edge = SmoothStep(0.0f, 0.12f, f2 - f1);
+        float tone = Rand((int)(u * 4 + f1 * 2), (int)(v * 4 + f2 * 2), 742);
+        var stone = Mix(new Vector3(0.38f, 0.37f, 0.38f), new Vector3(0.62f, 0.60f, 0.57f), tone);
+        var c = stone * (0.62f + 0.38f * edge) * (0.85f + 0.3f * Value(u, v, 24, 24, 743));
+        float moss = Fbm(u, v, 3, 3, 3, 744);
+        if (moss > 0.62f) c = Mix(c, new Vector3(0.28f, 0.38f, 0.22f), (moss - 0.62f) * 2.2f);
+        return c;
     }
 
     // --- birch: white bark with dark horizontal scars ---

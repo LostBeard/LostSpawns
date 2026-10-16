@@ -128,6 +128,14 @@ public class WorldService
         IsInitialized = true;
     }
 
+    /// <summary>The building in a 48 x 48 cell of the world, or null (see <see cref="Structures"/>). The same answer every time.</summary>
+    public Structures.Plan? StructureAt(int cellX, int cellZ)
+    {
+        if (_heightmapLoader != null) return Structures.PlanAt(cellX, cellZ, _heightmapLoader.SurfaceAt, _heightmapLoader.SeaLevel, Seed);
+        if (_generator != null) return Structures.PlanAt(cellX, cellZ, _generator.SurfaceAt, TerrainGenerator.SeaLevel, Seed);
+        return null;
+    }
+
     /// <summary>Make the next <see cref="UpdateDesiredChunks"/> plan again even if the player is still in the same column (a different draw distance was in use).</summary>
     public void ForceRestream() { _lastCX = int.MinValue; _lastCZ = int.MinValue; }
 
