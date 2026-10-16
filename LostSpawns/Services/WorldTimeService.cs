@@ -31,10 +31,13 @@ public class WorldTimeService
     /// <summary>Fires each time DayNumber increments so consumers can award achievements, etc.</summary>
     public event Action<int>? OnDayAdvanced;
 
+    /// <summary>When true the clock does not advance (a pinned time of day, for screenshots and tests).</summary>
+    public bool Frozen { get; set; }
+
     /// <summary>Advance time by `dt` real-world seconds. Wraps at 1.0 and bumps DayNumber.</summary>
     public void Tick(float dt)
     {
-        if (dt <= 0 || DayLengthSeconds <= 0) return;
+        if (dt <= 0 || DayLengthSeconds <= 0 || Frozen) return;
         float prev = DayFraction;
         DayFraction = (prev + dt / DayLengthSeconds) % 1f;
         if (DayFraction < 0) DayFraction += 1f;

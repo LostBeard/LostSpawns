@@ -54,10 +54,20 @@ public class WeatherService
         ScheduleNextPhase(clearStart: true);
     }
 
+    /// <summary>True while the weather is held at one intensity by <see cref="Pin"/>.</summary>
+    public bool Pinned { get; private set; }
+
+    /// <summary>Hold the weather at <paramref name="intensity"/> (0 clear .. 1 heavy rain): no phases, no lightning. For screenshots and tests.</summary>
+    public void Pin(float intensity)
+    {
+        Pinned = true;
+        TargetIntensity = RainIntensity = Math.Clamp(intensity, 0f, 1f);
+    }
+
     /// <summary>Advance weather by dt seconds. Switches phases when the timer expires.</summary>
     public void Tick(float dt)
     {
-        if (dt <= 0) return;
+        if (dt <= 0 || Pinned) return;
 
         // Ramp current intensity toward target.
         float delta = TargetIntensity - RainIntensity;

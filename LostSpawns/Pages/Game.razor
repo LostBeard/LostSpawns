@@ -259,7 +259,29 @@
             Hud.Notify("Camp by the fire. Cook your meat. Stay warm.");
         }
 
+        ApplyDebugView();
         Hud.HideLoadingScreen();
+    }
+
+    /// <summary>Developer URL parameters (see <see cref="DebugView"/>): a pinned time, weather and camera, applied after any save so they win.</summary>
+    private void ApplyDebugView()
+    {
+        var view = DebugView.Parse(Nav.Uri);
+        if (view.Time is { } time)
+        {
+            Time.SetDayFraction(time);
+            Time.Frozen = true;
+        }
+        if (view.Rain is { } rain) Weather.Pin(rain);
+        if (view.Camera is { } cam)
+        {
+            int ground = World.GetHeightAt(cam.x, cam.z);
+            Renderer.Camera.Position = new System.Numerics.Vector3(cam.x, ground + cam.up, cam.z);
+            Renderer.Camera.Yaw = cam.yaw;
+            Renderer.Camera.Pitch = cam.pitch;
+            _verticalVelocity = 0;
+            _peakFallSpeed = 0;
+        }
     }
 
     // Save-to-localStorage autosave timer. Runs inside OnGameUpdate so time is

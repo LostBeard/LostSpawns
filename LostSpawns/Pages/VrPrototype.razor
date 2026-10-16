@@ -5,6 +5,7 @@
 @using SpawnDev.ILGPU.WebGPU
 @using SpawnDev.VoxelEngine.Rendering
 @using LostSpawns.Models
+@using LostSpawns.Rendering
 @using LostSpawns.Services
 @implements IAsyncDisposable
 @inject VoxelEngineService Engine
@@ -119,7 +120,7 @@
     // VR.1c bridge: WebGPU scene render into a wide (2*fbW x fbH) OffscreenCanvas,
     // WebGL2 samples the canvas via gl.texImage2D and presents per eye via fullscreen
     // triangle. No CPU readback — terrain quads live in WebGPU GPUBuffer (produced by
-    // WorldService.GenerateChunksAsync) and are rendered by VertexPullPipeline directly.
+    // WorldService.GenerateChunksAsync) and are rendered by the block pipeline (TerrainRenderer) directly.
     GPUDevice? _gpuDevice;
     GPUQueue? _gpuQueue;
     OffscreenCanvas? _offscreen;
@@ -127,18 +128,13 @@
     string _gpuCanvasFormat = "bgra8unorm";
     GPUTexture? _depthTexture;
     GPUTextureView? _depthView;
-    VertexPullPipeline? _voxelPipeline;
+    TerrainRenderer? _terrain;
     int _offscreenW;                 // 2 * framebufferW (wide stereo canvas)
     int _offscreenH;                 // framebufferH
     int _eyeW;                       // framebufferW (half of _offscreenW)
     int _eyeH;                       // framebufferH
 
-    // Per-eye uniform-slot fanout for the pipeline's dynamic ring buffer:
-    // slot layout for frame = [L0, L1, ..., L(N-1), R0, R1, ..., R(N-1)].
-    // N visible sections per eye => 2*N total slots per frame.
-    const int MaxVisibleSections = 256;      // per eye; 2x when stereo doubled
-    readonly GPUBuffer[] _visibleQuadBuffers = new GPUBuffer[MaxVisibleSections];
-    readonly int[] _visibleQuadCounts = new int[MaxVisibleSections];
+    // Columns drawn in the last frame (left eye), for the status line
     int _visibleCount;
 
     // WebGL2 present layer: textures + shader for sampling the OffscreenCanvas
@@ -488,21 +484,9 @@ void main() {
         });
         _depthView = _depthTexture.CreateView();
 
-        // Block-type colors for the terrain render pipeline.
-        var blockColors = new Vector4[256];
-        blockColors[(int)BlockType.Air]    = new Vector4(0f,    0f,    0f,    0f);
-        blockColors[(int)BlockType.Dirt]   = new Vector4(0.45f, 0.30f, 0.15f, 1f);
-        blockColors[(int)BlockType.Grass]  = new Vector4(0.30f, 0.60f, 0.20f, 1f);
-        blockColors[(int)BlockType.Stone]  = new Vector4(0.50f, 0.50f, 0.50f, 1f);
-        blockColors[(int)BlockType.Sand]   = new Vector4(0.85f, 0.80f, 0.60f, 1f);
-        blockColors[(int)BlockType.Water]  = new Vector4(0.20f, 0.30f, 0.80f, 0.6f);
-        blockColors[(int)BlockType.Wood]   = new Vector4(0.55f, 0.35f, 0.15f, 1f);
-        blockColors[(int)BlockType.Leaves] = new Vector4(0.20f, 0.45f, 0.10f, 0.8f);
-
-        _voxelPipeline = new VertexPullPipeline();
-        _voxelPipeline.Init(_gpuDevice, _gpuQueue, _gpuCanvasFormat, blockColors);
-        // 2x MaxVisibleSections because we fan left-eye + right-eye uniforms into adjacent slots.
-        _voxelPipeline.InitDynamic(MaxVisibleSections * 2);
+        // The textured, lit block pipeline, on the same device the terrain meshes live on
+        _terrain = new TerrainRenderer();
+        _terrain.Init(_gpuDevice, _gpuQueue, _gpuCanvasFormat);
     }
 
     void SetupGl()
@@ -1022,18 +1006,14 @@ void main() {
     /// </summary>
     void RenderTerrainToOffscreen(Matrix4x4 vpLeft, Matrix4x4 vpRight)
     {
-        if (_voxelPipeline == null || _offscreenCtx == null || _depthView == null
+        if (_terrain == null || _offscreenCtx == null || _depthView == null
             || _gpuDevice == null || _gpuQueue == null || World == null)
         {
             return;
         }
 
-        var fogColor = new Vector3(0.04f, 0.05f, 0.09f);
-        const float fogDensity = 0.006f;
-        var ambientColor = new Vector3(0.25f, 0.26f, 0.30f);
-        var cameraPos = Vector3.Zero; // shader uses for fog distance; approximate at eye origin
-
-        const int SectionHeight = 16;
+        // A clear afternoon: the sun, the ambient light and the horizon colour the clear and the fog come from
+        var atmosphere = Atmosphere.At(0.30f, 0f, 0f);
 
         // Shift terrain down so the surface sits near the viewer's floor (y=0 in XR local-floor
         // space). TerrainGenerator produces surface heights at BaseHeight+/-HeightScale = 24+/-14,
@@ -1041,57 +1021,44 @@ void main() {
         // y ~= 1.45) spawns buried INSIDE the terrain column and sees blocks as a ceiling above.
         // Prototype-level offset; real world streaming (Phase 2c) uses player position instead.
         const float TerrainYOffset = -24f;
+        var shift = Matrix4x4.CreateTranslation(0f, TerrainYOffset, 0f);
+        // The eye, in the terrain's own coordinates (the culling and the fog measure from it)
+        var eyeInTerrain = new Vector3(0f, 1.45f - TerrainYOffset, 0f);
 
-        // Fan per-section uniforms into slots [0, 2, 4, ...] = left eye and [1, 3, 5, ...] = right eye.
-        // Single Flush covers both eyes. Draws then pick slot = 2*i or 2*i+1 per pass.
-        int sectionCount = 0;
-        foreach (var ((cx, sy, cz), sectionMesh) in World.Sections)
-        {
-            if (!sectionMesh.HasMesh) continue;
-            if (sectionCount >= MaxVisibleSections) break;
-
-            var sectionOffset = new Vector3(
-                cx * ChunkData.SizeXZ,
-                sy * SectionHeight + TerrainYOffset,
-                cz * ChunkData.SizeXZ);
-
-            _voxelPipeline.WriteDynamicUniforms(sectionCount * 2,     vpLeft,  sectionOffset, 1.0f,
-                fogColor, fogDensity, ambientColor, 0, cameraPos);
-            _voxelPipeline.WriteDynamicUniforms(sectionCount * 2 + 1, vpRight, sectionOffset, 1.0f,
-                fogColor, fogDensity, ambientColor, 0, cameraPos);
-            _visibleQuadBuffers[sectionCount] = sectionMesh.QuadBuffer!;
-            _visibleQuadCounts[sectionCount] = sectionMesh.QuadCount;
-            sectionCount++;
-        }
-        _visibleCount = sectionCount;
-
-        using var encoder = _gpuDevice.CreateCommandEncoder();
         using var colorTex = _offscreenCtx.GetCurrentTexture();
         using var colorView = colorTex.CreateView();
 
-        using var pass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView,
-            clearColor: true, clearColorValue: fogColor);
-
-        if (sectionCount > 0)
+        // One pass per eye: the block pipeline holds one set of frame uniforms, so each eye is recorded and
+        // submitted on its own. The first pass clears the wide canvas, the second loads what the first drew
+        // and fills its own half.
+        for (int eye = 0; eye < 2; eye++)
         {
-            _voxelPipeline.FlushDynamicUniforms(sectionCount * 2);
+            var vp = shift * (eye == 0 ? vpLeft : vpRight);
+            var frustum = FrustumCuller.ExtractPlanes(vp);
+            _terrain.BeginFrame(new BlockFrameUniforms
+            {
+                ViewProjection = vp,
+                CameraPosition = new Vector4(eyeInTerrain, 1f),
+                SunDirection = new Vector4(atmosphere.SunDirection, 0f),
+                SunColor = new Vector4(atmosphere.SunColor, atmosphere.SunStrength),
+                Ambient = new Vector4(atmosphere.Ambient, 0.18f),
+                FogColor = new Vector4(atmosphere.Fog, 1f),
+                FogRange = new Vector4(90f, 220f, 0f, 0f),
+                Time = (float)(_lastFrameTimeMs / 1000.0),
+            });
+            int visible = _terrain.PrepareVisible(World, in frustum, eyeInTerrain, 260f);
+            if (eye == 0) _visibleCount = visible;
 
-            // Left eye viewport
-            pass.SetViewport(0, 0, _eyeW, _eyeH, 0, 1);
-            for (int i = 0; i < sectionCount; i++)
-                _voxelPipeline.DrawSectionDynamic(pass, _visibleQuadBuffers[i], _visibleQuadCounts[i], i * 2);
-
-            // Right eye viewport
-            pass.SetViewport(_eyeW, 0, _eyeW, _eyeH, 0, 1);
-            for (int i = 0; i < sectionCount; i++)
-                _voxelPipeline.DrawSectionDynamic(pass, _visibleQuadBuffers[i], _visibleQuadCounts[i], i * 2 + 1);
+            using var eyeEncoder = _gpuDevice.CreateCommandEncoder();
+            using var pass = _terrain.BeginRenderPass(eyeEncoder, colorView, _depthView, atmosphere.Fog, clear: eye == 0);
+            if (eye == 0) pass.SetViewport(0, 0, _eyeW, _eyeH, 0, 1);
+            else pass.SetViewport(_eyeW, 0, _eyeW, _eyeH, 0, 1);
+            _terrain.DrawSolid(pass);
+            _terrain.DrawWater(pass);
+            pass.End();
+            using var cmd = eyeEncoder.Finish();
+            _gpuQueue.Submit(new[] { cmd });
         }
-        // Even with zero sections we still begin+end the pass so the canvas has a defined
-        // clear color for this frame rather than stale content from the previous frame.
-
-        pass.End();
-        using var cmd = encoder.Finish();
-        _gpuQueue.Submit(new[] { cmd });
     }
 
     const float RayLength = 2.0f;    // 2m beam
@@ -1529,7 +1496,7 @@ void main() {
 
         // WebGPU bridge. NOTE: _gpuDevice + _gpuQueue are owned by the ILGPU accelerator
         // (VoxelEngineService); do NOT dispose them here - they survive VR exit.
-        _voxelPipeline?.Dispose(); _voxelPipeline = null;
+        _terrain?.Dispose(); _terrain = null;
         _depthView?.Dispose(); _depthView = null;
         _depthTexture?.Destroy(); _depthTexture?.Dispose(); _depthTexture = null;
         _offscreenCtx?.Dispose(); _offscreenCtx = null;

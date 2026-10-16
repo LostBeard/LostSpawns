@@ -12,7 +12,7 @@ namespace LostSpawns.Services;
 
 /// <summary>
 /// Owns the ILGPU Context and Accelerator for GPU compute.
-/// Uses VoxelEngine's VoxelMeshPipeline for greedy-merged GPU meshing.
+/// Uses VoxelEngine's ColumnMesher for greedy-merged GPU meshing.
 /// Mesh output stays GPU-resident (no CPU readback, no float[] vertices).
 ///
 /// Memory: ~25MB vs old 686MB (27x reduction via greedy merge + PackedQuad format).
@@ -29,17 +29,20 @@ public class VoxelEngineService : IAsyncDisposable
     // Reused heightmap output buffer - avoid Allocate1D(256) every column miss.
     private MemoryBuffer1D<int, Stride1D.Dense>? _heightmapOutBuffer;
 
-    // VoxelEngine greedy mesh pipeline (replaces old per-face MeshKernel)
-    private VoxelMeshPipeline? _meshPipeline;
+    // VoxelEngine column mesher: a whole 16 x 256 x 16 column per call, quad lists pooled in one arena
+    private ColumnMesher? _mesher;
+    private QuadArena? _arena;
     private BlockColumnCarveService? _carve;
 
-    // Serialize mesh dispatches - VoxelMeshPipeline shares intermediate GPU buffers
+    // Serialize mesh dispatches - ColumnMesher shares intermediate GPU buffers
     private readonly SemaphoreSlim _meshLock = new(1, 1);
 
     // Dig remesh waiters - stream mesh releases the lock if dig is waiting.
     private int _digWaiters;
 
     public Accelerator? Accelerator => _accelerator;
+    /// <summary>The shared quad buffers every column mesh lives in.</summary>
+    public QuadArena? Arena => _arena;
     public BlockColumnCarveService? Carve => _carve;
     public bool IsInitialized { get; private set; }
     public string? BackendName { get; private set; }
@@ -75,8 +78,16 @@ public class VoxelEngineService : IAsyncDisposable
 
         _heightmapOutBuffer = _accelerator.Allocate1D<int>(256);
 
-        // VoxelEngine greedy mesh pipeline (face cull + greedy merge on GPU)
-        _meshPipeline = new VoxelMeshPipeline(_accelerator);
+        // VoxelEngine column mesher (face cull + greedy merge on GPU): one call per column, the quads carry their section so a
+        // column is one draw, and every list sits in a few big arena buffers
+        _arena = new QuadArena(_accelerator);
+        _mesher = new ColumnMesher(_accelerator, Models.ChunkData.Height / 16)
+        {
+            MissingNeighborsAreSolid = false,
+            EmbedSectionIndex = true,
+            Arena = _arena,
+        };
+        _mesher.SetBlockClasses(BlockStyle.Classes());
         _carve = new BlockColumnCarveService(_accelerator);
 
         Console.WriteLine($"[VoxelEngine] {BackendName}");
@@ -143,17 +154,33 @@ public class VoxelEngineService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Generate mesh for all 16 vertical sections of a chunk (16x16x256 -> 16x 16x16x16).
+    /// Upload a block column (the world's byte[] 16 x 256 x 16, x + z * 16 + y * 256) as the ushort ids the column mesher reads.
+    /// Pass the column's existing buffer to overwrite it (an edit) instead of allocating another.
+    /// The world's columns live in managed memory (collision, raycast and edits read them), so this is a terminal sink for them,
+    /// not a readback.
     /// </summary>
-    public async Task<List<(int sectionY, VoxelMeshPipeline.MeshResult mesh)>> GenerateChunkMeshesAsync(
-        byte[] blocks,
-        byte[]? neighborXMinus = null,
-        byte[]? neighborXPlus = null,
-        byte[]? neighborZMinus = null,
-        byte[]? neighborZPlus = null,
+    public MemoryBuffer1D<ushort, Stride1D.Dense> UploadColumn(byte[] blocks, MemoryBuffer1D<ushort, Stride1D.Dense>? existing = null)
+    {
+        var wide = new ushort[blocks.Length];
+        for (int i = 0; i < blocks.Length; i++) wide[i] = blocks[i];
+        var buffer = existing ?? _accelerator!.Allocate1D<ushort>(blocks.Length);
+        buffer.CopyFromCPU(wide);
+        return buffer;
+    }
+
+    /// <summary>
+    /// Mesh one column on the GPU (opaque, plants and water quad lists, in the shared arena). Neighbours are the adjacent
+    /// columns' block buffers, or null where not loaded (their faces are left visible).
+    /// </summary>
+    public async Task<ColumnMesh> MeshColumnAsync(
+        MemoryBuffer1D<ushort, Stride1D.Dense> column,
+        MemoryBuffer1D<ushort, Stride1D.Dense>? negX,
+        MemoryBuffer1D<ushort, Stride1D.Dense>? posX,
+        MemoryBuffer1D<ushort, Stride1D.Dense>? negZ,
+        MemoryBuffer1D<ushort, Stride1D.Dense>? posZ,
         bool digPriority = false)
     {
-        if (_meshPipeline == null)
+        if (_mesher == null)
             throw new InvalidOperationException("Not initialized");
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -167,8 +194,7 @@ public class VoxelEngineService : IAsyncDisposable
             }
 
             await _meshLock.WaitAsync();
-            // Stream path: if dig remesh is waiting, release and retry so pickaxe isn't stuck
-            // behind a full-column mesh (was ~5s of dirt lag).
+            // Stream path: if dig remesh is waiting, release and retry so the pickaxe isn't stuck behind a column mesh.
             if (!digPriority && Volatile.Read(ref _digWaiters) > 0)
             {
                 _meshLock.Release();
@@ -178,11 +204,10 @@ public class VoxelEngineService : IAsyncDisposable
             LastMeshLockWaitMs = sw.Elapsed.TotalMilliseconds;
             try
             {
-                return await _meshPipeline.MeshChunkColumnAsync(
-                    blocks,
-                    neighborXMinus, neighborXPlus, neighborZMinus, neighborZPlus,
-                    Models.ChunkData.SizeXZ,
-                    Models.ChunkData.Height);
+                var mesh = await _mesher.MeshAsync(column, negX, posX, negZ, posZ);
+                if (mesh.Overflow != 0)
+                    Console.WriteLine($"[VoxelEngine] column mesh overflowed its quad scratch by {mesh.Overflow}");
+                return mesh;
             }
             finally
             {
@@ -191,44 +216,13 @@ public class VoxelEngineService : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Remesh only the listed section-Y indices (dig/terraform dirty queue).
-    /// </summary>
-    public async Task<List<(int sectionY, VoxelMeshPipeline.MeshResult mesh)>> GenerateChunkMeshesSectionsAsync(
-        byte[] blocks,
-        IReadOnlyCollection<int> sectionYs,
-        byte[]? neighborXMinus = null,
-        byte[]? neighborXPlus = null,
-        byte[]? neighborZMinus = null,
-        byte[]? neighborZPlus = null)
-    {
-        if (_meshPipeline == null)
-            throw new InvalidOperationException("Not initialized");
-
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        // Dig priority is owned by WorldService.DrainDirtyRemeshAsync (BeginDigRemesh).
-        await _meshLock.WaitAsync();
-        LastMeshLockWaitMs = sw.Elapsed.TotalMilliseconds;
-        try
-        {
-            return await _meshPipeline.MeshChunkColumnSectionsAsync(
-                blocks, sectionYs,
-                neighborXMinus, neighborXPlus, neighborZMinus, neighborZPlus,
-                Models.ChunkData.SizeXZ,
-                Models.ChunkData.Height);
-        }
-        finally
-        {
-            _meshLock.Release();
-        }
-    }
-
     public ValueTask DisposeAsync()
     {
         _carve?.Dispose();
         _permBuffer?.Dispose();
         _heightmapOutBuffer?.Dispose();
-        _meshPipeline?.Dispose();
+        _mesher?.Dispose();
+        _arena?.Dispose();
         _accelerator?.Dispose();
         _context?.Dispose();
         IsInitialized = false;

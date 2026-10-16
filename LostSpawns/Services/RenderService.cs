@@ -10,17 +10,15 @@ using SpawnDev.VoxelEngine.Rendering;
 namespace LostSpawns.Services;
 
 /// <summary>
-/// WebGPU render service using VoxelEngine's VertexPullPipeline.
-/// Reads PackedQuad data directly from GPU buffers (no vertex buffer management).
-/// Each chunk's quad buffer goes straight from greedy merge to the render pass.
-///
-/// Memory: ~8 bytes per quad vs ~216 bytes per face (27x reduction).
-/// No free-list, no sub-allocation, no compaction, no buffer growth.
+/// WebGPU render service: the sky, the textured and lit terrain (VoxelEngine's block pipeline), the creatures, then the HUD.
+/// Each column's quads go straight from the GPU mesher to the render pass, one draw a list.
 /// </summary>
 public class RenderService : IDisposable
 {
     private readonly SpawnJSRuntime _js;
     private readonly WorldTimeService _worldTime;
+    private readonly WeatherService _weather;
+    private readonly SettingsService _settings;
     private readonly EntityService _entities;
     private readonly GltfMeshService _meshes;
 
@@ -35,22 +33,14 @@ public class RenderService : IDisposable
     private int _canvasWidth;
     private int _canvasHeight;
 
-    // VoxelEngine vertex-pull render pipeline (reads PackedQuad directly from storage buffer)
-    private VertexPullPipeline? _voxelPipeline;
+    // The block pipeline draws the world's columns; the sky pipeline draws behind it; creatures (GLB meshes) share the pass
+    private TerrainRenderer? _terrain;
+    private SkyRenderer? _sky;
     private EntityMeshPipeline? _entityPipeline;
     private float _animTime;
 
     // World reference (set during init)
     private WorldService? _world;
-
-    // Dynamic uniform batching - pre-allocated arrays for visible sections.
-    // DrawDistance 12 ≈ 450 columns × ~4-8 meshed sections can exceed 512 easily;
-    // capping without distance sort made terrain "vanish" when looking back after a long walk.
-    private const int MaxVisibleSections = 2048;
-    private readonly GPUBuffer[] _visibleQuadBuffers = new GPUBuffer[MaxVisibleSections];
-    private readonly int[] _visibleQuadCounts = new int[MaxVisibleSections];
-    // Scratch for distance-sorted visibility (avoid alloc per frame).
-    private readonly List<(float distSq, int cx, int sy, int cz, ChunkMesh mesh)> _visibleScratch = new(1024);
 
     private bool _running;
     private bool _disposed;
@@ -78,10 +68,12 @@ public class RenderService : IDisposable
     public int TotalSectionCount => _world?.LoadedSections ?? 0;
     public int TotalColumnCount => _world?.LoadedColumns ?? 0;
 
-    public RenderService(SpawnJSRuntime js, WorldTimeService worldTime, EntityService entities, GltfMeshService meshes)
+    public RenderService(SpawnJSRuntime js, WorldTimeService worldTime, WeatherService weather, SettingsService settings, EntityService entities, GltfMeshService meshes)
     {
         _js = js;
         _worldTime = worldTime;
+        _weather = weather;
+        _settings = settings;
         _entities = entities;
         _meshes = meshes;
     }
@@ -120,21 +112,10 @@ public class RenderService : IDisposable
         canvas.Width = _canvasWidth;
         canvas.Height = _canvasHeight;
 
-        // VoxelEngine vertex-pull pipeline (reads PackedQuad from storage buffers)
-        // Block colors indexed by BlockType enum (must match LostSpawns.Models.BlockType order)
-        var blockColors = new Vector4[256];
-        blockColors[(int)BlockType.Air]    = new Vector4(0, 0, 0, 0);              // transparent
-        blockColors[(int)BlockType.Dirt]   = new Vector4(0.45f, 0.3f, 0.15f, 1);   // brown
-        blockColors[(int)BlockType.Grass]  = new Vector4(0.3f, 0.6f, 0.2f, 1);     // green
-        blockColors[(int)BlockType.Stone]  = new Vector4(0.5f, 0.5f, 0.5f, 1);     // gray
-        blockColors[(int)BlockType.Sand]   = new Vector4(0.85f, 0.8f, 0.6f, 1);    // tan
-        blockColors[(int)BlockType.Water]  = new Vector4(0.2f, 0.3f, 0.8f, 0.6f);  // blue translucent
-        blockColors[(int)BlockType.Wood]   = new Vector4(0.55f, 0.35f, 0.15f, 1);  // brown
-        blockColors[(int)BlockType.Leaves] = new Vector4(0.2f, 0.45f, 0.1f, 0.8f); // dark green
-
-        _voxelPipeline = new VertexPullPipeline();
-        _voxelPipeline.Init(_device, _queue, _canvasFormat, blockColors);
-        _voxelPipeline.InitDynamic(MaxVisibleSections);
+        _terrain = new TerrainRenderer();
+        _terrain.Init(_device, _queue, _canvasFormat);
+        _sky = new SkyRenderer();
+        _sky.Init(_device, _queue, _canvasFormat);
 
         _entityPipeline = new EntityMeshPipeline();
         _entityPipeline.Init(_device, _queue, _canvasFormat);
@@ -188,7 +169,7 @@ public class RenderService : IDisposable
 
     private void RenderFrame()
     {
-        if (_device == null || _context == null || _voxelPipeline == null || _world == null)
+        if (_device == null || _context == null || _terrain == null || _sky == null || _world == null)
             return;
 
         // Dynamic resize: match canvas pixel resolution to its CSS display size
@@ -217,85 +198,49 @@ public class RenderService : IDisposable
         var frustum = FrustumCuller.ExtractPlanes(vp);
         var cameraPos = Camera.Position;
 
-        // Atmosphere driven by the day-night cycle. Keyframe interpolation in
-        // WorldTimeService handles smooth transitions between dawn/day/dusk/night.
-        var fogColor = _worldTime.FogColor;
-        float fogDensity = _worldTime.FogDensity;
-        var ambientColor = _worldTime.AmbientColor;
+        // The light of this moment: the sun, ambient, fog and sky, from the clock and the weather
+        var sky = Atmosphere.At(_worldTime.DayFraction, _weather.RainIntensity, 0f);
+        float rain = _weather.RainIntensity;
+        // Nothing past the fog is drawn: terrain there is the fog colour, and costs only draws
+        float fogEnd = MathF.Max(_settings.DrawDistance * 16f - 12f, 48f) * (1f - 0.35f * rain);
+        float fogStart = fogEnd * 0.42f;
+
+        _terrain.BeginFrame(new BlockFrameUniforms
+        {
+            ViewProjection = vp,
+            CameraPosition = new Vector4(cameraPos, 1f),
+            SunDirection = new Vector4(sky.SunDirection, 0f),
+            SunColor = new Vector4(sky.SunColor, sky.SunStrength),
+            Ambient = new Vector4(sky.Ambient, FillLightStrength),
+            FogColor = new Vector4(sky.Fog, 1f),
+            FogRange = new Vector4(fogStart, fogEnd, 0f, 0f),
+            Time = _animTime,
+        });
 
         using var colorTexture = _context.GetCurrentTexture();
         using var colorView = colorTexture.CreateView();
 
-        // Collect frustum-visible sections, then keep the nearest MaxVisibleSections.
-        // Without distance sort, Dictionary iteration order + a hard cap drops spawn-side
-        // terrain after walking far (look-back vanish).
-        const int SectionHeight = 16;
-        _visibleScratch.Clear();
-
-        foreach (var ((cx, sy, cz), sectionMesh) in _world.Sections)
-        {
-            if (!sectionMesh.HasMesh) continue;
-
-            var sectionOffset = new Vector3(cx * ChunkData.SizeXZ, sy * SectionHeight, cz * ChunkData.SizeXZ);
-            var min = sectionOffset;
-            var max = sectionOffset + new Vector3(ChunkData.SizeXZ, SectionHeight, ChunkData.SizeXZ);
-
-            if (!FrustumCuller.IsBoxVisible(in frustum, min, max))
-                continue;
-
-            float dx = sectionOffset.X + ChunkData.SizeXZ * 0.5f - cameraPos.X;
-            float dy = sectionOffset.Y + SectionHeight * 0.5f - cameraPos.Y;
-            float dz = sectionOffset.Z + ChunkData.SizeXZ * 0.5f - cameraPos.Z;
-            _visibleScratch.Add((dx * dx + dy * dy + dz * dz, cx, sy, cz, sectionMesh));
-        }
-
-        if (_visibleScratch.Count > MaxVisibleSections)
-            _visibleScratch.Sort((a, b) => a.distSq.CompareTo(b.distSq));
-
-        int visibleCount = Math.Min(_visibleScratch.Count, MaxVisibleSections);
-        for (int i = 0; i < visibleCount; i++)
-        {
-            var (_, cx, sy, cz, sectionMesh) = _visibleScratch[i];
-            var sectionOffset = new Vector3(cx * ChunkData.SizeXZ, sy * SectionHeight, cz * ChunkData.SizeXZ);
-            _voxelPipeline.WriteDynamicUniforms(i, vp, sectionOffset, 1.0f,
-                fogColor, fogDensity, ambientColor, 0, cameraPos);
-            _visibleQuadBuffers[i] = sectionMesh.QuadBuffer!;
-            _visibleQuadCounts[i] = sectionMesh.QuadCount;
-        }
-
-        VisibleChunkCount = visibleCount;
-
-        // Single GPU upload for all section uniforms
-        if (visibleCount > 0)
-            _voxelPipeline.FlushDynamicUniforms(visibleCount);
+        VisibleChunkCount = _terrain.PrepareVisible(_world, in frustum, cameraPos, fogEnd + 24f);
 
         // Single encoder, single render pass, single submit
         using var encoder = _device.CreateCommandEncoder();
-        using var pass = _voxelPipeline.BeginRenderPass(encoder, colorView, _depthView!,
-            clearColor: true, fogColor);
+        // Cleared to the fog colour: what lies past the fog (not drawn) looks exactly like fogged terrain
+        using var pass = _terrain.BeginRenderPass(encoder, colorView, _depthView!, sky.Fog);
 
-        for (int i = 0; i < visibleCount; i++)
-        {
-            _voxelPipeline.DrawSectionDynamic(pass, _visibleQuadBuffers[i], _visibleQuadCounts[i], i);
-        }
+        // The sky first, under everything
+        _sky.Draw(pass, in vp, cameraPos, in sky, rain, MoonPhase(), _worldTime.DayFraction);
+
+        _terrain.DrawSolid(pass);
 
         // Entity GLB meshes share this pass's depth buffer (reversed-Z).
         if (_entityPipeline != null && _meshes.GpuMeshCount > 0)
         {
-            // Approximate sun direction from day fraction (matches HudService arc).
-            float t = _worldTime.DayFraction;
-            float u = t > 0.05f && t < 0.55f ? (t - 0.05f) / 0.50f : 0.5f;
-            float az = MathF.PI * (0.5f - u);
-            float el = MathF.Sin(Math.Clamp(u, 0f, 1f) * MathF.PI) * (MathF.PI * 0.39f);
-            float cosEl = MathF.Cos(el);
-            var lightDir = Vector3.Normalize(new Vector3(
-                cosEl * MathF.Sin(az),
-                MathF.Sin(el),
-                cosEl * MathF.Cos(az)));
-
             _entityPipeline.DrawEntities(
-                pass, vp, _entities.Entities, _meshes.ResolveWildlifeMesh, lightDir, _animTime);
+                pass, vp, _entities.Entities, _meshes.ResolveWildlifeMesh, sky.SunDirection, _animTime);
         }
+
+        // Water last so it blends over the ground and creatures behind it
+        _terrain.DrawWater(pass);
 
         pass.End();
         using var cmdBuf = encoder.Finish();
@@ -307,6 +252,12 @@ public class RenderService : IDisposable
         using var uiCmd = uiEncoder.Finish();
         _queue!.Submit(new[] { uiCmd });
     }
+
+    /// <summary>The cool fill light the block shader adds from the shaded side, so faces turned from the sun are not black.</summary>
+    private const float FillLightStrength = 0.18f;
+
+    // One phase of the moon (0 full .. 7) a few nights at a time
+    private int MoonPhase() => _worldTime.DayNumber % 8;
 
     private void CreateDepthTexture()
     {
@@ -334,6 +285,10 @@ public class RenderService : IDisposable
 
         _entityPipeline?.Dispose();
         _entityPipeline = null;
+        _sky?.Dispose();
+        _sky = null;
+        _terrain?.Dispose();
+        _terrain = null;
 
         _depthView?.Dispose();
         _depthView = null;

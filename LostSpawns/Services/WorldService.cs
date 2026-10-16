@@ -14,31 +14,38 @@ namespace LostSpawns.Services;
 
 /// <summary>
 /// Manages the voxel world: chunk loading/unloading around the player.
-/// Full GPU pipeline: heightmap -> block fill -> VoxelEngine greedy mesh -> GPU-resident quads.
+/// Full GPU pipeline: heightmap -> block fill -> VoxelEngine column mesh -> GPU-resident quads.
 /// No CPU readback - mesh data stays on GPU from generation to rendering.
-/// Dig/terraform: edits mark dirty sections; ProcessDirtyRemesh drains one coalesced pass per frame
-/// (pauses stream mesh while dirty) so paint strokes do not stampede full-column remeshes.
+/// Dig/terraform: edits mark dirty columns; ProcessDirtyRemesh drains one coalesced pass per frame
+/// (pauses stream mesh while dirty) so paint strokes do not stampede column remeshes.
 /// </summary>
 public class WorldService
 {
     private readonly VoxelEngineService _engine;
-    // Sections keyed by (cx, sectionY, cz) - each 16x16x16 section is independently meshed and culled
-    private readonly Dictionary<(int cx, int sy, int cz), ChunkMesh> _chunks = new();
-    // Pending/in-flight track chunk columns (cx, cz) - one column produces up to 16 sections
+    // Meshed columns keyed by (cx, cz): one mesh per column (opaque, plants, water), drawn with one call per list
+    private readonly Dictionary<(int cx, int cz), WorldColumn> _columns = new();
+    // Pending/in-flight track chunk columns (cx, cz)
     private readonly Queue<(int cx, int cz)> _pendingQueue = new();
     private readonly HashSet<(int cx, int cz)> _inFlight = new();
-    private readonly Queue<(int cx, int sy, int cz, ChunkMesh mesh)> _readyQueue = new();
+    private readonly Queue<WorldColumn> _readyQueue = new();
     // Track which columns are loaded (for chunk streaming logic)
     private readonly HashSet<(int cx, int cz)> _loadedColumns = new();
+    // GPU copy of each cached block column, as ushort ids: what the column mesher reads (the column and its four neighbours)
+    private readonly Dictionary<(int cx, int cz), MemoryBuffer1D<ushort, Stride1D.Dense>> _gpuBlocks = new();
+    // Origin slots of the block pipeline: a column owns one while it is loaded
+    private readonly Stack<int> _freeSlots = new();
+    private int _nextSlot;
+    /// <summary>How many columns can be drawn at once (the block pipeline's origin buffer).</summary>
+    public const int MaxColumnSlots = 4096;
     // CPU-side block cache keyed by (cx, cz). Populated whenever a chunk's blocks are
     // generated - self load, neighbor-padding lookup, or otherwise. Lets the 4 neighbor
     // lookups per column hit already-computed blocks instead of regenerating them,
     // avoiding the ~5x CPU work amplification in the initial load path.
     private readonly Dictionary<(int cx, int cz), byte[]> _blocksCache = new();
 
-    // Dig remesh coalesce: section keys dirty since last ProcessDirtyRemesh.
-    // Do NOT fire-and-forget ReMeshColumnAsync per SphereOp - that stampeded _meshLock.
-    private readonly HashSet<(int cx, int sy, int cz)> _dirtySections = new();
+    // Dig remesh coalesce: columns dirty since last ProcessDirtyRemesh.
+    // Do NOT fire-and-forget a remesh per SphereOp - that stampeded _meshLock.
+    private readonly HashSet<(int cx, int cz)> _dirtyColumns = new();
     private bool _dirtyRemeshRunning;
     // Reused raycast section buffer - CastWorld consumes each getSection result before
     // the next call, so one int[4096] is safe and avoids WASM GC on terraform preview.
@@ -49,7 +56,7 @@ public class WorldService
     public double LastRemeshMs { get; private set; }
     public int LastDirtySectionCount { get; private set; }
     public int LastSectionsMeshed { get; private set; }
-    public int DirtyRemeshPending => _dirtySections.Count;
+    public int DirtyRemeshPending => _dirtyColumns.Count;
     public double LastMeshLockWaitMs => _engine.LastMeshLockWaitMs;
 
     // Sparse edit log per column. Key = byte-array index within the column,
@@ -73,7 +80,8 @@ public class WorldService
 
     public int Seed { get; private set; }
     public bool IsInitialized { get; private set; }
-    public int LoadedSections => _chunks.Count;
+    /// <summary>Sections that hold quads, over all loaded columns.</summary>
+    public int LoadedSections { get { int n = 0; foreach (var c in _columns.Values) n += c.SectionsWithQuads; return n; } }
     public int LoadedColumns => _loadedColumns.Count;
     public bool HasPendingChunks => _pendingQueue.Count > 0 || _inFlight.Count > 0 || _readyQueue.Count > 0;
     public int PendingCount => _pendingQueue.Count + _inFlight.Count + _readyQueue.Count;
@@ -81,8 +89,8 @@ public class WorldService
     /// <summary>The heightmap loader, if a real-world map is loaded.</summary>
     public HeightmapLoader? HeightmapLoader => _heightmapLoader;
 
-    /// <summary>All loaded sections with their GPU mesh data. Used by RenderService for drawing.</summary>
-    public IReadOnlyDictionary<(int cx, int sy, int cz), ChunkMesh> Sections => _chunks;
+    /// <summary>All loaded columns with their GPU mesh data. Used by the terrain renderer for drawing.</summary>
+    public IReadOnlyDictionary<(int cx, int cz), WorldColumn> Columns => _columns;
 
     public WorldService(VoxelEngineService engine)
     {
@@ -147,16 +155,9 @@ public class WorldService
         {
             if (!desired.Contains(col))
             {
-                // Dispose all GPU buffers for sections in this column
-                for (int sy = 0; sy < 16; sy++)
-                {
-                    var key = (col.Item1, sy, col.Item2);
-                    if (_chunks.TryGetValue(key, out var mesh))
-                    {
-                        mesh.Dispose();
-                        _chunks.Remove(key);
-                    }
-                }
+                // Give back the column's mesh and origin slot
+                if (_columns.Remove(col, out var gone))
+                    ReleaseColumn(gone);
                 _loadedColumns.Remove(col);
                 removed.Add(col);
             }
@@ -202,13 +203,17 @@ public class WorldService
                 toEvict.Add(key);
 
         foreach (var key in toEvict)
+        {
             _blocksCache.Remove(key);
+            if (_gpuBlocks.Remove(key, out var gpu))
+                gpu.Dispose();
+        }
     }
 
     private void DispatchGpuPending()
     {
         // Dig remesh wins: do not start new stream columns while dirty sections pending.
-        if (_dirtySections.Count > 0 || _dirtyRemeshRunning)
+        if (_dirtyColumns.Count > 0 || _dirtyRemeshRunning)
             return;
 
         while (_inFlight.Count < MaxConcurrentGpu && _pendingQueue.Count > 0)
@@ -221,42 +226,27 @@ public class WorldService
     }
 
     /// <summary>
-    /// Coalesce dirty sections into one remesh pass. Grouped by column; each column
-    /// remeshes only its dirty section-Y indices via MeshChunkColumnSectionsAsync.
+    /// Coalesce dirty columns into one remesh pass: each is uploaded again (its blocks changed) and meshed on the GPU.
     /// </summary>
     public void ProcessDirtyRemesh()
     {
-        if (_dirtyRemeshRunning || _dirtySections.Count == 0) return;
+        if (_dirtyRemeshRunning || _dirtyColumns.Count == 0) return;
         _dirtyRemeshRunning = true;
-        var snapshot = _dirtySections.ToList();
-        _dirtySections.Clear();
+        var snapshot = _dirtyColumns.ToList();
+        _dirtyColumns.Clear();
         LastDirtySectionCount = snapshot.Count;
         _ = DrainDirtyRemeshAsync(snapshot);
     }
 
-    private async Task DrainDirtyRemeshAsync(List<(int cx, int sy, int cz)> snapshot)
+    private async Task DrainDirtyRemeshAsync(List<(int cx, int cz)> snapshot)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         int meshed = 0;
         _engine.BeginDigRemesh();
         try
         {
-            var byColumn = new Dictionary<(int cx, int cz), List<int>>();
-            foreach (var (cx, sy, cz) in snapshot)
-            {
-                if (sy < 0 || sy >= 16) continue;
-                var col = (cx, cz);
-                if (!byColumn.TryGetValue(col, out var list))
-                {
-                    list = new List<int>();
-                    byColumn[col] = list;
-                }
-                if (!list.Contains(sy))
-                    list.Add(sy);
-            }
-
-            foreach (var ((cx, cz), sectionYs) in byColumn)
-                meshed += await RemeshSectionsAsync(cx, cz, sectionYs);
+            foreach (var (cx, cz) in snapshot)
+                meshed += await RemeshColumnAsync(cx, cz, digPriority: true) ? 1 : 0;
         }
         finally
         {
@@ -265,7 +255,7 @@ public class WorldService
             LastRemeshMs = sw.Elapsed.TotalMilliseconds;
             LastSectionsMeshed = meshed;
             _dirtyRemeshRunning = false;
-            if (_dirtySections.Count == 0)
+            if (_dirtyColumns.Count == 0)
                 DispatchGpuPending();
         }
     }
@@ -275,7 +265,7 @@ public class WorldService
         foreach (var c in coords)
         {
             if (c.Sy < 0 || c.Sy >= 16) continue;
-            _dirtySections.Add((c.Cx, c.Sy, c.Cz));
+            _dirtyColumns.Add((c.Cx, c.Cz));
         }
     }
 
@@ -284,17 +274,15 @@ public class WorldService
         const int ss = ChunkData.SizeXZ;
         int cx = (int)MathF.Floor(worldX / (float)ss);
         int cz = (int)MathF.Floor(worldZ / (float)ss);
-        int sy = worldY / ss;
         int lx = worldX - cx * ss;
         int lz = worldZ - cz * ss;
 
-        _dirtySections.Add((cx, sy, cz));
-        if (worldY % ss == 0 && sy > 0) _dirtySections.Add((cx, sy - 1, cz));
-        if (worldY % ss == ss - 1 && sy < 15) _dirtySections.Add((cx, sy + 1, cz));
-        if (lx == 0) _dirtySections.Add((cx - 1, sy, cz));
-        if (lx == ss - 1) _dirtySections.Add((cx + 1, sy, cz));
-        if (lz == 0) _dirtySections.Add((cx, sy, cz - 1));
-        if (lz == ss - 1) _dirtySections.Add((cx, sy, cz + 1));
+        _dirtyColumns.Add((cx, cz));
+        // A block on the border changes the faces of the column beside it
+        if (lx == 0) _dirtyColumns.Add((cx - 1, cz));
+        if (lx == ss - 1) _dirtyColumns.Add((cx + 1, cz));
+        if (lz == 0) _dirtyColumns.Add((cx, cz - 1));
+        if (lz == ss - 1) _dirtyColumns.Add((cx, cz + 1));
 
         // Kick remesh now (don't wait for next frame's ProcessReadyChunks) so pickaxe
         // dirt updates in the same interaction, once stream tasks yield the mesh lock.
@@ -302,10 +290,9 @@ public class WorldService
     }
 
     /// <summary>
-    /// Full GPU pipeline: heightmap -> fill blocks -> split into 16x16x16 sections -> greedy mesh each.
-    /// Mesh data stays GPU-resident (no CPU readback).
-    /// Also regenerates the 4 XZ neighbor chunks so the mesher can pad section borders with
-    /// real neighbor block data, preventing see-through faces at chunk boundaries.
+    /// Full GPU pipeline: heightmap -> fill blocks -> upload -> column mesh. Mesh data stays GPU-resident (no CPU readback).
+    /// Also generates the 4 XZ neighbor chunks so the mesher can see real neighbor block data at the column
+    /// borders, preventing see-through faces at chunk boundaries.
     /// </summary>
     private async Task GenerateChunkGpuAsync(int cx, int cz)
     {
@@ -317,49 +304,36 @@ public class WorldService
             if (_loadedColumns.Contains((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
 
             // Dig remesh must win the mesh lock. In-flight stream tasks that already
-            // passed DispatchGpuPending used to hold _meshLock for seconds (full-column
-            // mesh ×16) and made pickaxe dirt lag ~5s. Yield here until dig drain finishes.
-            while (_dirtySections.Count > 0 || _dirtyRemeshRunning)
+            // passed DispatchGpuPending used to hold _meshLock for seconds and made
+            // pickaxe dirt lag ~5s. Yield here until dig drain finishes.
+            while (_dirtyColumns.Count > 0 || _dirtyRemeshRunning)
                 await Task.Yield();
 
             if (_loadedColumns.Contains((cx, cz))) { _inFlight.Remove((cx, cz)); return; }
 
-            // XZ neighbors for boundary padding. Cached across calls so a neighbor
+            // XZ neighbors for boundary data. Cached across calls so a neighbor
             // generated once gets reused when adjacent columns mesh.
-            var nxMinus = await GetOrGenerateBlocksAsync(cx - 1, cz);
-            var nxPlus = await GetOrGenerateBlocksAsync(cx + 1, cz);
-            var nzMinus = await GetOrGenerateBlocksAsync(cx, cz - 1);
-            var nzPlus = await GetOrGenerateBlocksAsync(cx, cz + 1);
+            await GetOrGenerateBlocksAsync(cx - 1, cz);
+            await GetOrGenerateBlocksAsync(cx + 1, cz);
+            await GetOrGenerateBlocksAsync(cx, cz - 1);
+            await GetOrGenerateBlocksAsync(cx, cz + 1);
 
             // Re-check dig priority after neighbor gen (can take a while).
-            while (_dirtySections.Count > 0 || _dirtyRemeshRunning)
+            while (_dirtyColumns.Count > 0 || _dirtyRemeshRunning)
                 await Task.Yield();
 
-            // VoxelEngine greedy mesh: split chunk into 16x16x16 sections, mesh each with neighbor padding
-            var sectionMeshes = await _engine.GenerateChunkMeshesAsync(
-                blocks, nxMinus, nxPlus, nzMinus, nzPlus);
+            var column = await MeshNewColumnAsync(cx, cz);
 
             _inFlight.Remove((cx, cz));
+            if (column == null) { DispatchGpuPending(); return; }
             if (_loadedColumns.Contains((cx, cz)))
             {
-                foreach (var (_, m) in sectionMeshes)
-                    m.QuadBuffer?.Dispose();
+                ReleaseColumn(column);
                 return;
             }
 
             _loadedColumns.Add((cx, cz));
-
-            foreach (var (sy, meshResult) in sectionMeshes)
-            {
-                var gpuBuffer = meshResult.QuadBuffer!.GetGPUBuffer();
-                var sectionMesh = new ChunkMesh
-                {
-                    QuadBuffer = gpuBuffer,
-                    QuadCount = meshResult.QuadCount,
-                    IlgpuBuffer = meshResult.QuadBuffer,
-                };
-                _readyQueue.Enqueue((cx, sy, cz, sectionMesh));
-            }
+            _readyQueue.Enqueue(column);
 
             DispatchGpuPending();
         }
@@ -369,6 +343,56 @@ public class WorldService
             Console.WriteLine($"[World] Chunk ({cx},{cz}) error: {ex.Message}");
             DispatchGpuPending();
         }
+    }
+
+    /// <summary>Mesh a column that is not yet in the world, with the neighbours that exist. Null when there is no room or no data.</summary>
+    private async Task<WorldColumn?> MeshNewColumnAsync(int cx, int cz)
+    {
+        if (!_blocksCache.TryGetValue((cx, cz), out var blocks)) return null;
+        int slot = TakeSlot();
+        if (slot < 0)
+        {
+            Console.WriteLine($"[World] No column slot left for ({cx},{cz})");
+            return null;
+        }
+        var column = new WorldColumn { Cx = cx, Cz = cz, Slot = slot };
+        try
+        {
+            var gpu = EnsureGpuBlocks(cx, cz, blocks);
+            column.Mesh = await _engine.MeshColumnAsync(gpu, GpuNeighbour(cx - 1, cz), GpuNeighbour(cx + 1, cz), GpuNeighbour(cx, cz - 1), GpuNeighbour(cx, cz + 1));
+            column.UpdateSections();
+            return column;
+        }
+        catch
+        {
+            ReleaseColumn(column);
+            throw;
+        }
+    }
+
+    private MemoryBuffer1D<ushort, Stride1D.Dense>? GpuNeighbour(int cx, int cz)
+        => _gpuBlocks.TryGetValue((cx, cz), out var b) ? b : null;
+
+    /// <summary>The column's GPU block buffer, made from the CPU array when it does not exist yet.</summary>
+    private MemoryBuffer1D<ushort, Stride1D.Dense> EnsureGpuBlocks(int cx, int cz, byte[] blocks)
+    {
+        if (_gpuBlocks.TryGetValue((cx, cz), out var existing)) return existing;
+        var gpu = _engine.UploadColumn(blocks);
+        _gpuBlocks[(cx, cz)] = gpu;
+        return gpu;
+    }
+
+    private int TakeSlot()
+    {
+        if (_freeSlots.Count > 0) return _freeSlots.Pop();
+        return _nextSlot < MaxColumnSlots ? _nextSlot++ : -1;
+    }
+
+    private void ReleaseColumn(WorldColumn column)
+    {
+        column.Mesh?.Dispose();
+        column.Mesh = null;
+        _freeSlots.Push(column.Slot);
     }
 
     /// <summary>
@@ -381,14 +405,14 @@ public class WorldService
         int processed = 0;
         while (processed < maxCount && _readyQueue.Count > 0)
         {
-            var (cx, sy, cz, mesh) = _readyQueue.Dequeue();
-            var key = (cx, sy, cz);
-            if (_chunks.ContainsKey(key))
+            var column = _readyQueue.Dequeue();
+            var key = (column.Cx, column.Cz);
+            if (_columns.TryGetValue(key, out var old))
             {
-                mesh.Dispose();
-                continue;
+                // Replaced (a remesh finished first): the old one goes back
+                ReleaseColumn(old);
             }
-            _chunks[key] = mesh;
+            _columns[key] = column;
             processed++;
         }
         return processed;
@@ -419,25 +443,16 @@ public class WorldService
                 var blocks = await GetOrGenerateBlocksAsync(cx, cz);
                 if (blocks == null) continue;
 
-                var nxMinus = await GetOrGenerateBlocksAsync(cx - 1, cz);
-                var nxPlus = await GetOrGenerateBlocksAsync(cx + 1, cz);
-                var nzMinus = await GetOrGenerateBlocksAsync(cx, cz - 1);
-                var nzPlus = await GetOrGenerateBlocksAsync(cx, cz + 1);
+                await GetOrGenerateBlocksAsync(cx - 1, cz);
+                await GetOrGenerateBlocksAsync(cx + 1, cz);
+                await GetOrGenerateBlocksAsync(cx, cz - 1);
+                await GetOrGenerateBlocksAsync(cx, cz + 1);
 
-                var sectionMeshes = await _engine.GenerateChunkMeshesAsync(
-                    blocks, nxMinus, nxPlus, nzMinus, nzPlus);
+                var column = await MeshNewColumnAsync(cx, cz);
+                if (column == null) continue;
 
                 _loadedColumns.Add((cx, cz));
-                foreach (var (sy, meshResult) in sectionMeshes)
-                {
-                    var gpuBuffer = meshResult.QuadBuffer!.GetGPUBuffer();
-                    _chunks[(cx, sy, cz)] = new ChunkMesh
-                    {
-                        QuadBuffer = gpuBuffer,
-                        QuadCount = meshResult.QuadCount,
-                        IlgpuBuffer = meshResult.QuadBuffer,
-                    };
-                }
+                _columns[(cx, cz)] = column;
                 columnCount++;
             }
             catch (Exception ex)
@@ -485,6 +500,7 @@ public class WorldService
             }
 
             _blocksCache[(ncx, ncz)] = blocks;
+            EnsureGpuBlocks(ncx, ncz, blocks);
             return blocks;
         }
         catch
@@ -854,83 +870,41 @@ public class WorldService
     }
 
     /// <summary>Public hook for Game.razor to re-mesh a column after applying saved edits.</summary>
-    public Task ReMeshColumn(int cx, int cz) => RemeshSectionsAsync(cx, cz, null).AsTask();
+    public Task ReMeshColumn(int cx, int cz) => RemeshColumnAsync(cx, cz, digPriority: false);
 
     /// <summary>
-    /// Remesh selected section-Y indices of a column (null = full column).
-    /// Returns number of sections that produced a mesh.
+    /// Upload a column's blocks again (they changed) and mesh it, swapping the new mesh in when it is ready.
+    /// Returns true when the column has a mesh now.
     /// </summary>
-    private async ValueTask<int> RemeshSectionsAsync(int cx, int cz, List<int>? sectionYs)
+    private async Task<bool> RemeshColumnAsync(int cx, int cz, bool digPriority)
     {
-        if (!_blocksCache.TryGetValue((cx, cz), out var blocks)) return 0;
-        var nxMinus = _blocksCache.TryGetValue((cx - 1, cz), out var a) ? a : null;
-        var nxPlus  = _blocksCache.TryGetValue((cx + 1, cz), out var b) ? b : null;
-        var nzMinus = _blocksCache.TryGetValue((cx, cz - 1), out var c) ? c : null;
-        var nzPlus  = _blocksCache.TryGetValue((cx, cz + 1), out var d) ? d : null;
+        if (!_blocksCache.TryGetValue((cx, cz), out var blocks)) return false;
+        if (!_columns.TryGetValue((cx, cz), out var column)) return false;
 
-        List<(int sectionY, VoxelMeshPipeline.MeshResult mesh)> sectionMeshes;
         try
         {
-            if (sectionYs == null || sectionYs.Count == 0)
+            var gpu = _gpuBlocks.TryGetValue((cx, cz), out var existing)
+                ? _engine.UploadColumn(blocks, existing)
+                : EnsureGpuBlocks(cx, cz, blocks);
+            var mesh = await _engine.MeshColumnAsync(gpu, GpuNeighbour(cx - 1, cz), GpuNeighbour(cx + 1, cz), GpuNeighbour(cx, cz - 1), GpuNeighbour(cx, cz + 1), digPriority);
+
+            // The column may have been unloaded while the mesh was made
+            if (!_columns.TryGetValue((cx, cz), out var still) || !ReferenceEquals(still, column))
             {
-                sectionMeshes = await _engine.GenerateChunkMeshesAsync(
-                    blocks, nxMinus, nxPlus, nzMinus, nzPlus);
+                mesh.Dispose();
+                return false;
             }
-            else
-            {
-                sectionMeshes = await _engine.GenerateChunkMeshesSectionsAsync(
-                    blocks, sectionYs, nxMinus, nxPlus, nzMinus, nzPlus);
-            }
+            var old = column.Mesh;
+            column.Mesh = mesh;
+            column.UpdateSections();
+            old?.Dispose();
+            return true;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[World] Re-mesh ({cx},{cz}) failed: {ex.Message}");
-            return 0;
+            return false;
         }
-
-        if (sectionYs == null || sectionYs.Count == 0)
-        {
-            var freshSyIndices = new HashSet<int>(sectionMeshes.Select(s => s.sectionY));
-            for (int sy = 0; sy < 16; sy++)
-            {
-                var key = (cx, sy, cz);
-                if (_chunks.TryGetValue(key, out var old) && !freshSyIndices.Contains(sy))
-                {
-                    old.Dispose();
-                    _chunks.Remove(key);
-                }
-            }
-        }
-        else
-        {
-            // Partial remesh: drop dirty sections that became all-air.
-            var fresh = new HashSet<int>(sectionMeshes.Select(s => s.sectionY));
-            foreach (int sy in sectionYs)
-            {
-                if (fresh.Contains(sy)) continue;
-                var key = (cx, sy, cz);
-                if (_chunks.TryGetValue(key, out var old))
-                {
-                    old.Dispose();
-                    _chunks.Remove(key);
-                }
-            }
-        }
-
-        foreach (var (sy, meshResult) in sectionMeshes)
-        {
-            var key = (cx, sy, cz);
-            if (_chunks.TryGetValue(key, out var old)) old.Dispose();
-
-            var gpuBuffer = meshResult.QuadBuffer!.GetGPUBuffer();
-            _chunks[key] = new ChunkMesh
-            {
-                QuadBuffer = gpuBuffer,
-                QuadCount = meshResult.QuadCount,
-                IlgpuBuffer = meshResult.QuadBuffer,
-            };
-        }
-        return sectionMeshes.Count;
     }
 
     private static bool TryParseChunkKey(string key, out int cx, out int cz)
@@ -945,17 +919,22 @@ public class WorldService
     /// <summary>Resets all state so the service can be re-initialized.</summary>
     public void Reset()
     {
-        foreach (var mesh in _chunks.Values)
-            mesh.Dispose();
+        foreach (var column in _columns.Values)
+            column.Mesh?.Dispose();
         while (_readyQueue.Count > 0)
-            _readyQueue.Dequeue().mesh.Dispose();
+            _readyQueue.Dequeue().Mesh?.Dispose();
+        foreach (var gpu in _gpuBlocks.Values)
+            gpu.Dispose();
 
-        _chunks.Clear();
+        _columns.Clear();
+        _gpuBlocks.Clear();
+        _freeSlots.Clear();
+        _nextSlot = 0;
         _loadedColumns.Clear();
         _pendingQueue.Clear();
         _inFlight.Clear();
         _blocksCache.Clear();
-        _dirtySections.Clear();
+        _dirtyColumns.Clear();
         _lastCX = int.MinValue;
         _lastCZ = int.MinValue;
         _generator = null;
@@ -964,28 +943,36 @@ public class WorldService
 }
 
 /// <summary>
-/// GPU-resident mesh data for a chunk. Holds the PackedQuad buffer
-/// produced by VoxelEngine's greedy merge pipeline.
+/// A loaded column: its GPU mesh (quad lists of the opaque, plant and water passes, in the shared arena) and the slot that
+/// holds its origin in the block pipeline.
 /// </summary>
-public class ChunkMesh : IDisposable
+public class WorldColumn
 {
-    /// <summary>WebGPU buffer of PackedQuad data for VertexPullPipeline.</summary>
-    public GPUBuffer? QuadBuffer { get; init; }
+    public required int Cx { get; init; }
+    public required int Cz { get; init; }
+    /// <summary>Index of this column's origin in the block pipeline (written once by the renderer).</summary>
+    public required int Slot { get; init; }
+    public ColumnMesh? Mesh { get; set; }
+    /// <summary>Sections that hold quads, and the lowest and highest of them (the box the frustum test uses).</summary>
+    public int SectionsWithQuads { get; private set; }
+    public int LowestSection { get; private set; } = int.MaxValue;
+    public int HighestSection { get; private set; } = -1;
 
-    /// <summary>Number of quads in the buffer.</summary>
-    public int QuadCount { get; init; }
+    public bool HasMesh => Mesh != null && HighestSection >= 0;
 
-    /// <summary>ILGPU buffer reference (for disposal).</summary>
-    public MemoryBuffer1D<long, Stride1D.Dense>? IlgpuBuffer { get; init; }
-
-    /// <summary>True if this chunk has visible geometry.</summary>
-    public bool HasMesh => QuadCount > 0 && QuadBuffer != null;
-
-    /// <summary>Empty chunk (all air, no mesh data).</summary>
-    public static ChunkMesh Empty { get; } = new() { QuadCount = 0 };
-
-    public void Dispose()
+    public void UpdateSections()
     {
-        IlgpuBuffer?.Dispose();
+        SectionsWithQuads = 0;
+        LowestSection = int.MaxValue;
+        HighestSection = -1;
+        var mesh = Mesh;
+        if (mesh == null) return;
+        for (int sy = 0; sy < mesh.Opaque.SectionCount; sy++)
+        {
+            if (mesh.Opaque.QuadsIn(sy) + mesh.Plants.QuadsIn(sy) + mesh.Water.QuadsIn(sy) == 0) continue;
+            SectionsWithQuads++;
+            LowestSection = Math.Min(LowestSection, sy);
+            HighestSection = sy;
+        }
     }
 }
