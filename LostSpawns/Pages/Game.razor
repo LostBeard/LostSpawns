@@ -157,6 +157,8 @@
         Weather.OnLightningStrike += HandleLightningSound;
 
         Renderer.OnUpdate = OnGameUpdate;
+        // The tool in the player's hand is drawn in 3D: tell the renderer what it is and how it swings
+        Renderer.HeldProvider = () => new LostSpawns.Rendering.HeldView(Inventory.ActiveItem?.Id, Hud.SwingArc, Hud.SwingStrength, Hud.BobX, Hud.BobY);
 
         // Swap the HTML "INITIALIZING" splash for the canvas + GameUI loading overlay.
         _ready = true;

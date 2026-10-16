@@ -5,10 +5,16 @@ using SpawnDev.VoxelEngine.Rendering;
 
 namespace LostSpawns.Rendering;
 
+/// <summary>What the player holds, for the first-person view.</summary>
+/// <param name="ItemId">The held item's id (null: empty-handed).</param>
+/// <param name="SwingArc">0..1..0 across a swing (0 at rest), <paramref name="SwingStrength"/> how hard it was thrown.</param>
+public readonly record struct HeldView(string? ItemId, float SwingArc, float SwingStrength, float BobX, float BobY);
+
 /// <summary>
-/// The wildlife, drawn as models of textured boxes by the engine's <see cref="EntityRenderPipeline"/>: every part of every creature in
-/// one instanced draw, lit and fogged by the same frame uniforms as the ground, so a wolf in the shade of a spruce is dark like the
-/// ground beside it. A walk cycle runs from how far each one has walked, the head and tail follow its mood.
+/// The things that are made of boxes, drawn by the engine's <see cref="EntityRenderPipeline"/> in one instanced draw, lit and fogged by
+/// the same frame uniforms as the ground: the wildlife (with a walk cycle from how far each has walked, the head and tail following
+/// its mood), campfires and torches, loot on the ground, and the tool in the player's hand. A frame is built with
+/// <see cref="Begin"/>, the <c>Add</c> calls and <see cref="Commit"/>, before the render pass.
 /// </summary>
 public sealed class CreatureRenderer : IDisposable
 {
@@ -17,6 +23,7 @@ public sealed class CreatureRenderer : IDisposable
     private readonly EntityRenderPipeline _pipe = new();
     private EntityTextureAtlas? _atlas;
     private EntityPartInstance[] _parts = new EntityPartInstance[2048];
+    private int _count;
     private Matrix4x4[] _scratch = new Matrix4x4[16];
     private readonly Dictionary<int, State> _states = new();
     private readonly List<int> _stale = new();
@@ -32,9 +39,9 @@ public sealed class CreatureRenderer : IDisposable
         public int LastFrame;
     }
 
-    /// <summary>Parts drawn by the last <see cref="Prepare"/>.</summary>
+    /// <summary>Parts drawn by the last <see cref="Commit"/>.</summary>
     public int PartCount { get; private set; }
-    /// <summary>Creatures drawn by the last <see cref="Prepare"/>.</summary>
+    /// <summary>Creatures posed since the last <see cref="Begin"/>.</summary>
     public int CreatureCount { get; private set; }
 
     public void Init(GPUDevice device, GPUQueue queue, string colorFormat, GPUBuffer frameBuffer)
@@ -59,12 +66,37 @@ public sealed class CreatureRenderer : IDisposable
         return from + d * amount;
     }
 
-    /// <summary>Pose every creature within <paramref name="maxDistance"/> of the camera and upload the boxes. Call before the pass.</summary>
-    public void Prepare(IReadOnlyList<WanderingEntity> entities, Vector3 camera, double time, float maxDistance)
+    /// <summary>Start a frame: nothing posed yet.</summary>
+    public void Begin()
+    {
+        _frame++;
+        _count = 0;
+        CreatureCount = 0;
+    }
+
+    /// <summary>Upload the frame's boxes. Call before the render pass.</summary>
+    public void Commit()
     {
         if (!_pipe.IsReady) return;
-        _frame++;
-        int count = 0, creatures = 0;
+        // Forget creatures that are gone
+        _stale.Clear();
+        foreach (var (id, st) in _states)
+            if (_frame - st.LastFrame > 120) _stale.Add(id);
+        foreach (var id in _stale) _states.Remove(id);
+
+        PartCount = _pipe.SetParts(_parts.AsSpan(0, _count));
+    }
+
+    private void Reserve(int more)
+    {
+        if (_count + more > _parts.Length) System.Array.Resize(ref _parts, Math.Max(_parts.Length * 2, _count + more));
+        if (_scratch.Length < more) _scratch = new Matrix4x4[Math.Max(more, 16)];
+    }
+
+    /// <summary>Pose every creature within <paramref name="maxDistance"/> of the camera.</summary>
+    public void AddCreatures(IReadOnlyList<WanderingEntity> entities, Vector3 camera, double time, float maxDistance)
+    {
+        if (!_pipe.IsReady) return;
         float maxSq = maxDistance * maxDistance;
         foreach (var e in entities)
         {
@@ -90,20 +122,12 @@ public sealed class CreatureRenderer : IDisposable
             }
             st.Phase += dt * speed * model.StrideRate;
 
-            count = Pose(model, e, st, speed, (float)time, count);
-            creatures++;
+            PoseCreature(model, e, st, speed, (float)time);
+            CreatureCount++;
         }
-        // Forget creatures that are gone
-        _stale.Clear();
-        foreach (var (id, st) in _states)
-            if (st.LastFrame != _frame && _frame - st.LastFrame > 120) _stale.Add(id);
-        foreach (var id in _stale) _states.Remove(id);
-
-        PartCount = _pipe.SetParts(_parts.AsSpan(0, count));
-        CreatureCount = creatures;
     }
 
-    private int Pose(CreatureModel model, WanderingEntity e, State st, float speed, float time, int count)
+    private void PoseCreature(CreatureModel model, WanderingEntity e, State st, float speed, float time)
     {
         bool charging = e.Alert == AlertMode.Charge;
         float amp = Math.Clamp(speed / 1.6f, 0f, 1.2f);
@@ -123,9 +147,7 @@ public sealed class CreatureRenderer : IDisposable
         var tint = Vector3.One * (0.92f + 0.16f * e.ColorJitter);
         if (e.HitFlashTimer > 0f) tint = new Vector3(1f, 0.35f, 0.35f);
 
-        if (_scratch.Length < model.Parts.Length) _scratch = new Matrix4x4[model.Parts.Length];
-        if (count + model.Parts.Length > _parts.Length) System.Array.Resize(ref _parts, Math.Max(_parts.Length * 2, count + model.Parts.Length));
-
+        Reserve(model.Parts.Length);
         for (int i = 0; i < model.Parts.Length; i++)
         {
             var part = model.Parts[i];
@@ -154,25 +176,113 @@ public sealed class CreatureRenderer : IDisposable
                     rot.Z -= 0.25f + MathF.Sin(time * 17f + id) * 0.95f;
                     break;
             }
-            var pivot = part.PivotPoint;
-            var local = Matrix4x4.CreateTranslation(-pivot)
-                * Matrix4x4.CreateRotationX(rot.X) * Matrix4x4.CreateRotationY(rot.Y) * Matrix4x4.CreateRotationZ(rot.Z)
-                * Matrix4x4.CreateTranslation(pivot);
-            _scratch[i] = part.Parent >= 0 ? local * _scratch[part.Parent] : local;
-
-            _parts[count++] = new EntityPartInstance
-            {
-                Model = _scratch[i] * root,
-                OriginInflate = new Vector4(part.Origin, 0f),
-                SizeFlags = new Vector4(part.Size, 0f),
-                Uv = new Vector4(part.Uv.X, part.Uv.Y, 0f, 0f),
-                Tint = new Vector4(tint, 0f),
-            };
+            Emit(part, i, rot, in root, tint);
         }
-        return count;
     }
 
-    /// <summary>Draw the creatures posed by <see cref="Prepare"/>, inside the world's pass after the solid blocks and before the water.</summary>
+    // One part: turned about its pivot, carried by its parent, placed by the root
+    private void Emit(ModelPart part, int index, Vector3 rot, in Matrix4x4 root, Vector3 tint)
+    {
+        var pivot = part.PivotPoint;
+        var local = Matrix4x4.CreateTranslation(-pivot)
+            * Matrix4x4.CreateRotationX(rot.X) * Matrix4x4.CreateRotationY(rot.Y) * Matrix4x4.CreateRotationZ(rot.Z)
+            * Matrix4x4.CreateTranslation(pivot);
+        _scratch[index] = part.Parent >= 0 ? local * _scratch[part.Parent] : local;
+        _parts[_count++] = new EntityPartInstance
+        {
+            Model = _scratch[index] * root,
+            OriginInflate = new Vector4(part.Origin, 0f),
+            SizeFlags = new Vector4(part.Size, 0f),
+            Uv = new Vector4(part.Uv.X, part.Uv.Y, 0f, 0f),
+            Tint = new Vector4(tint, 0f),
+        };
+    }
+
+    // A model that does not move: placed, turned and scaled
+    private void AddStatic(CreatureModel model, Vector3 position, float yawDegrees, float scale, Vector3 tint)
+    {
+        Reserve(model.Parts.Length);
+        var root = Root(position.X, position.Y, position.Z, yawDegrees, scale);
+        for (int i = 0; i < model.Parts.Length; i++)
+            Emit(model.Parts[i], i, model.Parts[i].BaseRotation, in root, tint);
+    }
+
+    /// <summary>Campfires, bonfires and torches within range: logs and stones (the flames and the smoke are particles).</summary>
+    public void AddFires(IReadOnlyList<Campfire> fires, Vector3 camera, float maxDistance)
+    {
+        if (!_pipe.IsReady) return;
+        float maxSq = maxDistance * maxDistance;
+        foreach (var f in fires)
+        {
+            float dx = f.Position.X - camera.X, dz = f.Position.Z - camera.Z;
+            if (dx * dx + dz * dz > maxSq) continue;
+            var model = f.Radius <= 3f ? PropModels.Torch : PropModels.Campfire;
+            float scale = f.Radius >= 10f ? 1.7f : 1f;
+            // A fire that has burned out is dark
+            var tint = f.Fuel > 0.02f ? Vector3.One : new Vector3(0.45f);
+            // In the middle of its block, where the flames are
+            var centre = new Vector3(MathF.Floor(f.Position.X) + 0.5f, f.Position.Y, MathF.Floor(f.Position.Z) + 0.5f);
+            AddStatic(model, centre, f.Id * 47f, scale, tint);
+        }
+    }
+
+    /// <summary>Loot on the ground: a model of the item, turning slowly and bobbing so it catches the eye in the grass.</summary>
+    public void AddItems(IReadOnlyList<GroundItem> items, Vector3 camera, double time, float maxDistance)
+    {
+        if (!_pipe.IsReady) return;
+        float maxSq = maxDistance * maxDistance;
+        foreach (var g in items)
+        {
+            float dx = g.Position.X - camera.X, dz = g.Position.Z - camera.Z;
+            if (dx * dx + dz * dz > maxSq) continue;
+            var (model, scale) = PropModels.ForItem(g.Payload.Id);
+            float t = (float)time;
+            var pos = g.Position + new Vector3(0f, 0.06f + 0.05f * MathF.Sin(t * 2.1f + g.Id), 0f);
+            AddStatic(model, pos, t * 35f + g.Id * 61f, scale * 1.15f, Vector3.One);
+        }
+    }
+
+    /// <summary>The arm and tool the player holds, in front of the camera: it follows the swing and the walking sway.</summary>
+    public void AddHeld(in HeldView held, Camera camera)
+    {
+        if (!_pipe.IsReady) return;
+        var f = camera.Front;
+        var r = camera.Right;
+        var u = camera.Up;
+        // Camera space as a matrix: x right, y up, z backward (toward the player), at the eye
+        var basis = new Matrix4x4(
+            r.X, r.Y, r.Z, 0f,
+            u.X, u.Y, u.Z, 0f,
+            -f.X, -f.Y, -f.Z, 0f,
+            camera.Position.X, camera.Position.Y, camera.Position.Z, 1f);
+
+        float arc = held.SwingArc * held.SwingStrength;
+        // Where the grip is: low and to the right, a little ahead; a swing throws it forward and down
+        var anchor = new Vector3(0.30f + held.BobX * 0.35f, -0.34f + held.BobY * 0.35f, -0.62f);
+        anchor += new Vector3(-0.10f * arc, -0.10f * arc, -0.16f * arc);
+        float pitch = -0.50f - 1.05f * arc;       // top tilted away from the eye, then chopping forward
+        float roll = 0.30f - 0.25f * arc;
+        float yaw = 0.30f;
+
+        const float PixelScale = 0.44f;
+        var toWorld = Matrix4x4.CreateScale(PixelScale / 16f) * Matrix4x4.CreateScale(-1f, -1f, 1f)
+            * Matrix4x4.CreateRotationZ(roll) * Matrix4x4.CreateRotationX(pitch) * Matrix4x4.CreateRotationY(yaw)
+            * Matrix4x4.CreateTranslation(anchor) * basis;
+
+        // The arm always, the tool when there is one
+        EmitHeld(HeldModels.Arm, in toWorld);
+        var tool = held.ItemId is null ? null : HeldModels.For(held.ItemId);
+        if (tool != null) EmitHeld(tool, in toWorld);
+    }
+
+    private void EmitHeld(CreatureModel model, in Matrix4x4 toWorld)
+    {
+        Reserve(model.Parts.Length);
+        for (int i = 0; i < model.Parts.Length; i++)
+            Emit(model.Parts[i], i, model.Parts[i].BaseRotation, in toWorld, Vector3.One);
+    }
+
+    /// <summary>Draw what was posed, inside the world's pass after the solid blocks and before the water.</summary>
     public void Draw(GPURenderPassEncoder pass) { if (PartCount > 0) _pipe.Draw(pass); }
 
     public void Dispose()

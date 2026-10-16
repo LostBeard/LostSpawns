@@ -20,6 +20,8 @@ public class RenderService : IDisposable
     private readonly WeatherService _weather;
     private readonly SettingsService _settings;
     private readonly EntityService _entities;
+    private readonly CampfireService _fires;
+    private readonly GroundItemService _ground;
 
     private GPUDevice? _device;
     private GPUQueue? _queue;
@@ -37,6 +39,7 @@ public class RenderService : IDisposable
     private SkyRenderer? _sky;
     private WeatherRenderer? _weatherView;
     private CreatureRenderer? _creatures;
+    private ParticleRenderer? _particles;
     private float _animTime;
 
     // World reference (set during init)
@@ -48,6 +51,12 @@ public class RenderService : IDisposable
     private ActionCallback<double>? _rafCallback;
 
     public Camera Camera { get; } = new();
+
+    /// <summary>What the player holds and how it moves, asked for each frame (the game supplies it).</summary>
+    public Func<HeldView>? HeldProvider { get; set; }
+
+    /// <summary>A short burst of particles (dust where a block broke, blood where a creature was hit) at a world position.</summary>
+    public void ParticleBurst(ParticleKinds kind, Vector3 position, double seconds) => _particles?.AddBurst(kind, position, _animTime, seconds);
     public bool IsInitialized { get; private set; }
     public Action<float>? OnUpdate { get; set; }
 
@@ -68,13 +77,15 @@ public class RenderService : IDisposable
     public int TotalSectionCount => _world?.LoadedSections ?? 0;
     public int TotalColumnCount => _world?.LoadedColumns ?? 0;
 
-    public RenderService(SpawnJSRuntime js, WorldTimeService worldTime, WeatherService weather, SettingsService settings, EntityService entities)
+    public RenderService(SpawnJSRuntime js, WorldTimeService worldTime, WeatherService weather, SettingsService settings, EntityService entities, CampfireService fires, GroundItemService ground)
     {
         _js = js;
         _worldTime = worldTime;
         _weather = weather;
         _settings = settings;
         _entities = entities;
+        _fires = fires;
+        _ground = ground;
     }
 
     public void Init(HTMLCanvasElement canvas, Accelerator accelerator, WorldService world)
@@ -121,6 +132,8 @@ public class RenderService : IDisposable
         // The creatures read the terrain's frame uniforms, so they are lit and fogged like the ground
         _creatures = new CreatureRenderer();
         _creatures.Init(_device, _queue, _canvasFormat, _terrain.FrameBuffer);
+        _particles = new ParticleRenderer();
+        _particles.Init(_device, _queue, _canvasFormat, _terrain.FrameBuffer);
 
         CreateDepthTexture();
 
@@ -213,8 +226,20 @@ public class RenderService : IDisposable
 
         VisibleChunkCount = _terrain.PrepareVisible(_world, in frustum, cameraPos, fogEnd + 24f);
 
-        // Pose the wildlife for this moment (uploads their boxes before the pass)
-        _creatures!.Prepare(_entities.Entities, cameraPos, _animTime, fogEnd);
+        // Everything made of boxes for this moment: the wildlife, the fires, the loot, the tool in the hand (uploaded before the pass)
+        float modelRange = MathF.Min(fogEnd, 120f);
+        _creatures!.Begin();
+        _creatures.AddCreatures(_entities.Entities, cameraPos, _animTime, modelRange);
+        _creatures.AddFires(_fires.Fires, cameraPos, modelRange);
+        _creatures.AddItems(_ground.Items, cameraPos, _animTime, 60f);
+        _creatures.AddHeld(HeldProvider?.Invoke() ?? default, Camera);
+        _creatures.Commit();
+
+        // Flames, smoke, sparks, fireflies, dust, blood
+        _particles!.Begin(_animTime);
+        _particles.AddFires(_fires.Fires, cameraPos, modelRange, sky.Daylight);
+        _particles.AddFireflies(_world, cameraPos, sky.Night, rain);
+        _particles.Commit();
 
         // Single encoder, single render pass, single submit
         using var encoder = _device.CreateCommandEncoder();
@@ -226,8 +251,9 @@ public class RenderService : IDisposable
 
         _terrain.DrawSolid(pass);
 
-        // The creatures: depth tested against the ground, before the water so water in front of one blends over it
-        _creatures!.Draw(pass);
+        // The creatures, fires, loot and held tool, then the particles: depth tested against the ground, before the water so water in front of one blends over it
+        _creatures.Draw(pass);
+        _particles.Draw(pass);
 
         // Water last so it blends over the ground and creatures behind it
         _terrain.DrawWater(pass);
@@ -276,6 +302,8 @@ public class RenderService : IDisposable
         _rafCallback?.Dispose();
         _rafCallback = null;
 
+        _particles?.Dispose();
+        _particles = null;
         _creatures?.Dispose();
         _creatures = null;
         _weatherView?.Dispose();

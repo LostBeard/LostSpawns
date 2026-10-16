@@ -36,30 +36,6 @@ public class HudService : IDisposable
     // and X (randomized once at spawn). Updated in Update(dt); drawn in OnPostRender
     // using the UI renderer's DrawRect so the streaks land on top of the voxel scene.
 
-    // Firefly particles - tiny pulsing yellow dots that drift slowly
-    // through the screen-space upper half during night. Pure atmosphere
-    // overlay; not tied to entity logic. Each firefly has a position,
-    // a phase offset for pulse, and a horizontal drift speed.
-    private const int FireflyCount = 24;
-    private readonly float[] _flyX = new float[FireflyCount];
-    private readonly float[] _flyY = new float[FireflyCount];
-    private readonly float[] _flyPhase = new float[FireflyCount];
-    private readonly float[] _flyDrift = new float[FireflyCount];
-    private bool _firefliesSeeded;
-    private readonly Random _flyRng = new();
-
-    // Falling leaves - small green/brown squares drifting diagonally
-    // downward like real autumn leaves. Mostly visible during day; fades
-    // out at deep night. Each leaf has independent fall speed + sway.
-    private const int LeafCount = 18;
-    private readonly float[] _leafX = new float[LeafCount];
-    private readonly float[] _leafY = new float[LeafCount];
-    private readonly float[] _leafFallSpeed = new float[LeafCount];
-    private readonly float[] _leafSwayPhase = new float[LeafCount];
-    private readonly int[] _leafColorIdx = new int[LeafCount];
-    private bool _leavesSeeded;
-    private readonly Random _leafFallRng = new();
-
     // Breath-puff particles for cold weather. Shorter-lived + fewer than rain;
     // emitted only when the player's temperature is low. Each particle rises
     // a few pixels as it fades. Age runs 0 -> 1 (1 = dead).
@@ -69,9 +45,6 @@ public class HudService : IDisposable
     private readonly float[] _breathAge = new float[BreathMax];
     private float _breathEmitTimer = 0f;
 
-    // Sun screen X from the last UpdateSunScreenPosition (entity shadow bias).
-    private float _sunScreenX;
-    private bool _sunVisible;
 
     // One-shot impact markers (e.g. arrow hit point). World-space position +
     // spawn timestamp; projected each frame and faded out. Up to 4 concurrent.
@@ -108,67 +81,15 @@ public class HudService : IDisposable
         _impactIdx = (_impactIdx + 1) % ImpactMax;
     }
 
-    // Blood splatter ring buffer. Each splatter is 4 particles that drift
-    // diagonally outward + fall, fading over ~800ms. Spawned from
-    // ShowBloodSplatter when an entity takes a non-fatal hit.
-    private const int BloodMax = 12;
-    private readonly System.Numerics.Vector3[] _bloodPos = new System.Numerics.Vector3[BloodMax];
-    private readonly System.Numerics.Vector3[] _bloodVel = new System.Numerics.Vector3[BloodMax];
-    private readonly DateTime[] _bloodSpawned = new DateTime[BloodMax];
-    private int _bloodIdx;
-    private readonly Random _bloodRng = new();
-
-    /// <summary>
-    /// Spawn 3 blood droplets at the given world position. Each gets a
-    /// randomized outward/upward velocity so the splatter reads as organic
-    /// spray rather than a particle fountain.
-    /// </summary>
+    /// <summary>A spray of blood where a creature was hit (particles in the world, drawn by the renderer).</summary>
     public void ShowBloodSplatter(System.Numerics.Vector3 worldPos)
-    {
-        for (int i = 0; i < 3; i++)
-        {
-            double angle = _bloodRng.NextDouble() * Math.PI * 2;
-            float speed = 1.8f + (float)_bloodRng.NextDouble() * 1.2f;
-            _bloodPos[_bloodIdx] = worldPos;
-            _bloodVel[_bloodIdx] = new System.Numerics.Vector3(
-                (float)Math.Cos(angle) * speed,
-                1.5f + (float)_bloodRng.NextDouble() * 0.8f,
-                (float)Math.Sin(angle) * speed);
-            _bloodSpawned[_bloodIdx] = DateTime.UtcNow;
-            _bloodIdx = (_bloodIdx + 1) % BloodMax;
-        }
-    }
+        => _renderer?.ParticleBurst(LostSpawns.Rendering.ParticleKinds.Blood, worldPos, 0.7);
 
-    // Dust puff ring buffer. Used for fall landings, block-break dust, and
-    // any other "kicked-up sediment" feedback. Tan/gray particles drift
-    // slower and fade over ~600ms.
-    private const int DustMax = 16;
-    private readonly System.Numerics.Vector3[] _dustPos = new System.Numerics.Vector3[DustMax];
-    private readonly System.Numerics.Vector3[] _dustVel = new System.Numerics.Vector3[DustMax];
-    private readonly DateTime[] _dustSpawned = new DateTime[DustMax];
-    private int _dustIdx;
-    private readonly Random _dustRng = new();
-
-    /// <summary>
-    /// Spawn a dust puff at the given world position. Count scales the
-    /// number of particles - default 6 for a regular puff, larger for
-    /// hard landings. Particles drift outward + slightly up + fall.
-    /// </summary>
+    /// <summary>A puff of dust where ground was kicked up or a block broke (particles in the world, drawn by the renderer). <paramref name="count"/> longer-lasting for a bigger puff.</summary>
     public void ShowDustPuff(System.Numerics.Vector3 worldPos, int count = 6)
-    {
-        for (int i = 0; i < count; i++)
-        {
-            double angle = _dustRng.NextDouble() * Math.PI * 2;
-            float speed = 1.0f + (float)_dustRng.NextDouble() * 1.0f;
-            _dustPos[_dustIdx] = worldPos;
-            _dustVel[_dustIdx] = new System.Numerics.Vector3(
-                (float)Math.Cos(angle) * speed,
-                0.4f + (float)_dustRng.NextDouble() * 0.6f,
-                (float)Math.Sin(angle) * speed);
-            _dustSpawned[_dustIdx] = DateTime.UtcNow;
-            _dustIdx = (_dustIdx + 1) % DustMax;
-        }
-    }
+        => _renderer?.ParticleBurst(LostSpawns.Rendering.ParticleKinds.Dust, worldPos, 0.5 + 0.05 * Math.Clamp(count, 1, 12));
+
+    private readonly Random _dustRng = new();
 
     // Gold motes for celebration moments (level-up, achievement). Different
     // ring buffer than dust so they don't collide visually + can use a
@@ -1603,156 +1524,6 @@ public class HudService : IDisposable
     }
 
     /// <summary>
-    /// Project active campfires into screen space and render them as a stack
-    /// of pulsing orange rects that fake a flame. Drawn BEFORE entities so a
-    /// wandering creature can block line-of-sight to the fire without its
-    /// flame leaking over the billboard. Particles are procedural per-frame -
-    /// the phase jitter combined with the sin() gives enough randomness for
-    /// the pulse to feel alive without any particle state.
-    /// </summary>
-    private void DrawCampfires(int viewportWidth, int viewportHeight)
-    {
-        if (_renderer == null || _fires.Fires.Count == 0) return;
-
-        float aspect = (float)viewportWidth / viewportHeight;
-        var vp = _renderer.Camera.GetVpMatrix(aspect);
-
-        float t = (float)(DateTime.UtcNow.Ticks % TimeSpan.TicksPerSecond) / TimeSpan.TicksPerSecond;
-        float pulse = 0.8f + 0.2f * MathF.Sin(t * MathF.PI * 2f);
-
-        foreach (var f in _fires.Fires)
-        {
-            var worldPos = new System.Numerics.Vector4(
-                f.Position.X, f.Position.Y + 0.4f, f.Position.Z, 1f);
-            var clip = System.Numerics.Vector4.Transform(worldPos, vp);
-            if (clip.W <= 0.001f) continue;
-
-            float ndcX = clip.X / clip.W;
-            float ndcY = clip.Y / clip.W;
-            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
-            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
-            if (screenX < -80 || screenX > viewportWidth + 80) continue;
-            if (screenY < -80 || screenY > viewportHeight + 80) continue;
-
-            float dist = MathF.Max(0.1f, clip.W);
-            // Fire radius scales the visible flame size on top of distance.
-            // Bonfire (radius 12) looks ~1.5x bigger than a campfire (6),
-            // torch (2.5) renders much smaller. Reads as "bigger fires =
-            // bigger flames" rather than every fire being identical from
-            // the same distance.
-            float radiusScale = MathF.Sqrt(f.Radius / 6f);
-            float size = Math.Clamp(120f / dist * radiusScale, 6f, 130f) * pulse;
-
-            // Ember glow survives to 0 so extinguished fires are still visible
-            // on the ground as a dead pile; flame + tip fade with fuel so a
-            // low-fuel fire reads as almost out at a glance.
-            int flameAlpha = (int)Math.Clamp(220 * f.Fuel, 0, 220);
-            int tipAlpha   = (int)Math.Clamp(200 * f.Fuel, 0, 200);
-            var ember  = System.Drawing.Color.FromArgb(220, 120, 30, 10);
-            var flame  = System.Drawing.Color.FromArgb(flameAlpha, 240, 140, 40);
-            var tip    = System.Drawing.Color.FromArgb(tipAlpha, 255, 220, 120);
-
-            float x = screenX - size / 2f;
-            float yBottom = screenY + size * 0.3f;
-
-            // 3 stacked rects fake flame layers without needing a particle system.
-            _ui.Renderer.DrawRect(x, yBottom - size * 0.30f, size, size * 0.30f, ember);
-            _ui.Renderer.DrawRect(
-                x + size * 0.15f, yBottom - size * 0.60f,
-                size * 0.70f, size * 0.30f, flame);
-            _ui.Renderer.DrawRect(
-                x + size * 0.32f, yBottom - size * 0.85f,
-                size * 0.36f, size * 0.25f, tip);
-
-            // Sparks: 4 bright orange specks rising above the flame tip,
-            // phase-offset like smoke. Faster than smoke + brighter, fade
-            // before they reach smoke height. Reads as the bright bits
-            // popping off a vigorous fire.
-            if (f.Fuel > 0.05f)
-            {
-                float sparkTime = t * 5f + f.Id * 0.41f;
-                for (int sp = 0; sp < 4; sp++)
-                {
-                    float phase = (sparkTime + sp * 0.25f) % 1f;
-                    float riseY = phase * size * 1.4f;
-                    float jitter = MathF.Sin(phase * 12f + sp * 1.7f) * size * 0.08f;
-                    int spAlpha = (int)(220 * (1f - phase) * f.Fuel);
-                    if (spAlpha <= 0) continue;
-                    _ui.Renderer.DrawRect(
-                        x + size * 0.40f + jitter,
-                        yBottom - size * 0.85f - riseY,
-                        2.5f, 2.5f,
-                        System.Drawing.Color.FromArgb(spAlpha, 255, 200, 80));
-                }
-            }
-
-            // Smoke wisps: 3 gray puffs rising above the flame, each phase-
-            // offset so they don't stack. Higher rects = older = lower alpha.
-            // Only render for fueled fires - extinguished piles don't smoke.
-            // Low-fuel fires smoke darker + denser (dying embers produce
-            // oily smoke); fresh fires smoke paler.
-            if (f.Fuel > 0.02f)
-            {
-                float smokeTime = t * 3f + f.Id * 0.7f;
-                // Tint darker as fuel drops. 170 at full fuel, 80 at empty.
-                byte smokeTint = (byte)(80 + (int)(f.Fuel * 90f));
-                // Heavy rain dampens the smoke - droplets weigh down the
-                // particles so the column doesn't rise as far. Reads as
-                // "the fire is fighting the storm" without needing a
-                // separate weather lookup in the renderer pipeline.
-                float rainDamp = 1f - Math.Clamp(_weather.RainIntensity * 0.5f, 0f, 0.5f);
-                for (int s = 0; s < 3; s++)
-                {
-                    float phase = (smokeTime + s * 0.33f) % 1f;
-                    float riseY = phase * size * 2.2f * rainDamp;
-                    float drift = MathF.Sin(phase * 6f + s) * size * 0.15f;
-                    // Dying fires smoke more visibly. Multiplier grows as
-                    // fuel drops so a low-fuel fire actually smokes MORE.
-                    float densityMul = 1f + (1f - f.Fuel) * 0.6f;
-                    int sAlpha = (int)(120 * (1f - phase) * f.Fuel * densityMul);
-                    if (sAlpha <= 0) continue;
-                    var smoke = System.Drawing.Color.FromArgb(sAlpha, smokeTint, smokeTint, (byte)(smokeTint + 5));
-                    _ui.Renderer.DrawRect(
-                        x + size * 0.35f + drift,
-                        yBottom - size * 0.95f - riseY,
-                        size * 0.30f, size * 0.18f, smoke);
-                }
-            }
-
-            // Fuel bar under the ember. Always shown so the player can see
-            // that a fire needs feeding before it's too late. Bar color
-            // shifts red at low fuel so the warning reads at a glance.
-            float barW = size;
-            float barH = 4f;
-            float barX = x;
-            float barY = yBottom + 2f;
-            _ui.Renderer.DrawRect(barX, barY, barW, barH,
-                System.Drawing.Color.FromArgb(180, 20, 20, 20));
-            float fuelRatio = Math.Clamp(f.Fuel, 0, 1);
-            System.Drawing.Color fuelColor = fuelRatio < 0.20f
-                ? System.Drawing.Color.FromArgb(230, 230, 70, 50)
-                : fuelRatio < 0.45f
-                    ? System.Drawing.Color.FromArgb(230, 240, 180, 60)
-                    : System.Drawing.Color.FromArgb(230, 140, 230, 90);
-            _ui.Renderer.DrawRect(barX, barY, barW * fuelRatio, barH, fuelColor);
-
-            // Cook progress: thin orange bar below the fuel bar, only
-            // visible for the closest active fire (where cook progress
-            // actually ticks). Shows "X% to cooked" at a glance.
-            var nearestFire = _fires.FindNearest(_renderer.Camera.Position);
-            if (nearestFire == f && _fires.CookProgressRatio > 0.01f)
-            {
-                float cookBarY = barY + barH + 1f;
-                float cookRatio = Math.Clamp(_fires.CookProgressRatio, 0f, 1f);
-                _ui.Renderer.DrawRect(barX, cookBarY, barW, 3f,
-                    System.Drawing.Color.FromArgb(140, 20, 20, 20));
-                _ui.Renderer.DrawRect(barX, cookBarY, barW * cookRatio, 3f,
-                    System.Drawing.Color.FromArgb(230, 240, 130, 40));
-            }
-        }
-    }
-
-    /// <summary>
     /// Narrow durability bar painted just above the active hotbar slot when
     /// the equipped item has a UsesRemaining counter. Fill ratio = remaining
     /// / 100 (the starter use count; good-enough assumption since all tools
@@ -1807,67 +1578,6 @@ public class HudService : IDisposable
     }
 
     /// <summary>
-    /// Project each GroundItem into screen space and draw a small colored
-    /// marker so the player can see dropped loot before they step on it.
-    /// Color comes from the item's ItemCategory via the existing GlyphColor
-    /// table so Food bags look orange, Material bags tan, etc.
-    /// </summary>
-    private void DrawGroundItems(int viewportWidth, int viewportHeight)
-    {
-        if (_renderer == null || _ground.Items.Count == 0) return;
-
-        float aspect = (float)viewportWidth / viewportHeight;
-        var vp = _renderer.Camera.GetVpMatrix(aspect);
-
-        foreach (var g in _ground.Items)
-        {
-            var worldPos = new System.Numerics.Vector4(
-                g.Position.X, g.Position.Y + 0.2f, g.Position.Z, 1f);
-            var clip = System.Numerics.Vector4.Transform(worldPos, vp);
-            if (clip.W <= 0.001f) continue;
-
-            float ndcX = clip.X / clip.W;
-            float ndcY = clip.Y / clip.W;
-            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
-            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
-            if (screenX < -50 || screenX > viewportWidth + 50) continue;
-            if (screenY < -50 || screenY > viewportHeight + 50) continue;
-
-            float dist = MathF.Max(0.1f, clip.W);
-            float size = Math.Clamp(32f / dist, 4f, 22f);
-
-            var tint = CategoryColor(g.Payload)
-                       ?? System.Drawing.Color.FromArgb(230, 220, 220, 220);
-
-            float x = screenX - size / 2f;
-            float y = screenY - size / 2f;
-
-            // Pulsing halo behind the bag so pickups stand out even in tall
-            // grass. Sin wave keyed to wall-clock time so all loot pulses in
-            // unison - reads as "drop" not "particle".
-            double t = (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
-            float pulse = 0.5f + 0.5f * MathF.Sin((float)t * 3f);
-            int haloAlpha = (int)(55 + 35 * pulse);
-            float haloGrow = size * 0.4f * pulse;
-            _ui.Renderer.DrawRect(
-                x - haloGrow, y - haloGrow,
-                size + haloGrow * 2, size + haloGrow * 2,
-                System.Drawing.Color.FromArgb(haloAlpha, tint.R, tint.G, tint.B));
-
-            _ui.Renderer.DrawRect(x, y, size, size, tint);
-            // Dark bottom shadow so the bag reads as sitting on ground not floating.
-            _ui.Renderer.DrawRect(x, y + size, size, 2f,
-                System.Drawing.Color.FromArgb(180, 10, 10, 15));
-            // Vertical "marker rod" sticking up above the loot so it's
-            // visible through tall grass / over hills. Same color tint as
-            // the bag, half-alpha so it reads as a flag not a wall.
-            _ui.Renderer.DrawRect(
-                x + size * 0.5f - 1f, y - size * 0.7f, 2f, size * 0.7f,
-                System.Drawing.Color.FromArgb(150, tint.R, tint.G, tint.B));
-        }
-    }
-
-    /// <summary>
     /// Render impact markers. White crosses that expand and fade over ~350ms
     /// using wall-clock time so the animation runs independently of the main
     /// update tick. Past-lifetime slots skip projection + draw.
@@ -1902,87 +1612,24 @@ public class HudService : IDisposable
         }
     }
 
-    /// <summary>
-    /// Simple held-tool "viewmodel" painted in the bottom-right. Category
-    /// color drives the tint; the bob phase from camera bob gives it a
-    /// subtle walk sway. No actual 3D model - just a tilted rect that reads
-    /// as "something's in my hand".
-    /// </summary>
-    private void DrawViewmodel(int viewportWidth, int viewportHeight)
-    {
-        var item = _inventory.ActiveItem;
-        if (item is null) return;
-
-        // Only render for categories that represent held tools / placeables.
-        // Food items don't need a held appearance (the consume flow fires
-        // its own audio + toast).
-        bool held = item.Category == ItemCategory.Tool
-                 || item.Category == ItemCategory.Marker
-                 || item.Category == ItemCategory.Medical;
-        if (!held) return;
-
-        var tint = CategoryColor(item)
-                   ?? System.Drawing.Color.FromArgb(220, 210, 210, 220);
-
-        float baseX = viewportWidth - 220f;
-        float baseY = viewportHeight - 210f;
-        // Tie subtle bob to camera-bob current X/Y so the viewmodel sways
-        // with the player's walk cycle; idle ~zero.
-        float bobX = _bobCurrentX * 6f;
-        float bobY = _bobCurrentY * 6f;
-
-        // One-shot swing arc - quick up + over, recovery back to rest.
-        float swingAge = (float)(DateTime.UtcNow - _swingStart).TotalSeconds;
-        if (swingAge >= 0 && swingAge < 0.22f)
-        {
-            float t = swingAge / 0.22f;           // 0..1
-            // Ease-out: fast outbound, slow return. Parabola peak at t=0.4.
-            float arc = MathF.Sin(t * MathF.PI);  // 0->1->0 across 0..1
-            // Strength multiplier scales how far the viewmodel travels.
-            // Heavier hits throw the tool further off rest; bow release
-            // barely twitches.
-            bobX -= arc * 40f * _swingStrength;
-            bobY -= arc * 60f * _swingStrength;
-        }
-
-        // Main tool body. Different silhouette per item id so the player
-        // can tell at a glance what's equipped: axe is the default rect +
-        // crossbar; bow is a tall arc + string; pick has the same crossbar
-        // but a metal head on top.
-        if (item.Id == "tool.bow")
-        {
-            // Tall thin bow body + diagonal "string" line.
-            _ui.Renderer.DrawRect(baseX + bobX + 50, baseY + bobY, 12, 130,
-                System.Drawing.Color.FromArgb(240, 130, 90, 50));
-            _ui.Renderer.DrawRect(baseX + bobX + 40, baseY + bobY + 20, 8, 100,
-                System.Drawing.Color.FromArgb(180, 230, 230, 230)); // string approx
-        }
-        else if (item.Id == "tool.pick" || item.Id == "tool.stone_pick")
-        {
-            // Pick: shaft + small dark metal head spanning across the top.
-            _ui.Renderer.DrawRect(baseX + bobX + 55, baseY + bobY + 10, 14, 110, tint);
-            _ui.Renderer.DrawRect(baseX + bobX + 30, baseY + bobY,        65, 16,
-                System.Drawing.Color.FromArgb(240, 120, 120, 130)); // pick head
-        }
-        else
-        {
-            // Default: axe / generic tool body + wood haft crossbar.
-            _ui.Renderer.DrawRect(baseX + bobX + 20, baseY + bobY, 80, 120, tint);
-            _ui.Renderer.DrawRect(baseX + bobX + 10, baseY + bobY + 30, 100, 18,
-                System.Drawing.Color.FromArgb(240, 90, 60, 30));
-        }
-
-        // Item label above the viewmodel rect
-        float textPx = 16f;
-        float textW = _ui.Renderer.MeasureText(item.Name, textPx);
-        _ui.Renderer.DrawText(
-            item.Name, baseX + bobX + 60 - textW * 0.5f, baseY + bobY - 18,
-            textPx, System.Drawing.Color.FromArgb(230, 230, 230, 240));
-    }
-
     // Camera-bob offset fields owned by Game.razor, shared for the viewmodel
     // sway. Setters kept internal so callers can push their current tick
     // offsets without exposing raw mutable state.
+    /// <summary>0..1..0 across a swing in progress (0 at rest): the 3D tool in the hand follows it.</summary>
+    public float SwingArc
+    {
+        get
+        {
+            float age = (float)(DateTime.UtcNow - _swingStart).TotalSeconds;
+            return age >= 0f && age < 0.22f ? MathF.Sin(age / 0.22f * MathF.PI) : 0f;
+        }
+    }
+    /// <summary>How hard the last swing was thrown.</summary>
+    public float SwingStrength => _swingStrength;
+    /// <summary>The walking sway of the camera, which the held tool shares.</summary>
+    public float BobX => _bobCurrentX;
+    public float BobY => _bobCurrentY;
+
     private float _bobCurrentX;
     private float _bobCurrentY;
     public void SetBobOffset(float bobX, float bobY)
@@ -2214,84 +1861,6 @@ public class HudService : IDisposable
         }
     }
 
-    private void DrawDustPuffs(int viewportWidth, int viewportHeight)
-    {
-        if (_renderer == null) return;
-        float aspect = (float)viewportWidth / viewportHeight;
-        var vp = _renderer.Camera.GetVpMatrix(aspect);
-        var now = DateTime.UtcNow;
-        const float Lifetime = 0.6f;
-        for (int i = 0; i < DustMax; i++)
-        {
-            if (_dustSpawned[i] == default) continue;
-            float age = (float)(now - _dustSpawned[i]).TotalSeconds;
-            if (age >= Lifetime) continue;
-
-            var p = _dustPos[i];
-            var v = _dustVel[i];
-            float wx = p.X + v.X * age;
-            // Lighter gravity than blood - dust hangs in the air longer.
-            float wy = p.Y + v.Y * age - 4f * age * age * 0.5f;
-            float wz = p.Z + v.Z * age;
-
-            var clip = System.Numerics.Vector4.Transform(
-                new System.Numerics.Vector4(wx, wy, wz, 1f), vp);
-            if (clip.W <= 0.001f) continue;
-            float ndcX = clip.X / clip.W;
-            float ndcY = clip.Y / clip.W;
-            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
-            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
-            if (screenX < -10 || screenX > viewportWidth + 10) continue;
-            if (screenY < -10 || screenY > viewportHeight + 10) continue;
-
-            float life = age / Lifetime;
-            int alpha = (int)(180 * (1f - life));
-            float size = Math.Clamp(10f / MathF.Max(0.1f, clip.W), 3f, 8f);
-            _ui.Renderer.DrawRect(
-                screenX - size * 0.5f, screenY - size * 0.5f, size, size,
-                System.Drawing.Color.FromArgb(alpha, 180, 165, 140));
-        }
-    }
-
-    private void DrawBloodSplatters(int viewportWidth, int viewportHeight)
-    {
-        if (_renderer == null) return;
-        float aspect = (float)viewportWidth / viewportHeight;
-        var vp = _renderer.Camera.GetVpMatrix(aspect);
-        var now = DateTime.UtcNow;
-        const float Lifetime = 0.8f;
-        for (int i = 0; i < BloodMax; i++)
-        {
-            if (_bloodSpawned[i] == default) continue;
-            float age = (float)(now - _bloodSpawned[i]).TotalSeconds;
-            if (age >= Lifetime) continue;
-
-            // Integrate position: initial splatter + vel*t + gravity*t^2.
-            var p = _bloodPos[i];
-            var v = _bloodVel[i];
-            float wx = p.X + v.X * age;
-            float wy = p.Y + v.Y * age - 9f * age * age * 0.5f;
-            float wz = p.Z + v.Z * age;
-
-            var clip = System.Numerics.Vector4.Transform(
-                new System.Numerics.Vector4(wx, wy, wz, 1f), vp);
-            if (clip.W <= 0.001f) continue;
-            float ndcX = clip.X / clip.W;
-            float ndcY = clip.Y / clip.W;
-            float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
-            float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
-            if (screenX < -10 || screenX > viewportWidth + 10) continue;
-            if (screenY < -10 || screenY > viewportHeight + 10) continue;
-
-            float life = age / Lifetime;
-            int alpha = (int)(220 * (1f - life));
-            float size = Math.Clamp(8f / MathF.Max(0.1f, clip.W), 2f, 6f);
-            _ui.Renderer.DrawRect(
-                screenX - size * 0.5f, screenY - size * 0.5f, size, size,
-                System.Drawing.Color.FromArgb(alpha, 160, 20, 20));
-        }
-    }
-
     private void DrawEntityBillboards(int viewportWidth, int viewportHeight)
     {
         if (_renderer == null || _entities.Entities.Count == 0) return;
@@ -2402,137 +1971,6 @@ public class HudService : IDisposable
                     System.Drawing.Color.FromArgb(alpha, 240, 60, 60));
             }
         }
-    }
-
-    /// <summary>
-    /// Render fireflies during deep night - tiny yellow dots that pulse
-    /// in alpha + drift slowly horizontally. Lazy-seeds on first night
-    /// frame; positions persist so they feel like real fireflies tracking
-    /// across the scene rather than spawning fresh every frame.
-    /// </summary>
-    private void DrawFireflies(int viewportWidth, int viewportHeight)
-    {
-        // Only at night; fade in/out across dawn / dusk.
-        float t = _worldTime.DayFraction;
-        float visibility;
-        if (t < 0.05f) visibility = 1f - t / 0.05f;
-        else if (t < 0.55f) visibility = 0f;
-        else if (t < 0.65f) visibility = (t - 0.55f) / 0.10f;
-        else if (t < 0.95f) visibility = 1f;
-        else visibility = 1f - (t - 0.95f) / 0.05f;
-        if (visibility <= 0.02f) return;
-
-        if (!_firefliesSeeded)
-        {
-            for (int i = 0; i < FireflyCount; i++)
-            {
-                _flyX[i] = (float)(_flyRng.NextDouble() * viewportWidth);
-                _flyY[i] = (float)(_flyRng.NextDouble() * viewportHeight * 0.7f);
-                _flyPhase[i] = (float)(_flyRng.NextDouble() * MathF.PI * 2);
-                _flyDrift[i] = (float)((_flyRng.NextDouble() - 0.5) * 30f);
-            }
-            _firefliesSeeded = true;
-        }
-
-        // Per-frame drift + pulse. Wraps at viewport edges so a firefly
-        // that exits stage right enters stage left.
-        double now = (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
-        for (int i = 0; i < FireflyCount; i++)
-        {
-            // Drift uses wall-clock time elapsed. ~0.016 = 60fps frame.
-            _flyX[i] += _flyDrift[i] * 0.016f;
-            if (_flyX[i] < -10) _flyX[i] = viewportWidth + 10;
-            if (_flyX[i] > viewportWidth + 10) _flyX[i] = -10;
-
-            // Bobs vertically by sin(phase + t) so they don't sit static.
-            float yBob = MathF.Sin((float)now * 1.5f + _flyPhase[i]) * 4f;
-
-            // Alpha pulse: each firefly cycles brightness independently.
-            float pulse = 0.5f + 0.5f * MathF.Sin((float)now * 2f + _flyPhase[i] * 3f);
-            int alpha = (int)(180 * pulse * visibility);
-            if (alpha < 8) continue;
-            _ui.Renderer.DrawRect(_flyX[i], _flyY[i] + yBob, 3f, 3f,
-                System.Drawing.Color.FromArgb(alpha, 230, 240, 100));
-        }
-    }
-
-    /// <summary>
-    /// Render falling leaves drifting diagonally down across the screen.
-    /// Each leaf has independent fall speed + sin-sway X so the swarm
-    /// moves naturally. Faded out at deep night (only sparse during day).
-    /// </summary>
-    private void DrawFallingLeaves(int viewportWidth, int viewportHeight)
-    {
-        // Brighter during day, fade at night.
-        float t = _worldTime.DayFraction;
-        float visibility;
-        if (t < 0.05f) visibility = 0.2f;
-        else if (t < 0.55f) visibility = 1f;
-        else if (t < 0.65f) visibility = 1f - (t - 0.55f) / 0.10f;
-        else visibility = 0.15f;
-
-        if (!_leavesSeeded)
-        {
-            for (int i = 0; i < LeafCount; i++)
-            {
-                _leafX[i] = (float)(_leafFallRng.NextDouble() * viewportWidth);
-                _leafY[i] = (float)(_leafFallRng.NextDouble() * viewportHeight);
-                _leafFallSpeed[i] = 30f + (float)_leafFallRng.NextDouble() * 40f;
-                _leafSwayPhase[i] = (float)(_leafFallRng.NextDouble() * MathF.PI * 2);
-                _leafColorIdx[i] = _leafFallRng.Next(3);
-            }
-            _leavesSeeded = true;
-        }
-
-        var palette = new[]
-        {
-            System.Drawing.Color.FromArgb(180, 110, 160, 70),  // forest green
-            System.Drawing.Color.FromArgb(180, 200, 140, 50),  // amber
-            System.Drawing.Color.FromArgb(180, 180, 80, 40),   // burnt orange
-        };
-
-        double now = (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
-        for (int i = 0; i < LeafCount; i++)
-        {
-            // Fall with sin-sway X so the path arcs.
-            _leafY[i] += _leafFallSpeed[i] * 0.016f;
-            float sway = MathF.Sin((float)now * 1.2f + _leafSwayPhase[i]) * 12f;
-
-            if (_leafY[i] > viewportHeight + 10)
-            {
-                _leafY[i] = -10;
-                _leafX[i] = (float)(_leafFallRng.NextDouble() * viewportWidth);
-            }
-
-            int alpha = (int)(180 * visibility);
-            if (alpha < 10) continue;
-            var c = palette[_leafColorIdx[i]];
-            c = System.Drawing.Color.FromArgb(alpha, c.R, c.G, c.B);
-            _ui.Renderer.DrawRect(_leafX[i] + sway, _leafY[i], 4f, 4f, c);
-        }
-    }
-
-    /// <summary>
-    /// Where the sun is on screen this frame (the sky draws the sun itself): the creatures' ground shadows lean away from it.
-    /// </summary>
-    private void UpdateSunScreenPosition(int viewportWidth, int viewportHeight)
-    {
-        _sunVisible = false;
-        if (_renderer == null) return;
-
-        var sky = LostSpawns.Rendering.Atmosphere.At(_worldTime.DayFraction, _weather.RainIntensity, 0f);
-        if (sky.SunDirection.Y <= 0f) return;
-
-        var cam = _renderer.Camera.Position;
-        var world = new Vector4(cam.X + sky.SunDirection.X * 800f, cam.Y + sky.SunDirection.Y * 800f, cam.Z + sky.SunDirection.Z * 800f, 1f);
-        float aspect = (float)viewportWidth / viewportHeight;
-        var clip = Vector4.Transform(world, _renderer.Camera.GetVpMatrix(aspect));
-        if (clip.W <= 0.001f) return; // behind camera
-
-        float ndcX = clip.X / clip.W, ndcY = clip.Y / clip.W;
-        if (ndcX < -1.2f || ndcX > 1.2f || ndcY < -1.2f || ndcY > 1.2f) return;
-        _sunScreenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
-        _sunVisible = true;
     }
 
 /// <summary>
@@ -3152,23 +2590,7 @@ public class HudService : IDisposable
             // Draw the HUD screen stack
             _ui.Screens.Draw(_ui.Renderer);
 
-            // Stars paint first so everything else (terrain canvas is already
-            // drawn, UI screens, fires, entities) sits on top. Only visible
-            // at night + twilight; during day the draw is a cheap no-op.
-            UpdateSunScreenPosition(viewportWidth, viewportHeight);
-            DrawFireflies(viewportWidth, viewportHeight);
-            DrawFallingLeaves(viewportWidth, viewportHeight);
-
-            // Campfires render first so entity billboards paint on top - a
-            // critter standing in front of the fire occludes it naturally.
-            DrawCampfires(viewportWidth, viewportHeight);
-
-            // Ground items render between fires and entities - they're on the
-            // ground so wildlife and fire particles both correctly sit above.
-            DrawGroundItems(viewportWidth, viewportHeight);
-
-            // Entity billboards: 2D colored squares at each entity's projected
-            // screen position. Renders on top of terrain, below rain + flashes.
+            // The labels over the creatures (the creatures, fires, loot and the held tool are drawn in 3D by the renderer)
             DrawEntityBillboards(viewportWidth, viewportHeight);
 
             // Arrow impact marks render on top of the entity layer so the
@@ -3178,8 +2600,6 @@ public class HudService : IDisposable
             // Blood splatter particles - small dark red specks that
             // arc out + fall with gravity. Renders behind damage numbers so
             // the number stays legible on top of the splatter.
-            DrawBloodSplatters(viewportWidth, viewportHeight);
-            DrawDustPuffs(viewportWidth, viewportHeight);
             DrawGoldMotes(viewportWidth, viewportHeight);
             DrawTerraformPreview(viewportWidth, viewportHeight);
             DrawTerraformConfirms(viewportWidth, viewportHeight);
@@ -3191,10 +2611,6 @@ public class HudService : IDisposable
             // Durability bar above the active hotbar slot for tools that can
             // break. Small but always-visible so the player isn't surprised.
             DrawDurabilityBar(viewportWidth, viewportHeight);
-
-            // Simple held-tool viewmodel in the bottom-right - communicates
-            // "you have this equipped" without a full 3D rig.
-            DrawViewmodel(viewportWidth, viewportHeight);
 
 
             // Breath puffs render after rain so they're never occluded by the

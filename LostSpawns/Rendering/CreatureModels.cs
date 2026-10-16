@@ -8,7 +8,12 @@ namespace LostSpawns.Rendering;
 public enum PartGait { None, FrontLegA, FrontLegB, HindLegA, HindLegB, Head, Tail, EarLeft, EarRight, WingLeft, WingRight }
 
 /// <summary>What a part is painted as (which fur, where the features go).</summary>
-public enum PartLook { Body, Head, Snout, Ear, Leg, Tail, Scut, Beak, Wing, Antler, Tusk }
+public enum PartLook
+{
+    Body, Head, Snout, Ear, Leg, Tail, Scut, Beak, Wing, Antler, Tusk,
+    // What is not fur
+    Wood, Steel, SteelEdge, Rock, Skin, Sleeve, Leather, Cloth, Coals, MushroomCap, MushroomStalk, Leaf, Berry, MeatRaw, MeatCooked, Bone,
+}
 
 /// <summary>
 /// One box of a creature. Model space is Minecraft's: pixels, 16 to a block, y pointing DOWN, the creature facing -z, its feet at y = 24
@@ -69,7 +74,10 @@ public static class CreatureModels
         _ => Crow,
     };
 
-    public static IEnumerable<CreatureModel> All => new[] { Wolf, Deer, Boar, Bear, Rabbit, Crow };
+    public static IEnumerable<CreatureModel> Creatures => new[] { Wolf, Deer, Boar, Bear, Rabbit, Crow };
+
+    /// <summary>Every model that is painted into the atlas: the creatures, the props and the held tools.</summary>
+    public static IEnumerable<CreatureModel> All => Creatures.Concat(PropModels.All).Concat(HeldModels.All);
 
     // Wolf: lean, grey, bushy tail carried low
     public static readonly CreatureModel Wolf = new()
@@ -268,6 +276,7 @@ public static class CreatureTextures
 
     private static Vector3 Shade(FurPalette pal, ModelPart part, Face face, float u, float v, int px, int py, int fw, int fh, int seed)
     {
+        // Wood, steel and food are not fur: their own cases below set the colour and the grain; the fur coarseness stays small for them
         // Fur: a base tone, a little noise per texel and a coarser streak, so no face is flat
         float jitter = (Rand(px, py, seed) - 0.5f) * 2f * pal.Coarse;
         var color = pal.Main;
@@ -316,6 +325,76 @@ public static class CreatureTextures
                 break;
             case PartLook.Beak:
                 color = new Vector3(0.22f, 0.21f, 0.22f);
+                break;
+            case PartLook.Wood:
+            {
+                // Grain along the long side of the piece
+                float grain = Value(u, v, 10, 3, seed) * 0.5f + Value(u, v, 3, 10, seed + 5) * 0.3f;
+                color = new Vector3(0.50f, 0.35f, 0.21f) * (0.65f + 0.7f * grain);
+                if (face == Face.Top || face == Face.Bottom) color *= 0.85f;
+                pal = new FurPalette(pal.Main, pal.Dark, pal.Light, pal.Accent, 0.06f);
+                break;
+            }
+            case PartLook.Steel:
+                color = new Vector3(0.60f, 0.62f, 0.67f) * (0.8f + 0.35f * Value(u, v, 5, 5, seed));
+                if (px == 0 || py == 0 || px == fw - 1 || py == fh - 1) color *= 0.72f;
+                break;
+            case PartLook.SteelEdge:
+                color = new Vector3(0.82f, 0.85f, 0.90f) * (0.85f + 0.2f * Value(u, v, 4, 6, seed));
+                break;
+            case PartLook.Rock:
+            {
+                float n = Value(u, v, 4, 4, seed) * 0.6f + Value(u, v, 9, 9, seed + 3) * 0.4f;
+                color = new Vector3(0.46f, 0.45f, 0.47f) * (0.65f + 0.7f * n);
+                if (face == Face.Top) color *= 1.15f;
+                break;
+            }
+            case PartLook.Skin:
+                color = new Vector3(0.82f, 0.64f, 0.52f) * (0.92f + 0.12f * Value(u, v, 4, 4, seed));
+                break;
+            case PartLook.Sleeve:
+                color = new Vector3(0.25f, 0.30f, 0.22f) * (0.8f + 0.4f * Value(u, v, 6, 8, seed));
+                if (v > 0.92f) color = new Vector3(0.18f, 0.22f, 0.16f);   // the cuff
+                break;
+            case PartLook.Leather:
+                color = new Vector3(0.36f, 0.24f, 0.14f) * (0.75f + 0.5f * Value(u, v, 6, 6, seed));
+                break;
+            case PartLook.Cloth:
+                color = new Vector3(0.88f, 0.86f, 0.80f) * (0.88f + 0.18f * Value(u, v, 8, 8, seed));
+                break;
+            case PartLook.Coals:
+            {
+                // Black char with glowing cracks, the bright ones above all
+                float glow = Value(u, v, 5, 5, seed);
+                float spark = Rand(px, py, seed + 11);
+                color = new Vector3(0.10f, 0.08f, 0.07f);
+                if (glow > 0.62f || spark > 0.9f) color = Vector3.Lerp(new Vector3(0.9f, 0.32f, 0.06f), new Vector3(1.4f, 0.8f, 0.2f), spark);
+                break;
+            }
+            case PartLook.MushroomCap:
+                color = new Vector3(0.74f, 0.13f, 0.11f);
+                if (Rand(px, py, seed + 21) > 0.82f) color = new Vector3(0.95f, 0.92f, 0.86f);   // the white flecks
+                if (face == Face.Bottom) color = new Vector3(0.88f, 0.82f, 0.70f);
+                break;
+            case PartLook.MushroomStalk:
+                color = new Vector3(0.90f, 0.86f, 0.76f) * (0.9f + 0.15f * Value(u, v, 3, 6, seed));
+                break;
+            case PartLook.Leaf:
+                color = new Vector3(0.18f, 0.40f, 0.14f) * (0.7f + 0.6f * Value(u, v, 6, 6, seed));
+                break;
+            case PartLook.Berry:
+                color = new Vector3(0.55f, 0.05f, 0.18f) * (0.85f + 0.3f * Rand(px, py, seed + 31));
+                break;
+            case PartLook.MeatRaw:
+                color = new Vector3(0.72f, 0.16f, 0.18f) * (0.85f + 0.25f * Value(u, v, 6, 6, seed));
+                if (Value(u, v, 8, 8, seed + 7) > 0.7f) color = Vector3.Lerp(color, new Vector3(0.95f, 0.75f, 0.72f), 0.6f);   // marbling
+                break;
+            case PartLook.MeatCooked:
+                color = new Vector3(0.46f, 0.25f, 0.13f) * (0.8f + 0.3f * Value(u, v, 6, 6, seed));
+                if (face == Face.Top) color *= 0.75f;
+                break;
+            case PartLook.Bone:
+                color = new Vector3(0.90f, 0.87f, 0.78f);
                 break;
             case PartLook.Antler:
                 color = Mix(new Vector3(0.52f, 0.43f, 0.32f), new Vector3(0.74f, 0.66f, 0.52f), SmoothStep(0.3f, 1f, 1f - v));
