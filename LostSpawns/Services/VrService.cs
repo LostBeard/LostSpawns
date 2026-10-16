@@ -22,6 +22,8 @@ public sealed class VrService : IDisposable
 
     /// <summary>How many columns out from the player the headset view draws (<c>?vrdd=N</c> on the home or game page sets it, for tuning on a headset).</summary>
     public int DrawRadius { get; set; } = VrWorld.DefaultDrawRadius;
+    /// <summary>The radius follows the headset's frame rate (off when <c>?vrdd</c> chose it).</summary>
+    public bool AdaptiveDrawRadius { get; set; } = true;
 
     /// <summary>Why the last <see cref="BeginAsync"/> failed.</summary>
     public string? LastError { get; private set; }

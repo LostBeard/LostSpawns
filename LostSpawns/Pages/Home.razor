@@ -44,7 +44,7 @@
         await Engine.InitAsync();
         _vrSupported = await Vr.IsSupportedAsync();
         // ?vrdd=N on the home page sets the headset's draw distance for the session that starts from here
-        if (LostSpawns.Services.DebugView.Parse(Nav.Uri).VrDrawRadius is { } radius) Vr.DrawRadius = radius;
+        if (LostSpawns.Services.DebugView.Parse(Nav.Uri).VrDrawRadius is { } radius) { Vr.DrawRadius = radius; Vr.AdaptiveDrawRadius = false; }
     }
 
     // The session is requested here, from the click; the game page picks it up when the world is ready

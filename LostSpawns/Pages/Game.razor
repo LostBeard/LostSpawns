@@ -271,7 +271,7 @@
         if (view.God) Stats.Invulnerable = true;
         if (view.Still) Wildlife.Frozen = true;
         Renderer.OcclusionOverride = view.Occlusion;
-        if (view.VrDrawRadius is { } vrRadius) Vr.DrawRadius = vrRadius;
+        if (view.VrDrawRadius is { } vrRadius) { Vr.DrawRadius = vrRadius; Vr.AdaptiveDrawRadius = false; }
         if (view.Dig > 0) _ = DigForDebugAsync(view.Dig);
         if (view.Spawn.Count > 0) SpawnForDebug(view.Spawn, view.SpawnDistance);
     }
@@ -371,6 +371,7 @@
             _blit.Initialize(session.GL!);
             _vr ??= new LostSpawns.Xr.VrWorld(JS, Engine, World, Time, Weather, Wildlife, Fires, Ground);
             _vr.DrawRadius = Vr.DrawRadius;
+            _vr.Adaptive = Vr.AdaptiveDrawRadius;
             _vr.Start(Renderer.Camera.Position, Renderer.Camera.Yaw);
         }
         catch (Exception ex)

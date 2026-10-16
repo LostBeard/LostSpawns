@@ -67,6 +67,16 @@ public sealed class VrWorld : IDisposable
     /// <summary>How many columns out from the player the world is kept and drawn.</summary>
     public int DrawRadius { get; set; } = DefaultDrawRadius;
 
+    /// <summary>
+    /// A headset that cannot keep its refresh rate gets a smaller ring of columns (one fewer per report, down to <see cref="MinDrawRadius"/>), and a run of clean
+    /// reports gives one back (up to the radius it started with). Off when the radius was chosen by hand (<c>?vrdd</c>).
+    /// </summary>
+    public bool Adaptive { get; set; } = true;
+    public const int MinDrawRadius = 3;
+    private int _startRadius = DefaultDrawRadius;
+    private double _bestGap = double.MaxValue;
+    private int _cleanReports, _cleanNeeded = 4;
+
     /// <summary>The panels (status, menu) drawn over each eye, and the GameUI renderer that draws them; both set by the game page.</summary>
     public VrUi? Ui { get; set; }
     public Func<SpawnDev.GameUI.UIRenderer?>? UiRenderer { get; set; }
@@ -136,6 +146,10 @@ public sealed class VrWorld : IDisposable
             _particles.Init(_device, _queue, _format, _terrain.FrameBuffer);
         }
 
+        _startRadius = DrawRadius;
+        _bestGap = double.MaxValue;
+        _cleanReports = 0;
+        _cleanNeeded = 4;
         _spawn = cameraPosition;
         _startYaw = yawDegrees * MathF.PI / 180f;
         _worldFromRoom = null;
@@ -234,9 +248,34 @@ public sealed class VrWorld : IDisposable
             Console.WriteLine($"[Vr] frame {FramesDrawn}: head {head:F1}, ground {_groundY:F1} | every {_gapMsSum / _framesInReport:F1} ms, cpu {_frameMsSum / _framesInReport:F1} ms "
                 + $"(max {_frameMsMax:F1}; the two eyes {_eyeMsSum / _framesInReport:F1}) | per eye {st.VisibleColumns} columns, {st.DrawCalls} draws, {st.VisibleQuads} quads, "
                 + $"{_creatures.PartCount} creature parts, {_particles.EmitterCount} emitters | {_world.LoadedColumns} columns loaded, eye {_eyeWidth} x {_eyeHeight}");
+            Adapt(_gapMsSum / _framesInReport);
             _frameMsSum = _frameMsMax = _eyeMsSum = _gapMsSum = 0;
             _framesInReport = 0;
         }
+    }
+
+    // The gap between frames, against the best gap seen (the display's own period): well over it means frames are being dropped
+    private void Adapt(double gap)
+    {
+        _bestGap = Math.Min(_bestGap, gap);
+        if (!Adaptive) return;
+        if (gap > _bestGap * 1.3 && gap > 12.0 && DrawRadius > MinDrawRadius)
+        {
+            DrawRadius--;
+            _cleanReports = 0;
+            _cleanNeeded = Math.Min(_cleanNeeded * 2, 32);   // having had to back off, wait longer before trying again
+            Console.WriteLine($"[Vr] frames every {gap:F1} ms against {_bestGap:F1}: draw radius {DrawRadius}");
+        }
+        else if (gap <= _bestGap * 1.1)
+        {
+            if (++_cleanReports >= _cleanNeeded && DrawRadius < _startRadius)
+            {
+                DrawRadius++;
+                _cleanReports = 0;
+                Console.WriteLine($"[Vr] frames on time: draw radius {DrawRadius}");
+            }
+        }
+        else _cleanReports = 0;
     }
 
     // The bridge canvas and its depth buffer are one eye big
