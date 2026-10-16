@@ -63,6 +63,23 @@ try
     }
     await Shot("1-start");
     // "play": the gameplay layer: wrist numbers, the X menu, pointing at it, a swing with the right trigger
+    // "soak": walk for a few minutes swinging now and then, to see what a long session logs (errors, frame time, loading)
+    if ((args.ElementAtOrDefault(3) ?? "") == "soak")
+    {
+        int minutes = int.TryParse(args.ElementAtOrDefault(4), out var mm) ? mm : 3;
+        await page.EvaluateAsync("window.__xr.left = [0, -1]");
+        for (int i = 0; i < minutes * 60 / 4; i++)
+        {
+            await page.EvaluateAsync("window.__xr.right = [" + (i % 7 < 2 ? "0.8" : "0") + ", 0]; window.__xr.trigger = true");
+            await Task.Delay(300);
+            await page.EvaluateAsync("window.__xr.trigger = false");
+            await Task.Delay(3700);
+            if (i % 15 == 14) await Shot($"soak-{i / 15}");
+        }
+        await page.EvaluateAsync("window.__xr.left = [0, 0]; window.__xr.right = [0, 0]");
+        await Shot("soak-end");
+        return;
+    }
     // "die": hurt the player to death with F9, look at the headset's death menu, point at Respawn and press it
     if ((args.ElementAtOrDefault(3) ?? "") == "die")
     {

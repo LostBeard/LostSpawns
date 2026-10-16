@@ -204,7 +204,8 @@ public sealed class VrWorld : IDisposable
         _creatures.AddCreatures(_wildlife.Entities, head, seconds, 100f);
         _creatures.AddFires(_fires.Fires, head, 100f);
         _creatures.AddItems(_ground.Items, head, seconds, 40f);
-        if (RightHand is { } hand && HeldProvider?.Invoke() is { } held) _creatures.AddHeldAt(in held, hand.Position, hand.Direction);
+        if (RightHand is { } hand) _creatures.AddHeldAt(HeldProvider?.Invoke() ?? default, hand.Position, hand.Direction);
+        if (f.LeftHasRay) _creatures.AddHandAt(Vector3.Transform(f.LeftRayOrigin, m), Vector3.Normalize(Vector3.TransformNormal(f.LeftRayDirection, m)));
         _creatures.Commit();
         _particles!.Begin(seconds);
         _particles.AddFires(_fires.Fires, head, 100f, sky.Daylight);
