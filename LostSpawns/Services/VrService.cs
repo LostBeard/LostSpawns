@@ -13,7 +13,53 @@ public sealed class VrService : IDisposable
     private readonly SpawnJSRuntime _js;
     private XrSession? _session;
 
-    public VrService(SpawnJSRuntime js) => _js = js;
+    public VrService(SpawnJSRuntime js)
+    {
+        _js = js;
+        LoadOptions();
+    }
+
+    /// <summary>What the player chose for the headset (the VR menu's Settings page); kept in localStorage.</summary>
+    public sealed class VrOptions
+    {
+        public bool SmoothTurn { get; set; } = true;
+        public float TurnDegreesPerSecond { get; set; } = 110f;
+        public float SnapDegrees { get; set; } = 30f;
+        /// <summary>Darken the edges of the view while moving or turning.</summary>
+        public bool ComfortVignette { get; set; }
+        public int DrawRadius { get; set; } = VrWorld.DefaultDrawRadius;
+    }
+
+    public VrOptions Options { get; private set; } = new();
+    private const string OptionsKey = "lost.vr";
+
+    private void LoadOptions()
+    {
+        try
+        {
+            using var storage = _js.Get<SpawnDev.SpawnJS.JSObjects.Storage>("localStorage");
+            var raw = storage.GetItem(OptionsKey);
+            if (!string.IsNullOrEmpty(raw)) Options = System.Text.Json.JsonSerializer.Deserialize<VrOptions>(raw) ?? new VrOptions();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Vr] options not read: {ex.Message}");
+        }
+        DrawRadius = Math.Clamp(Options.DrawRadius, VrWorld.MinDrawRadius, 10);
+    }
+
+    public void SaveOptions()
+    {
+        try
+        {
+            using var storage = _js.Get<SpawnDev.SpawnJS.JSObjects.Storage>("localStorage");
+            storage.SetItem(OptionsKey, System.Text.Json.JsonSerializer.Serialize(Options));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Vr] options not saved: {ex.Message}");
+        }
+    }
 
     public XrSession Session => _session ??= new XrSession(_js);
 

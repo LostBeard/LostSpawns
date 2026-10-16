@@ -17,7 +17,10 @@ namespace LostSpawns.Pages;
 public partial class Game
 {
     private VrUi? _vrUi;
-    private VrPanel? _vrWrist, _vrMenu, _vrToast, _vrFlash, _vrPack, _vrHelp;
+    private VrPanel? _vrWrist, _vrMenu, _vrToast, _vrFlash, _vrPack, _vrHelp, _vrSettings, _vrVignette;
+    private UIButton? _vrTurnMode, _vrTurnSpeed, _vrSnapStep, _vrVignetteButton, _vrDrawRadius;
+    private float _vrVignetteLevel;
+    private UIPanel? _vrVigOuter, _vrVigInner;
     private UILabel? _vrWristHeader, _vrWristHeld, _vrToastLabel, _vrMenuStatus;
     private readonly (UIPanel Fill, UIPanel Back)[] _vrBars = new (UIPanel, UIPanel)[5];
     private readonly UIButton[] _vrHotbarButtons = new UIButton[9];
@@ -52,16 +55,22 @@ public partial class Game
         BuildVrMenu();
         BuildVrPack();
         BuildVrHelp();
+        BuildVrSettings();
+        BuildVrVignette();
         _vrUi.Panels.Add(_vrFlash!);
+        _vrUi.Panels.Add(_vrVignette!);
         _vrUi.Panels.Add(_vrWrist!);
         _vrUi.Panels.Add(_vrToast!);
         _vrUi.Panels.Add(_vrMenu!);
         _vrUi.Panels.Add(_vrPack!);
         _vrUi.Panels.Add(_vrHelp!);
+        _vrUi.Panels.Add(_vrSettings!);
         _vr.Ui = _vrUi;
         _vr.UiRenderer = () => Hud.UiRenderer;
         _vr.HeldProvider = () => new HeldView(Inventory.ActiveItem?.Id, Hud.SwingArc, Hud.SwingStrength, 0f, 0f);
         AttachVrHandlers();
+        ApplyVrOptions();
+        _vr.OnTurnModeToggled += smooth => { Vr.Options.SmoothTurn = smooth; Vr.SaveOptions(); };
         Hud.Notify("Press X for the menu: hotbar, crafting, controls");
     }
 
@@ -174,9 +183,10 @@ public partial class Game
         Button(p, "Backpack", 152, 416, () => { _vrPack!.Model = _vrMenu!.Model; _vrMenu.IsOpen = false; _vrPack.IsOpen = true; });
         Button(p, "Leave VR", 280, 416, () => { _ = Vr.Session.ExitAsync(); });
         Button(p, "Close", 24, 474, () => _vrMenu!.IsOpen = false);
+        Button(p, "Settings", 152, 474, () => { _vrSettings!.Model = _vrMenu!.Model; _vrMenu.IsOpen = false; _vrSettings.IsOpen = true; RefreshVrSettingsText(); });
         Button(p, "Controls", 280, 474, () => { _vrHelp!.Model = _vrMenu!.Model; _vrMenu.IsOpen = false; _vrHelp.IsOpen = true; });
 
-        _vrRespawn = new UIButton { Text = "Respawn", X = 152, Y = 474, Width = 248, Height = 50, Visible = false };
+        _vrRespawn = new UIButton { Text = "Respawn", X = 24, Y = 540, Width = 376, Height = 60, Visible = false };
         _vrRespawn.OnClick = VrRespawn;
         p.AddChild(_vrRespawn);
 
@@ -213,6 +223,74 @@ public partial class Game
             p.AddChild(b);
         }
         Button(p, "Back", 24, 320, () => { _vrMenu!.Model = _vrPack!.Model; _vrPack.IsOpen = false; _vrMenu.IsOpen = true; });
+    }
+
+    // The headset's own settings: how to turn, how far to draw, whether the edges darken while moving; kept between visits
+    private void BuildVrSettings()
+    {
+        _vrSettings = new VrPanel(800, 470, 0.0011f);
+        var p = _vrSettings.Panel;
+        var o = Vr.Options;
+        p.AddChild(new UILabel { X = 24, Y = 16, Text = "VR settings", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
+
+        UIButton Row(string name, float y, Action onClick, float width = 460)
+        {
+            var b = new UIButton { Text = name, X = 24, Y = y, Width = width, Height = 52 };
+            b.OnClick = () => { onClick(); Vr.SaveOptions(); RefreshVrSettingsText(); };
+            p.AddChild(b);
+            return b;
+        }
+        void Small(string text, float x, float y, Action onClick)
+        {
+            var b = new UIButton { Text = text, X = x, Y = y, Width = 60, Height = 52 };
+            b.OnClick = () => { onClick(); Vr.SaveOptions(); RefreshVrSettingsText(); };
+            p.AddChild(b);
+        }
+
+        _vrTurnMode = Row("", 76, () => { o.SmoothTurn = !o.SmoothTurn; if (_vr != null) _vr.SmoothTurn = o.SmoothTurn; });
+        _vrTurnSpeed = Row("", 136, () => { }, 380);
+        Small("-", 416, 136, () => { o.TurnDegreesPerSecond = MathF.Max(40f, o.TurnDegreesPerSecond - 15f); ApplyVrOptions(); });
+        Small("+", 484, 136, () => { o.TurnDegreesPerSecond = MathF.Min(240f, o.TurnDegreesPerSecond + 15f); ApplyVrOptions(); });
+        _vrSnapStep = Row("", 196, () => { o.SnapDegrees = o.SnapDegrees >= 60f ? 15f : o.SnapDegrees + 15f; ApplyVrOptions(); });
+        _vrVignetteButton = Row("", 256, () => o.ComfortVignette = !o.ComfortVignette);
+        _vrDrawRadius = Row("", 316, () => { }, 380);
+        Small("-", 416, 316, () => Vr.DrawRadius = o.DrawRadius = Math.Max(VrWorld.MinDrawRadius, o.DrawRadius - 1));
+        Small("+", 484, 316, () => Vr.DrawRadius = o.DrawRadius = Math.Min(10, o.DrawRadius + 1));
+        p.AddChild(new UILabel { X = 560, Y = 330, Width = 230, Text = "(next time you enter VR)", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 170, 190, 210) });
+        Button(p, "Back", 24, 400, () => { _vrMenu!.Model = _vrSettings!.Model; _vrSettings.IsOpen = false; _vrMenu.IsOpen = true; });
+    }
+
+    private void ApplyVrOptions()
+    {
+        if (_vr == null) return;
+        var o = Vr.Options;
+        _vr.SmoothTurn = o.SmoothTurn;
+        _vr.TurnDegreesPerSecond = o.TurnDegreesPerSecond;
+        _vr.SnapTurnDegrees = o.SnapDegrees;
+    }
+
+    private void RefreshVrSettingsText()
+    {
+        var o = Vr.Options;
+        _vrTurnMode!.Text = "Turning: " + (o.SmoothTurn ? "smooth" : "in steps");
+        _vrTurnSpeed!.Text = $"Smooth turn speed: {o.TurnDegreesPerSecond:F0} deg/s";
+        _vrSnapStep!.Text = $"Step turn size: {o.SnapDegrees:F0} deg";
+        _vrVignetteButton!.Text = "Comfort vignette: " + (o.ComfortVignette ? "on" : "off");
+        _vrDrawRadius!.Text = $"Draw distance: {o.DrawRadius} columns";
+    }
+
+    // The edges of the view go dark while the sticks move the player: a ring close in front of the eyes, wider the harder the push
+    private void BuildVrVignette()
+    {
+        _vrVignette = new VrPanel(1300, 1300) { ReadOnly = true };
+        var p = _vrVignette.Panel;
+        p.BackgroundColor = Color.FromArgb(0, 0, 0, 0);
+        p.BorderWidth = 0;
+        // GameUI caps a ring at 255 px: two rings, one inside the other, make the wide band
+        _vrVigOuter = new UIPanel { X = 0, Y = 0, Width = 1300, Height = 1300, BackgroundColor = Color.FromArgb(0, 0, 0, 0), BorderColor = Color.FromArgb(240, 0, 0, 0), CornerRadius = 650, BorderWidth = 1 };
+        _vrVigInner = new UIPanel { BackgroundColor = Color.FromArgb(0, 0, 0, 0), BorderColor = Color.FromArgb(240, 0, 0, 0), BorderWidth = 1, Visible = false };
+        p.AddChild(_vrVigOuter);
+        p.AddChild(_vrVigInner);
     }
 
     // How to play, for anyone handed the headset
@@ -279,19 +357,19 @@ public partial class Game
         Renderer.Camera.Pitch = Math.Clamp(pitch, -89f, 89f);
 
         bool dead = Hud.IsDead;
-        if (dead && !_vrMenu!.IsOpen) { _vrPack!.IsOpen = false; _vrHelp!.IsOpen = false; OpenVrMenu(f); }
+        if (dead && !_vrMenu!.IsOpen) { _vrPack!.IsOpen = false; _vrHelp!.IsOpen = false; _vrSettings!.IsOpen = false; OpenVrMenu(f); }
         _vrRespawn!.Visible = dead;
 
         // The menu: X opens and closes it; the right ray points at it and the trigger clicks
         if (f.LeftPrimary && !_vrXWas && !dead)
         {
-            if (_vrMenu!.IsOpen || _vrPack!.IsOpen || _vrHelp!.IsOpen) { _vrMenu.IsOpen = false; _vrPack!.IsOpen = false; _vrHelp!.IsOpen = false; } else OpenVrMenu(f);
+            if (_vrMenu!.IsOpen || _vrPack!.IsOpen || _vrHelp!.IsOpen || _vrSettings!.IsOpen) { _vrMenu.IsOpen = false; _vrPack!.IsOpen = false; _vrHelp!.IsOpen = false; _vrSettings!.IsOpen = false; } else OpenVrMenu(f);
         }
         _vrXWas = f.LeftPrimary;
         Vector3? ro = f.RightHasRay ? f.RightRayOrigin : null;
         Vector3? rd = f.RightHasRay ? f.RightRayDirection : null;
-        var pointed = _vrHelp!.IsOpen ? _vrHelp : _vrPack!.IsOpen ? _vrPack : _vrMenu!;
-        bool menuOpen = _vrMenu!.IsOpen || _vrPack!.IsOpen || _vrHelp.IsOpen;
+        var pointed = _vrSettings!.IsOpen ? _vrSettings : _vrHelp!.IsOpen ? _vrHelp : _vrPack!.IsOpen ? _vrPack : _vrMenu!;
+        bool menuOpen = _vrMenu!.IsOpen || _vrPack!.IsOpen || _vrHelp!.IsOpen || _vrSettings.IsOpen;
         bool onMenu = menuOpen && pointed.Step(ro, rd, f.RightTrigger, dt);
         _vrUi!.ShowRay = menuOpen && ro != null;
         if (ro is { } rayO && rd is { } rayD)
@@ -419,7 +497,9 @@ public partial class Game
         if (_saveTimer >= SaveService.AutoSaveIntervalSeconds)
         {
             _saveTimer = 0;
-            Save.SaveNow(Renderer.Camera.Position, Renderer.Camera.Yaw, Renderer.Camera.Pitch);
+            // Where the head is and looks (the camera is at the right hand)
+            var (headAt, headYaw, headPitch) = _vr!.Pose;
+            Save.SaveNow(headAt, headYaw, Math.Clamp(headPitch, -80f, 80f));
         }
         // The HUD's timers (swings, toasts, numbers) run on this too
         Hud.Update(dt, Renderer.Camera.Position, Renderer.Camera.Yaw);
@@ -491,6 +571,25 @@ public partial class Game
                 var it = Inventory.Backpack[i];
                 _vrPackButtons[i].Text = it == null ? "-" : Short(it.Name, 9) + (it.Count > 1 ? $" x{it.Count}" : "");
             }
+
+        // The comfort vignette follows how hard the sticks are pushed
+        float effort = Vr.Options.ComfortVignette ? _vr!.StickEffort : 0f;
+        _vrVignetteLevel += (effort - _vrVignetteLevel) * MathF.Min(1f, dt * 5f);
+        _vrVignette!.IsOpen = _vrVignetteLevel > 0.02f;
+        // The panel is 1.3 m square, 0.27 m from the eyes: the open middle shrinks from 0.4 m to 0.17 m a side (about 110 to 38 degrees across)
+        float hole = 0.40f - 0.23f * _vrVignetteLevel;
+        float band = MathF.Max(1f, 650f - hole * 1000f);
+        float outer = MathF.Min(band, 250f), inner = band - outer;
+        _vrVigOuter!.BorderWidth = outer;
+        _vrVigInner!.Visible = inner > 1f;
+        if (inner > 1f)
+        {
+            _vrVigInner.X = _vrVigInner.Y = outer;
+            _vrVigInner.Width = _vrVigInner.Height = 1300f - 2f * outer;
+            _vrVigInner.CornerRadius = MathF.Max(0f, 650f - outer);
+            _vrVigInner.BorderWidth = inner;
+        }
+        _vrVignette.Model = VrPanel.Facing(headRoom + fwdRoom * 0.27f, headRoom);
 
         // The menu's live parts
         if (_vrMenu!.IsOpen)

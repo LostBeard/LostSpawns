@@ -91,7 +91,12 @@ public sealed class VrWorld : IDisposable
     /// <summary>The world has columns and the renderers exist: frames draw.</summary>
     public bool Ready { get; private set; }
     public float TurnDegreesPerSecond { get => _loco.SmoothTurnDegreesPerSecond; set => _loco.SmoothTurnDegreesPerSecond = value; }
-    public bool SmoothTurn => _loco.SmoothTurn;
+    public bool SmoothTurn { get => _loco.SmoothTurn; set => _loco.SmoothTurn = value; }
+    public float SnapTurnDegrees { get => _loco.SnapTurnDegrees; set => _loco.SnapTurnDegrees = value; }
+    /// <summary>The right stick was clicked: the turning switched between smooth and snap (the new state).</summary>
+    public event Action<bool>? OnTurnModeToggled;
+    /// <summary>How hard the sticks are pushed now (0..1): walking or turning, for the comfort vignette.</summary>
+    public float StickEffort { get; private set; }
     public int FramesDrawn { get; private set; }
     public Vector3 HeadInWorld { get; private set; }
     public int LastVisibleColumns { get; private set; }
@@ -180,12 +185,14 @@ public sealed class VrWorld : IDisposable
         if (f.RightThumb && !_thumbWasDown)
         {
             _loco.SmoothTurn = !_loco.SmoothTurn;
+            OnTurnModeToggled?.Invoke(_loco.SmoothTurn);
             Console.WriteLine($"[Vr] turning {(_loco.SmoothTurn ? "smoothly" : "in steps")}");
         }
         _thumbWasDown = f.RightThumb;
 
         // The sticks: left walks (a click or a grip runs), right turns
         float speed = f.LeftThumb || f.LeftGrip || f.RightGrip ? RunSpeed : WalkSpeed;
+        StickEffort = MathF.Min(1f, MathF.Max(XrLocomotion.ApplyDeadzone(f.LeftStick).Length(), MathF.Abs(XrLocomotion.ApplyDeadzone(f.RightStick).X)));
         var m = _loco.Step(_worldFromRoom.Value, f.HeadPosition, f.HeadOrientation, f.LeftStick, f.RightStick, dt, speed);
 
         // The floor of the room follows the ground under the head
