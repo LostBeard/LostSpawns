@@ -11,20 +11,19 @@ The scope is intentionally ambitious: a full DayZ-scale persistent open world wi
 ## ✨ Features (Shipped)
 
 ### GPU Pipeline (SpawnDev.ILGPU + WebGPU)
-- **GPU Terrain Generation** — Perlin noise heightmap computed on the GPU via ILGPU compute kernels
-- **GPU Mesh Generation** — Voxel face culling and vertex emission done entirely on the GPU with atomic counters via SpawnDev.VoxelEngine binary greedy meshing
-- **GPU→GPU Buffer Copies** — Sub-view peer-to-peer copies for efficient vertex data transfer
-- **WebGPU Render Pipeline** — Custom WGSL shaders with dual-light system, distance fog, and per-block color variation
+- **GPU terrain meshing** - whole 16 x 256 x 16 columns are face-culled and greedy-merged on the GPU by SpawnDev.VoxelEngine's `ColumnMesher`; the quads stay GPU-resident in a shared arena (one draw per column and pass), nothing is read back
+- **Textured, lit, fogged blocks** - VoxelEngine's `BlockRenderPipeline`: texture atlas with mip chain, animated water, biome-tinted grass / leaves / water, cutout leaves and plants, translucent water drawn back to front
+- **Everything painted at start-up** - the block, sky, creature, prop and particle textures are generated from tileable noise (`BlockTextures`, `SkyTextures`, `CreatureModels`, `ParticleRenderer`): the game ships no image files and no third-party art
+- **Dig / terraform** - an edit re-uploads and re-meshes the affected column (and a neighbour across a border) in about 15 ms
 
 ### Rendering
-- **Infinite Voxel Terrain** — Procedurally generated, streamed in real-time as you explore
-- **Face-Dependent Block Colors** — Grass is green on top, earth-toned on sides
-- **Distance Fog** — Smooth quadratic falloff blending terrain into the sky
-- **Frustum Culling** — Only visible chunks are drawn
-- **Free-List Vertex Buffer** — Sub-allocated GPU buffer with slot reuse and coalescing (zero-stall grow via GPU copy)
-- **Day/Night Cycle** — Sun, moon, stars, dawn/dusk transitions, golden-hour tint, moonlight tint, mist, fireflies, falling leaves
-- **Weather** — Rain, lightning + delayed thunder, storm gloom, wind ambient, rainwater collection
-- **HUD** — GPU-rendered via SpawnDev.GameUI (no HTML overlays on canvas) - status bars, hotbar, minimap, debug line, toasts, achievements panel, pause/settings, loading screen with tips
+- **A real world** - Deer Isle terrain from Copernicus DEM data with a sea floor that deepens from the shore, sand / gravel shores, granite cliffs, spruce forests with ferns, oak groves, meadows of tall grass and flowers (placed as a pure function of position, so crowns cross chunk borders without seams)
+- **Sky** - gradient from horizon to zenith, sun and moon phases, stars, drifting clouds (VoxelEngine `SkyPipeline`); the sun, ambient light, fog and moonlight all come from the game clock and the weather (`Atmosphere`)
+- **Weather** - 3D rain that stops at the first roof, a tree crown included (`WeatherPipeline`)
+- **Creatures** - wolf, deer, boar, bear, rabbit and crow as models of textured boxes with painted fur, a walk cycle from how far each has walked, head look-around, tail wag and ear twitch (`EntityRenderPipeline`)
+- **Props** - campfire (logs, stones, coals), torch, loot on the ground, and the tool in your hand (arm, axe, pickaxe, bow) swinging with the camera
+- **Particles** - flames, smoke, sparks and a glow round fires, fireflies over the meadow at night, dust where a block breaks, blood where a creature is hit (`ParticleRenderPipeline`)
+- **Day/Night Cycle**, **Weather**, **HUD** - GPU-rendered via SpawnDev.GameUI (no HTML overlays on canvas): status bars, hotbar, minimap, debug line, toasts, achievements panel, pause/settings, loading screen with tips
 
 ### Survival Gameplay
 - **Stats** — HP, hunger, thirst, stamina, temperature; hunger/thirst gate stamina regen, sprint drains thirst, hypothermia + heatstroke
@@ -179,14 +178,31 @@ Navigate to `https://localhost:7272/game` and click the canvas to capture mouse 
 | **F3** | Debug HUD |
 | **F5** | Manual quick-save |
 
+## 🔍 Looking at the game from a known place
+
+Developer URL parameters, for checking the picture (nothing here changes a normal visit):
+
+| Parameter | Effect |
+|-----------|--------|
+| `?time=0.33` | Pin the time of day (0 = first light, 0.08 sunrise, 0.33 noon, 0.58 sunset, 0.85 night) |
+| `?rain=0.8` | Pin the rain (0 clear .. 1 downpour) |
+| `?cam=x,z,yaw,pitch[,up]` | Start at a world position (yaw 0 = east, -90 = north), `up` blocks above the ground |
+| `?spawn=wolf,deer,bear` | Put these creatures in a row ahead of the camera |
+| `?still=1` | The wildlife stands still |
+| `?god=1` | The player takes no damage |
+| `?dig=3` | Break 3 blocks along the view ray after loading (checks that an edit re-meshes) |
+
+`_tools/render-probe` drives Chrome through Playwright, loads such a URL and saves a screenshot and the console log.
+
 ## 📦 NuGet Packages Used
 
-- [`SpawnDev.SpawnJS`](https://www.nuget.org/packages/SpawnDev.SpawnJS) - Strongly-typed JS interop for every Web API (via GameUI + VoxelEngine)
+- [`SpawnDev.SpawnJS`](https://www.nuget.org/packages/SpawnDev.SpawnJS) and `SpawnDev.SpawnJS.Blazor` - Strongly-typed JS interop for every Web API
 - [`SpawnDev.ILGPU`](https://www.nuget.org/packages/SpawnDev.ILGPU) - GPU compute with WebGPU, WebGL, Wasm, CUDA, OpenCL, and CPU backends (transitive via VoxelEngine)
-- [`SpawnDev.VoxelEngine`](https://www.nuget.org/packages/SpawnDev.VoxelEngine) - GPU-accelerated voxel engine (binary greedy meshing, culling, LOD, terrain carving, physics, SDF, VR)
+- [`SpawnDev.VoxelEngine`](https://www.nuget.org/packages/SpawnDev.VoxelEngine) - GPU-accelerated voxel engine: column meshing, block / sky / weather / entity / particle render pipelines, culling, terrain carving, physics, VR
 - [`SpawnDev.GameUI`](https://www.nuget.org/packages/SpawnDev.GameUI) - GPU-rendered game UI library (no HTML overlays on canvas, unified PC/VR/AR input)
+- `SpawnDev.SpawnJS.Cryptography` - Ed25519 identity
 
-> Currently consumed via `<ProjectReference>` for fast iteration. Switching to `<PackageReference>` for the public NuGet versions when GitHub Actions / GitHub Pages deployment lands.
+> The VoxelEngine and GameUI versions in `LostSpawns.csproj` are builds from the local NuGet feed (`-local.N`) until their next releases reach nuget.org; the GitHub Pages workflow can restore them once they do.
 
 ## 📄 License
 
