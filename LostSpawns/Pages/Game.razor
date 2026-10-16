@@ -282,6 +282,22 @@
             _verticalVelocity = 0;
             _peakFallSpeed = 0;
         }
+        if (view.Dig > 0) _ = DigForDebugAsync(view.Dig);
+    }
+
+    /// <summary>?dig=N: after the world has settled, break N blocks along the view ray and log what the world did, to check that an edit re-meshes.</summary>
+    private async Task DigForDebugAsync(int count)
+    {
+        await Task.Delay(6000);
+        for (int i = 0; i < count; i++)
+        {
+            var hit = World.Raycast(Renderer.Camera.Position, Renderer.Camera.Front, 12f);
+            if (!hit.DidHit) { Console.WriteLine("[Dig] nothing in reach"); break; }
+            var broken = World.TryBreakBlock(hit.BlockX, hit.BlockY, hit.BlockZ);
+            Console.WriteLine($"[Dig] broke {broken} at {hit.BlockX},{hit.BlockY},{hit.BlockZ}; dirty columns {World.DirtyRemeshPending}");
+            await Task.Delay(1500);
+            Console.WriteLine($"[Dig] remesh took {World.LastRemeshMs:F1} ms, {World.LastSectionsMeshed} column(s) meshed, pending {World.DirtyRemeshPending}");
+        }
     }
 
     // Save-to-localStorage autosave timer. Runs inside OnGameUpdate so time is
@@ -454,7 +470,7 @@
         var bt = World.GetBlockAt(ix, underY, iz);
         return bt == LostSpawns.Models.BlockType.Air
             ? LostSpawns.Models.BlockType.Dirt
-            : bt;
+            : bt.Material();
     }
 
     private void ApplyGravityAndJump(float dt)
@@ -889,7 +905,7 @@
         if (!hit.DidHit) { Audio.PlayWhoosh(); return; }
 
         // Peek at the target block before breaking - tool requirement check.
-        var targetType = (LostSpawns.Models.BlockType)hit.BlockType;
+        var targetType = ((LostSpawns.Models.BlockType)hit.BlockType).Material();
         var requiredTool = RequiredToolForBlockType(targetType);
         if (requiredTool != null && !IsToolInFamily(Inventory.ActiveItem?.Id, requiredTool))
         {
@@ -2856,7 +2872,7 @@
         {
             // Green interactive tint for breakable blocks.
             Hud.Crosshair.TargetType = SpawnDev.GameUI.Elements.CrosshairTarget.Interactive;
-            Hud.InteractionPrompt.Text = BuildInteractionPromptText((LostSpawns.Models.BlockType)targetHit.BlockType);
+            Hud.InteractionPrompt.Text = BuildInteractionPromptText(((LostSpawns.Models.BlockType)targetHit.BlockType).Material());
         }
         else if (Inventory.ActiveItem?.Id == "tool.bow")
         {

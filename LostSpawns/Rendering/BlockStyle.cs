@@ -26,6 +26,12 @@ public static class BlockStyle
         c[(int)BlockType.Water] = BlockClass.Water;
         c[(int)BlockType.Wood] = BlockClass.Opaque;
         c[(int)BlockType.Leaves] = BlockClass.Cutout;   // holes in the leaves show what is behind them
+        c[(int)BlockType.Gravel] = BlockClass.Opaque;
+        c[(int)BlockType.Granite] = BlockClass.Opaque;
+        c[(int)BlockType.TallGrass] = BlockClass.Cross; // crossed planes; nothing is hidden by them
+        c[(int)BlockType.Fern] = BlockClass.Cross;
+        c[(int)BlockType.Dandelion] = BlockClass.Cross;
+        c[(int)BlockType.Aster] = BlockClass.Cross;
         return c;
     }
 
@@ -51,6 +57,15 @@ public static class BlockStyle
 
         m[(int)BlockType.Leaves] = BlockMaterial.Uniform((ushort)BlockTiles.Leaves, Vector3.One,
             BlockMaterial.FlagTinted | BlockMaterial.TintFoliage);
+
+        m[(int)BlockType.Gravel] = BlockMaterial.Uniform((ushort)BlockTiles.Gravel);
+        m[(int)BlockType.Granite] = BlockMaterial.Uniform((ushort)BlockTiles.Granite);
+        // Grass tufts and ferns are grayscale sprites coloured by the biome's grass colour; the flowers carry their own colours
+        uint grassTint = BlockMaterial.FlagTinted | BlockMaterial.TintGrass;
+        m[(int)BlockType.TallGrass] = BlockMaterial.Uniform((ushort)BlockTiles.TallGrass, Vector3.One, grassTint);
+        m[(int)BlockType.Fern] = BlockMaterial.Uniform((ushort)BlockTiles.Fern, Vector3.One, grassTint);
+        m[(int)BlockType.Dandelion] = BlockMaterial.Uniform((ushort)BlockTiles.Dandelion);
+        m[(int)BlockType.Aster] = BlockMaterial.Uniform((ushort)BlockTiles.Aster);
 
         // Water: the surface sits a tenth low, lit flat; tinted by the biome's water colour
         m[(int)BlockType.Water] = BlockMaterial.Uniform((ushort)BlockTiles.Water0, Vector3.One,

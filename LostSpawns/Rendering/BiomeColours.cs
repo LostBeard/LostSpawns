@@ -34,8 +34,8 @@ public static class BiomeColours
                                    : Vector3.Lerp(lush, dry, SmoothStep(0.52f, 0.68f, region));
             g *= 0.92f + 0.16f * fine;
 
-            var spruce = new Vector3(0.22f, 0.43f, 0.19f);
-            var fresh = new Vector3(0.34f, 0.55f, 0.20f);
+            var spruce = new Vector3(0.27f, 0.50f, 0.22f);
+            var fresh = new Vector3(0.40f, 0.62f, 0.22f);
             var rust = new Vector3(0.66f, 0.46f, 0.15f);
             var f = Vector3.Lerp(spruce, fresh, SmoothStep(0.35f, 0.65f, region));
             f = Vector3.Lerp(f, rust, 0.55f * SmoothStep(0.66f, 0.80f, fine));

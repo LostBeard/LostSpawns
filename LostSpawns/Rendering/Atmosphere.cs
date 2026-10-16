@@ -29,17 +29,17 @@ public readonly record struct Atmosphere(
         float dayFactor = Math.Clamp(elevation * 2f + 0.5f, 0f, 1f);
         float dawnFactor = Math.Clamp(1f - MathF.Abs(elevation) * 4f, 0f, 1f);
 
-        float ar = Lerp(0.05f, 0.30f, dayFactor); ar = Lerp(ar, 0.25f, dawnFactor * 0.6f);
-        float ag = Lerp(0.06f, 0.32f, dayFactor); ag = Lerp(ag, 0.18f, dawnFactor * 0.6f);
-        float ab = Lerp(0.12f, 0.38f, dayFactor); ab = Lerp(ab, 0.12f, dawnFactor * 0.6f);
+        float ar = Lerp(0.10f, 0.30f, dayFactor); ar = Lerp(ar, 0.25f, dawnFactor * 0.6f);
+        float ag = Lerp(0.12f, 0.32f, dayFactor); ag = Lerp(ag, 0.18f, dawnFactor * 0.6f);
+        float ab = Lerp(0.21f, 0.38f, dayFactor); ab = Lerp(ab, 0.12f, dawnFactor * 0.6f);
 
         float sr = Lerp(0.15f, 1.0f, dayFactor); sr = Lerp(sr, 1.0f, dawnFactor * 0.8f);
         float sg = Lerp(0.18f, 0.95f, dayFactor); sg = Lerp(sg, 0.55f, dawnFactor * 0.8f);
         float sb = Lerp(0.35f, 0.85f, dayFactor); sb = Lerp(sb, 0.25f, dawnFactor * 0.8f);
 
-        float fr = Lerp(0.04f, 0.62f, dayFactor); fr = Lerp(fr, 0.85f, dawnFactor * 0.7f);
-        float fg = Lerp(0.05f, 0.76f, dayFactor); fg = Lerp(fg, 0.50f, dawnFactor * 0.7f);
-        float fb = Lerp(0.10f, 0.92f, dayFactor); fb = Lerp(fb, 0.30f, dawnFactor * 0.7f);
+        float fr = Lerp(0.05f, 0.62f, dayFactor); fr = Lerp(fr, 0.85f, dawnFactor * 0.7f);
+        float fg = Lerp(0.07f, 0.76f, dayFactor); fg = Lerp(fg, 0.50f, dawnFactor * 0.7f);
+        float fb = Lerp(0.15f, 0.92f, dayFactor); fb = Lerp(fb, 0.30f, dawnFactor * 0.7f);
         float sunStrength = Math.Clamp(dayFactor * 0.62f + 0.05f, 0.05f, 0.62f);
 
         float daylight = Smooth(-0.12f, 0.28f, elevation);
@@ -53,6 +53,15 @@ public readonly record struct Atmosphere(
         var sunColor = new Vector3(sr, sg, sb);
         var ambient = new Vector3(ar, ag, ab);
         var fog = new Vector3(fr, fg, fb);
+
+        // Moonlight: once the sun is well below the horizon the moon, opposite it, is the light: cool, pale, enough to see the land by
+        float moon = Smooth(-0.05f, -0.30f, elevation);
+        if (moon > 0f)
+        {
+            sun = Vector3.Normalize(Vector3.Lerp(sun, -sun, moon));
+            sunColor = Vector3.Lerp(sunColor, new Vector3(0.50f, 0.62f, 1.0f), moon);
+            sunStrength = sunStrength * (1f - moon) + 0.34f * moon;
+        }
 
         rain = Math.Clamp(rain, 0f, 1f);
         thunder = Math.Clamp(thunder, 0f, 1f) * rain;

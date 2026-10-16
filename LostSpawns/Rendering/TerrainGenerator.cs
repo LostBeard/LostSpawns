@@ -85,47 +85,12 @@ public class TerrainGenerator
 
     private void PlaceTrees(ChunkData chunk, int chunkX, int chunkZ)
     {
-        // Deterministic RNG per chunk for tree placement
-        var rng = new Random(HashCode.Combine(_seed, chunkX * 73856093, chunkZ * 19349663));
+        Vegetation.Place(chunk, chunkX, chunkZ, SurfaceAt, SeaLevel, _seed);
+    }
 
-        // Keep trees 3 blocks from chunk edges so leaves don't clip
-        for (int x = 3; x < ChunkData.SizeXZ - 3; x++)
-        for (int z = 3; z < ChunkData.SizeXZ - 3; z++)
-        {
-            if (rng.NextDouble() > 0.015) continue; // ~1.5% chance
-
-            // Find grass surface
-            int groundY = -1;
-            for (int y = ChunkData.Height - 1; y >= 0; y--)
-            {
-                if (chunk.GetBlock(x, y, z) == BlockType.Grass)
-                {
-                    groundY = y;
-                    break;
-                }
-            }
-            if (groundY < 0 || groundY > ChunkData.Height - 10) continue;
-
-            int trunkH = 4 + rng.Next(2); // 4–5 blocks tall
-
-            // Trunk
-            for (int y = 1; y <= trunkH; y++)
-                chunk.SetBlock(x, groundY + y, z, BlockType.Wood);
-
-            // Leaves (rounded canopy)
-            int leafBase = groundY + trunkH;
-            for (int ly = 0; ly <= 2; ly++)
-            for (int lx = -2; lx <= 2; lx++)
-            for (int lz = -2; lz <= 2; lz++)
-            {
-                // Skip corners for a rounder shape
-                if (Math.Abs(lx) == 2 && Math.Abs(lz) == 2) continue;
-                if (ly == 2 && (Math.Abs(lx) > 1 || Math.Abs(lz) > 1)) continue;
-
-                int tx = x + lx, ty = leafBase + ly, tz = z + lz;
-                if (chunk.GetBlock(tx, ty, tz) == BlockType.Air)
-                    chunk.SetBlock(tx, ty, tz, BlockType.Leaves);
-            }
-        }
+    private (int y, BlockType type) SurfaceAt(int worldX, int worldZ)
+    {
+        int h = GetHeight(worldX, worldZ);
+        return (h, h <= SeaLevel + 1 ? BlockType.Sand : BlockType.Grass);
     }
 }

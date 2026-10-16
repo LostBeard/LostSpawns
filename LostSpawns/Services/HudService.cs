@@ -36,9 +36,6 @@ public class HudService : IDisposable
     // Rain particle state. Each particle stores its current Y, per-particle speed,
     // and X (randomized once at spawn). Updated in Update(dt); drawn in OnPostRender
     // using the UI renderer's DrawRect so the streaks land on top of the voxel scene.
-    private readonly float[] _rainX = new float[140];
-    private readonly float[] _rainY = new float[140];
-    private readonly float[] _rainSpeed = new float[140];
 
     // Firefly particles - tiny pulsing yellow dots that drift slowly
     // through the screen-space upper half during night. Pure atmosphere
@@ -64,16 +61,6 @@ public class HudService : IDisposable
     private bool _leavesSeeded;
     private readonly Random _leafFallRng = new();
 
-    // Dawn mist - low-Y horizontal-drifting white particles only visible
-    // during the dawn window. Sells the cool early-morning haze that
-    // hangs in real-world forests after a cold night.
-    private const int MistCount = 14;
-    private readonly float[] _mistX = new float[MistCount];
-    private readonly float[] _mistY = new float[MistCount];
-    private readonly float[] _mistDrift = new float[MistCount];
-    private bool _mistSeeded;
-    private readonly Random _mistRng = new();
-
     // Breath-puff particles for cold weather. Shorter-lived + fewer than rain;
     // emitted only when the player's temperature is low. Each particle rises
     // a few pixels as it fades. Age runs 0 -> 1 (1 = dead).
@@ -83,14 +70,7 @@ public class HudService : IDisposable
     private readonly float[] _breathAge = new float[BreathMax];
     private float _breathEmitTimer = 0f;
 
-    // Night stars. Fixed positions seeded once (so the sky doesn't churn every
-    // frame). Visible only at night; alpha scales with how dark the sky is.
-    private const int StarCount = 60;
-    private readonly float[] _starX = new float[StarCount];
-    private readonly float[] _starY = new float[StarCount];
-    private readonly float[] _starSize = new float[StarCount];
-    private bool _starsSeeded;
-    // World-projected sun screen X from last DrawSunMoon (entity shadow bias).
+    // Sun screen X from the last UpdateSunScreenPosition (entity shadow bias).
     private float _sunScreenX;
     private bool _sunVisible;
 
@@ -216,7 +196,6 @@ public class HudService : IDisposable
             _goldIdx = (_goldIdx + 1) % GoldMax;
         }
     }
-    private bool _rainSeeded;
     private readonly Random _rainRng = new();
     private RenderService? _renderer;
     private UIGrid? _backpackGrid;
@@ -2559,81 +2538,6 @@ public class HudService : IDisposable
         }
     }
 
-    private void UpdateRain(float dt)
-    {
-        if (_weather.RainIntensity <= 0.01f) return;
-        if (_renderer == null) return;
-
-        int vw = _renderer.CanvasWidth;
-        int vh = _renderer.CanvasHeight;
-        if (!_rainSeeded)
-        {
-            for (int i = 0; i < _rainX.Length; i++)
-            {
-                _rainX[i] = (float)(_rainRng.NextDouble() * vw);
-                _rainY[i] = (float)(_rainRng.NextDouble() * vh);
-                _rainSpeed[i] = 600f + (float)(_rainRng.NextDouble() * 400f);
-            }
-            _rainSeeded = true;
-        }
-
-        for (int i = 0; i < _rainX.Length; i++)
-        {
-            _rainY[i] += _rainSpeed[i] * dt;
-            if (_rainY[i] > vh)
-            {
-                _rainY[i] = -20f;
-                _rainX[i] = (float)(_rainRng.NextDouble() * vw);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Seed + paint a field of tiny white star dots across the upper half of
-    /// the viewport. Alpha scales with how dark the sky is, so twilight
-    /// shows only the brightest and full night shows the whole field. The
-    /// positions are fixed once so the sky doesn't churn per frame.
-    /// </summary>
-    private void DrawStars(int viewportWidth, int viewportHeight)
-    {
-        if (!_starsSeeded)
-        {
-            var rng = new Random(17); // deterministic seed - same sky every session
-            for (int i = 0; i < StarCount; i++)
-            {
-                _starX[i] = (float)rng.NextDouble() * viewportWidth;
-                // Stars cluster in the upper 55% of screen so they look like sky.
-                _starY[i] = (float)rng.NextDouble() * viewportHeight * 0.55f;
-                _starSize[i] = rng.NextDouble() < 0.15 ? 3f : 2f;
-            }
-            _starsSeeded = true;
-        }
-
-        // Fade in during dusk, peak at midnight-ish, fade out at dawn.
-        float t = _worldTime.DayFraction;
-        float darkness;
-        if (t < 0.10f) darkness = 1f - (t / 0.10f);          // dawn pre-sunrise
-        else if (t < 0.55f) darkness = 0f;                    // day
-        else if (t < 0.75f) darkness = (t - 0.55f) / 0.20f;   // dusk
-        else darkness = 1f;                                   // night
-
-        if (darkness <= 0.01f) return;
-        int baseAlpha = (int)(230 * darkness);
-
-        for (int i = 0; i < StarCount; i++)
-        {
-            // Twinkle: per-star sin offset on alpha so the field shimmers
-            // rather than holding a flat brightness. Phase derived from
-            // the star's X so neighbors twinkle out of sync.
-            double now = (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
-            float twinkle = 0.7f + 0.3f * MathF.Sin((float)now * 1.5f + _starX[i] * 0.05f);
-            int alpha = Math.Clamp(
-                (int)((baseAlpha - (_starSize[i] < 3 ? 50 : 0)) * twinkle), 0, 255);
-            _ui.Renderer.DrawRect(_starX[i], _starY[i], _starSize[i], _starSize[i],
-                System.Drawing.Color.FromArgb(alpha, 240, 240, 230));
-        }
-    }
-
     /// <summary>
     /// Render fireflies during deep night - tiny yellow dots that pulse
     /// in alpha + drift slowly horizontally. Lazy-seeds on first night
@@ -2683,49 +2587,6 @@ public class HudService : IDisposable
             if (alpha < 8) continue;
             _ui.Renderer.DrawRect(_flyX[i], _flyY[i] + yBob, 3f, 3f,
                 System.Drawing.Color.FromArgb(alpha, 230, 240, 100));
-        }
-    }
-
-    /// <summary>
-    /// Render dawn mist - long horizontal pale-white streaks that drift
-    /// across the lower half of the screen during early dawn (0.05-0.13).
-    /// Sells the cold-morning haze that real forests produce after a
-    /// cold night.
-    /// </summary>
-    private void DrawDawnMist(int viewportWidth, int viewportHeight)
-    {
-        float t = _worldTime.DayFraction;
-        float vis = 0f;
-        if (t >= 0.05f && t <= 0.13f)
-        {
-            // Sin curve so the mist fades in at 0.05, peaks ~0.09, fades out by 0.13.
-            float u = (t - 0.05f) / 0.08f;
-            vis = MathF.Sin(u * MathF.PI);
-        }
-        if (vis < 0.05f) return;
-
-        if (!_mistSeeded)
-        {
-            for (int i = 0; i < MistCount; i++)
-            {
-                _mistX[i] = (float)(_mistRng.NextDouble() * viewportWidth);
-                // Mist hangs in the lower 60% of the screen.
-                _mistY[i] = (float)(viewportHeight * 0.40f + _mistRng.NextDouble() * viewportHeight * 0.55f);
-                _mistDrift[i] = 8f + (float)_mistRng.NextDouble() * 12f;
-            }
-            _mistSeeded = true;
-        }
-
-        for (int i = 0; i < MistCount; i++)
-        {
-            _mistX[i] += _mistDrift[i] * 0.016f;
-            if (_mistX[i] > viewportWidth + 50) _mistX[i] = -50;
-
-            int alpha = (int)(70 * vis);
-            if (alpha < 5) continue;
-            // Long thin streak: 80x6 pixels.
-            _ui.Renderer.DrawRect(_mistX[i], _mistY[i], 80f, 6f,
-                System.Drawing.Color.FromArgb(alpha, 240, 240, 250));
         }
     }
 
@@ -2786,93 +2647,29 @@ public class HudService : IDisposable
     }
 
     /// <summary>
-    /// Render the sun or moon as a bright disc locked to a world-space sky
-    /// direction derived from DayFraction, projected through the camera VP.
-    /// Turning the camera moves them across the sky; looking away hides them.
+    /// Where the sun is on screen this frame (the sky draws the sun itself): the creatures' ground shadows lean away from it.
     /// </summary>
-    private void DrawSunMoon(int viewportWidth, int viewportHeight)
+    private void UpdateSunScreenPosition(int viewportWidth, int viewportHeight)
     {
         _sunVisible = false;
         if (_renderer == null) return;
 
-        float t = _worldTime.DayFraction;
-        bool drawSun = t > 0.05f && t < 0.55f;
-        bool drawMoon = t > 0.55f || t < 0.05f;
-        if (!drawSun && !drawMoon) return;
+        var sky = LostSpawns.Rendering.Atmosphere.At(_worldTime.DayFraction, _weather.RainIntensity, 0f);
+        if (sky.SunDirection.Y <= 0f) return;
 
-        // World-space direction: Y up, +X east, +Z south. Sun rises east, noon
-        // south/high, sets west. Moon is opposite the sun on the same great circle.
-        Vector3 dir;
-        System.Drawing.Color color;
-        float sizePx;
-        if (drawSun)
-        {
-            float u = (t - 0.05f) / 0.50f; // 0..1 dawn->dusk
-            dir = CelestialDirectionFromArc(u);
-            color = System.Drawing.Color.FromArgb(230, 255, 220, 130);
-            sizePx = 36f;
-        }
-        else
-        {
-            float tt = t > 0.55f ? t : t + 1f;
-            float u = (tt - 0.55f) / 0.50f;
-            dir = CelestialDirectionFromArc(u);
-            color = System.Drawing.Color.FromArgb(220, 230, 235, 255);
-            sizePx = 28f;
-        }
-
-        // Place a far point along the direction so it reads as sky (not near-field).
-        const float skyDist = 800f;
         var cam = _renderer.Camera.Position;
-        var world = new Vector4(cam.X + dir.X * skyDist, cam.Y + dir.Y * skyDist, cam.Z + dir.Z * skyDist, 1f);
-
+        var world = new Vector4(cam.X + sky.SunDirection.X * 800f, cam.Y + sky.SunDirection.Y * 800f, cam.Z + sky.SunDirection.Z * 800f, 1f);
         float aspect = (float)viewportWidth / viewportHeight;
-        var vp = _renderer.Camera.GetVpMatrix(aspect);
-        var clip = Vector4.Transform(world, vp);
+        var clip = Vector4.Transform(world, _renderer.Camera.GetVpMatrix(aspect));
         if (clip.W <= 0.001f) return; // behind camera
 
-        float ndcX = clip.X / clip.W;
-        float ndcY = clip.Y / clip.W;
-        // Outside NDC frustum (with a little margin for the disc size).
+        float ndcX = clip.X / clip.W, ndcY = clip.Y / clip.W;
         if (ndcX < -1.2f || ndcX > 1.2f || ndcY < -1.2f || ndcY > 1.2f) return;
-
-        float screenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
-        float screenY = (1f - (ndcY * 0.5f + 0.5f)) * viewportHeight;
-
-        // Below the terrain horizon on screen - still draw if above mid-lower band;
-        // true occlusion needs depth. Skip if clearly underfoot.
-        if (screenY > viewportHeight * 0.92f) return;
-
-        _ui.Renderer.DrawRect(screenX - sizePx * 0.5f, screenY - sizePx * 0.5f, sizePx, sizePx, color);
-
-        // Soft glow halo (larger translucent disc).
-        var glow = System.Drawing.Color.FromArgb(color.A / 3, color.R, color.G, color.B);
-        float glowSize = sizePx * 1.8f;
-        _ui.Renderer.DrawRect(screenX - glowSize * 0.5f, screenY - glowSize * 0.5f, glowSize, glowSize, glow);
-
-        // Cache sun screen X for entity ground-shadow bias this frame.
-        _sunScreenX = screenX;
-        _sunVisible = drawSun;
+        _sunScreenX = (ndcX * 0.5f + 0.5f) * viewportWidth;
+        _sunVisible = true;
     }
 
-    /// <summary>
-    /// Unit sky direction for arc parameter u in [0,1] (rise→set).
-    /// Elevation peaks at noon (u=0.5); azimuth swings east→south→west.
-    /// </summary>
-    private static Vector3 CelestialDirectionFromArc(float u)
-    {
-        // Azimuth: +pi/2 at rise (east), 0 at noon (south), -pi/2 at set (west).
-        float az = MathF.PI * (0.5f - u);
-        // Elevation angle: 0 at horizon, ~70deg at noon.
-        float el = MathF.Sin(Math.Clamp(u, 0f, 1f) * MathF.PI) * (MathF.PI * 0.39f);
-        float cosEl = MathF.Cos(el);
-        return Vector3.Normalize(new Vector3(
-            cosEl * MathF.Sin(az),
-            MathF.Sin(el),
-            cosEl * MathF.Cos(az)));
-    }
-
-    /// <summary>
+/// <summary>
     /// When the player is cold enough their breath should fog - emit small
     /// rising puffs near screen-center (the camera direction). Age each
     /// puff toward 1 (dead). No cap check needed: we re-use the oldest
@@ -2922,22 +2719,6 @@ public class HudService : IDisposable
                 _breathY[i] - rise - size * 0.5f,
                 size, size,
                 System.Drawing.Color.FromArgb(alpha, 240, 240, 245));
-        }
-    }
-
-    private void DrawRain(int viewportWidth, int viewportHeight)
-    {
-        float t = _weather.RainIntensity;
-        if (t <= 0.01f) return;
-
-        // Fewer visible streaks at low intensity so drizzle vs downpour looks
-        // different. Alpha scales with intensity too.
-        int count = (int)(_rainX.Length * t);
-        int alpha = (int)(120 * t);
-        var color = System.Drawing.Color.FromArgb(alpha, 140, 170, 200);
-        for (int i = 0; i < count; i++)
-        {
-            _ui.Renderer.DrawRect(_rainX[i], _rainY[i], 2f, 14f, color);
         }
     }
 
@@ -3473,76 +3254,13 @@ public class HudService : IDisposable
             ScreenOverlay?.ClearPersistent("fireglow");
         }
 
-        // Storm gloom: a dim slate-blue overlay during heavy rain so bad
-        // weather actually darkens the world. Gentle at light drizzle,
-        // noticeable at downpour. Kicks in past 0.30 intensity so clear
-        // skies don't tint.
-        float stormRain = _weather.RainIntensity;
-        if (stormRain > 0.30f)
-        {
-            // 0.30 rain -> alpha 10, 1.0 rain -> alpha 80.
-            int alpha = Math.Clamp((int)((stormRain - 0.30f) / 0.70f * 70f) + 10, 10, 80);
-            ScreenOverlay?.SetPersistent("stormgloom",
-                System.Drawing.Color.FromArgb(alpha, 30, 40, 60));
-        }
-        else
-        {
-            ScreenOverlay?.ClearPersistent("stormgloom");
-        }
-
-        // Golden-hour tint at dawn and dusk. Peaks at the exact twilight
-        // fraction and fades out through the edge. Suppressed during heavy
-        // rain so storm gloom reads cleanly.
-        float frac = _worldTime.DayFraction;
-        float goldenAlpha = 0f;
-        if (frac >= 0.02f && frac <= 0.14f)
-        {
-            float t = (frac - 0.02f) / 0.12f; // 0..1 across dawn
-            goldenAlpha = MathF.Sin(t * MathF.PI) * 0.7f;
-        }
-        else if (frac >= 0.52f && frac <= 0.64f)
-        {
-            float t = (frac - 0.52f) / 0.12f; // 0..1 across dusk
-            goldenAlpha = MathF.Sin(t * MathF.PI) * 0.7f;
-        }
-        if (goldenAlpha > 0.02f && stormRain < 0.3f)
-        {
-            int alpha = (int)Math.Clamp(goldenAlpha * 50f, 0, 50);
-            ScreenOverlay?.SetPersistent("goldenhour",
-                System.Drawing.Color.FromArgb(alpha, 255, 180, 100));
-        }
-        else
-        {
-            ScreenOverlay?.ClearPersistent("goldenhour");
-        }
-
-        // Moonlight tint during deep night (0.68-0.92 day fraction). Pale
-        // blue overlay peaks at midnight. Sky darkening makes silhouettes
-        // read properly at night. Also suppressed during heavy rain so
-        // storm gloom doesn't double up.
-        float moonAlpha = 0f;
-        if (frac >= 0.68f && frac <= 0.92f)
-        {
-            float t = (frac - 0.68f) / 0.24f;
-            moonAlpha = MathF.Sin(t * MathF.PI) * 0.8f;
-        }
-        if (moonAlpha > 0.02f && stormRain < 0.3f)
-        {
-            int alpha = (int)Math.Clamp(moonAlpha * 35f, 0, 35);
-            ScreenOverlay?.SetPersistent("moonlight",
-                System.Drawing.Color.FromArgb(alpha, 80, 100, 160));
-        }
-        else
-        {
-            ScreenOverlay?.ClearPersistent("moonlight");
-        }
+        // The storm's gloom, the golden hour and the moonlight are the world's own light now (Atmosphere), not screen tints
+        ScreenOverlay?.ClearPersistent("stormgloom");
+        ScreenOverlay?.ClearPersistent("goldenhour");
+        ScreenOverlay?.ClearPersistent("moonlight");
 
         // Update screen overlay effects
         ScreenOverlay.Update(deltaTime);
-
-        // Rain particles: falling 2D streaks that land in OnPostRender. Seeded once,
-        // then recycled when they fall off the bottom of the viewport.
-        UpdateRain(deltaTime);
 
         // Breath puffs in cold - emitted only when player's temperature is low.
         UpdateBreath(deltaTime);
@@ -3571,11 +3289,9 @@ public class HudService : IDisposable
             // Stars paint first so everything else (terrain canvas is already
             // drawn, UI screens, fires, entities) sits on top. Only visible
             // at night + twilight; during day the draw is a cheap no-op.
-            DrawStars(viewportWidth, viewportHeight);
-            DrawSunMoon(viewportWidth, viewportHeight);
+            UpdateSunScreenPosition(viewportWidth, viewportHeight);
             DrawFireflies(viewportWidth, viewportHeight);
             DrawFallingLeaves(viewportWidth, viewportHeight);
-            DrawDawnMist(viewportWidth, viewportHeight);
 
             // Campfires render first so entity billboards paint on top - a
             // critter standing in front of the fire occludes it naturally.
@@ -3614,8 +3330,6 @@ public class HudService : IDisposable
             // "you have this equipped" without a full 3D rig.
             DrawViewmodel(viewportWidth, viewportHeight);
 
-            // Rain particles render on top of the voxel scene but below menus.
-            DrawRain(viewportWidth, viewportHeight);
 
             // Breath puffs render after rain so they're never occluded by the
             // streaks - the player's own breath should always be visible.

@@ -11,6 +11,8 @@ public sealed class DebugView
 {
     public float? Time { get; private set; }
     public float? Rain { get; private set; }
+    /// <summary>Break this many blocks along the camera ray (nearest first) a moment after loading, to check that an edit re-meshes (<c>?dig=N</c>).</summary>
+    public int Dig { get; private set; }
     public (float x, float z, float yaw, float pitch, float up)? Camera { get; private set; }
 
     public static DebugView Parse(string uri)
@@ -27,6 +29,7 @@ public sealed class DebugView
             {
                 case "time" when TryFloat(value, out var t): view.Time = t; break;
                 case "rain" when TryFloat(value, out var r): view.Rain = r; break;
+                case "dig" when int.TryParse(value, out var d): view.Dig = d; break;
                 case "cam":
                     var f = value.Split(',');
                     if (f.Length >= 4 && TryFloat(f[0], out var x) && TryFloat(f[1], out var z) && TryFloat(f[2], out var yaw) && TryFloat(f[3], out var pitch))

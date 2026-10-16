@@ -11,7 +11,11 @@ namespace LostSpawns.Services;
 /// </summary>
 public class HeightmapLoader
 {
+    /// <summary>The world seed the trees and ground cover are placed with.</summary>
+    public int WorldSeed { get; set; } = 42;
+
     private short[]? _heightmap;
+    private bool _bathymetryApplied;
     private int _gridSize;
     private float _cellSizeMeters;
     private int _seaLevelVoxel;
@@ -52,6 +56,57 @@ public class HeightmapLoader
         _seaLevelVoxel = 64;
 
         Console.WriteLine($"[Heightmap] {_gridSize}x{_gridSize}, {bytes.Length:N0} bytes");
+    }
+
+    /// <summary>
+    /// The DEM has no bathymetry: every sea cell is exactly 0, so the sea floor would sit at sea level and hold no water at all. This gives
+    /// each cell that is not land (elevation 0 or below) a floor that deepens with its distance from the nearest land cell (a two-pass
+    /// chamfer distance, 3 per cell side and 4 per diagonal), about 1 block at the shore to 28 blocks far out, with a little relief.
+    /// </summary>
+    private void ApplyBathymetry()
+    {
+        int n = _gridSize;
+        const int inf = 60000;
+        var dist = new ushort[n * n];
+        for (int i = 0; i < dist.Length; i++) dist[i] = _heightmap![i] > 0 ? (ushort)0 : (ushort)inf;
+
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            int i = y * n + x;
+            int d = dist[i];
+            if (x > 0) d = Math.Min(d, dist[i - 1] + 3);
+            if (y > 0)
+            {
+                d = Math.Min(d, dist[i - n] + 3);
+                if (x > 0) d = Math.Min(d, dist[i - n - 1] + 4);
+                if (x < n - 1) d = Math.Min(d, dist[i - n + 1] + 4);
+            }
+            dist[i] = (ushort)Math.Min(d, inf);
+        }
+        for (int y = n - 1; y >= 0; y--)
+        for (int x = n - 1; x >= 0; x--)
+        {
+            int i = y * n + x;
+            int d = dist[i];
+            if (x < n - 1) d = Math.Min(d, dist[i + 1] + 3);
+            if (y < n - 1)
+            {
+                d = Math.Min(d, dist[i + n] + 3);
+                if (x < n - 1) d = Math.Min(d, dist[i + n + 1] + 4);
+                if (x > 0) d = Math.Min(d, dist[i + n - 1] + 4);
+            }
+            dist[i] = (ushort)Math.Min(d, inf);
+        }
+
+        for (int i = 0; i < dist.Length; i++)
+        {
+            if (_heightmap![i] > 0) continue;
+            float meters = dist[i] / 3f * _cellSizeMeters;
+            float relief = (TileNoise.Rand(i % n, i / n, 9001) - 0.5f) * 1.4f;
+            int depth = (int)Math.Clamp(MathF.Round(1f + meters * 0.055f + relief), 1f, 28f);
+            _heightmap[i] = (short)-depth;
+        }
     }
 
     /// <summary>
@@ -109,10 +164,10 @@ public class HeightmapLoader
             int slope = Math.Max(Math.Abs(h - hN), Math.Max(Math.Abs(h - hS),
                         Math.Max(Math.Abs(h - hE), Math.Abs(h - hW))));
 
-            FillColumn(chunk, x, z, h, slope);
+            FillColumn(chunk, (int)worldX, (int)worldZ, x, z, h, slope);
         }
 
-        PlaceTrees(chunk, chunkX, chunkZ);
+        Vegetation.Place(chunk, chunkX, chunkZ, SurfaceAt, _seaLevelVoxel, WorldSeed);
         return chunk;
     }
 
@@ -135,99 +190,77 @@ public class HeightmapLoader
     public void SetCellSize(float cellSizeMeters)
     {
         _cellSizeMeters = cellSizeMeters;
+        // The elevation data is flat zero over the sea: give it a floor that deepens away from the shore (needs the cell size, so it is made here)
+        if (_heightmap != null && !_bathymetryApplied)
+        {
+            ApplyBathymetry();
+            _bathymetryApplied = true;
+        }
     }
 
-    private void FillColumn(ChunkData chunk, int x, int z, int surfaceY, int slope = 0)
+    /// <summary>
+    /// The ground at a world column: the height of its top block and which block that is. Pure in the position, so the trees
+    /// (which reach over chunk borders) can ask about the ground of a neighbouring chunk.
+    /// </summary>
+    public (int y, BlockType type) SurfaceAt(int worldX, int worldZ)
+    {
+        int h = Math.Clamp(GetElevation(worldX, worldZ), 1, ChunkData.Height - 2);
+        int hN = GetElevation(worldX, worldZ - 1);
+        int hS = GetElevation(worldX, worldZ + 1);
+        int hE = GetElevation(worldX + 1, worldZ);
+        int hW = GetElevation(worldX - 1, worldZ);
+        int slope = Math.Max(Math.Abs(h - hN), Math.Max(Math.Abs(h - hS), Math.Max(Math.Abs(h - hE), Math.Abs(h - hW))));
+        return (h, SurfaceBlock(h, slope, worldX, worldZ));
+    }
+
+    /// <summary>The block on top of the ground at a place: sand and gravel on the shore, granite on cliffs and summits, grass elsewhere.</summary>
+    private BlockType SurfaceBlock(int surfaceY, int slope, int worldX, int worldZ)
+    {
+        int elevAboveSea = surfaceY - _seaLevelVoxel;
+        if (surfaceY <= _seaLevelVoxel)
+        {
+            // The sea floor: sand near the shore, gravel where it is deeper or the shore is stony
+            return (_seaLevelVoxel - surfaceY > 2 || Vegetation.ShoreGravel(worldX, worldZ) > 0.5f) ? BlockType.Gravel : BlockType.Sand;
+        }
+        if (elevAboveSea <= 3)
+        {
+            if (slope >= 3) return BlockType.Granite;                                   // rocky shore
+            return Vegetation.ShoreGravel(worldX, worldZ) > 0.45f ? BlockType.Gravel : BlockType.Sand;
+        }
+        if (slope >= 4) return BlockType.Granite;                                       // cliff face
+        if (elevAboveSea > 55) return BlockType.Granite;                                // rocky summit
+        if (elevAboveSea > 45) return slope >= 2 ? BlockType.Granite : BlockType.Dirt;  // high, sparse
+        if (elevAboveSea > 6 && Vegetation.BarePatch(worldX, worldZ) > 0.8f && slope <= 1) return BlockType.Dirt; // bare earth
+        return BlockType.Grass;
+    }
+
+    private void FillColumn(ChunkData chunk, int worldX, int worldZ, int x, int z, int surfaceY, int slope = 0)
     {
         surfaceY = Math.Clamp(surfaceY, 1, ChunkData.Height - 2);
-        int elevAboveSea = surfaceY - _seaLevelVoxel;
+        var top = SurfaceBlock(surfaceY, slope, worldX, worldZ);
+        // What lies under the top layer: a beach is sand deep, a cliff is granite a little way in, soil elsewhere
+        var under = top switch
+        {
+            BlockType.Sand or BlockType.Gravel => BlockType.Sand,
+            BlockType.Granite => BlockType.Granite,
+            _ => BlockType.Dirt,
+        };
 
         for (int y = 0; y < ChunkData.Height; y++)
         {
             BlockType block;
             if (y > surfaceY)
-            {
-                // Above surface: water if below sea level, air otherwise
                 block = y <= _seaLevelVoxel ? BlockType.Water : BlockType.Air;
-            }
             else if (y == surfaceY)
-            {
-                // Surface block - biome by elevation + slope
-                if (surfaceY <= _seaLevelVoxel)
-                    block = BlockType.Sand;           // underwater sand
-                else if (elevAboveSea <= 3)
-                    block = BlockType.Sand;           // beach (wider shore)
-                else if (slope >= 4)
-                    block = BlockType.Stone;           // cliff face - steep slope = exposed rock
-                else if (elevAboveSea > 55)
-                    block = BlockType.Stone;           // high altitude = rocky summit
-                else if (elevAboveSea > 45)
-                    block = slope >= 2 ? BlockType.Stone : BlockType.Dirt; // high = sparse vegetation
-                else
-                    block = BlockType.Grass;           // normal terrain
-            }
+                block = top;
             else if (y > surfaceY - 2 && slope >= 4)
-            {
-                block = BlockType.Stone;              // steep slopes are stone deeper too
-            }
+                block = BlockType.Granite;                  // steep slopes are rock a little deeper too
             else if (y > surfaceY - 4)
-            {
-                block = BlockType.Dirt;
-            }
+                block = under;
             else
-            {
                 block = BlockType.Stone;
-            }
 
             chunk.SetBlock(x, y, z, block);
-        }
-    }
-
-    private void PlaceTrees(ChunkData chunk, int chunkX, int chunkZ)
-    {
-        // Deterministic RNG per chunk
-        var rng = new Random(HashCode.Combine(42, chunkX * 73856093, chunkZ * 19349663));
-
-        for (int x = 3; x < ChunkData.SizeXZ - 3; x++)
-        for (int z = 3; z < ChunkData.SizeXZ - 3; z++)
-        {
-            if (rng.NextDouble() > 0.012) continue; // ~1.2% chance
-
-            // Find grass surface
-            int groundY = -1;
-            for (int y = ChunkData.Height - 1; y >= 0; y--)
-            {
-                if (chunk.GetBlock(x, y, z) == BlockType.Grass)
-                {
-                    groundY = y;
-                    break;
-                }
-            }
-            if (groundY < 0 || groundY > ChunkData.Height - 10) continue;
-            if (groundY <= _seaLevelVoxel + 4) continue; // no trees on beach
-            if (groundY > _seaLevelVoxel + 55) continue; // no trees on rocky summits
-            // Skip if surface is stone (cliff face)
-            if (chunk.GetBlock(x, groundY, z) == BlockType.Stone) continue;
-
-            int trunkH = 4 + rng.Next(3); // 4-6 blocks tall
-
-            // Trunk
-            for (int y = 1; y <= trunkH; y++)
-                chunk.SetBlock(x, groundY + y, z, BlockType.Wood);
-
-            // Leaves
-            int leafBase = groundY + trunkH;
-            for (int ly = 0; ly <= 2; ly++)
-            for (int lx = -2; lx <= 2; lx++)
-            for (int lz = -2; lz <= 2; lz++)
-            {
-                if (Math.Abs(lx) == 2 && Math.Abs(lz) == 2) continue;
-                if (ly == 2 && (Math.Abs(lx) > 1 || Math.Abs(lz) > 1)) continue;
-
-                int tx = x + lx, ty = leafBase + ly, tz = z + lz;
-                if (chunk.GetBlock(tx, ty, tz) == BlockType.Air)
-                    chunk.SetBlock(tx, ty, tz, BlockType.Leaves);
-            }
         }
     }
 }

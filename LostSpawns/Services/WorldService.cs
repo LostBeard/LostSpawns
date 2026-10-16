@@ -122,6 +122,7 @@ public class WorldService
         Seed = seed;
         _generator = new TerrainGenerator(seed);
         _heightmapLoader = loader;
+        loader.WorldSeed = seed;
 
         Console.WriteLine($"[World] Heightmap: {loader.GridSize}x{loader.GridSize}, {loader.MapSizeInChunks} chunks");
         IsInitialized = true;
@@ -535,11 +536,31 @@ public class WorldService
         return (BlockType)col[idx];
     }
 
+    /// <summary>
+    /// How high the sky is blocked over a world column, for the rain: the y of the top block that is not air and not a plant (a tree
+    /// crown, a roof, the ground, the water surface). -1 when the column is not loaded.
+    /// </summary>
+    public int RainHeightAt(int worldX, int worldZ)
+    {
+        int cx = (int)MathF.Floor(worldX / (float)ChunkData.SizeXZ);
+        int cz = (int)MathF.Floor(worldZ / (float)ChunkData.SizeXZ);
+        if (!_blocksCache.TryGetValue((cx, cz), out var col)) return -1;
+        int lx = worldX - cx * ChunkData.SizeXZ;
+        int lz = worldZ - cz * ChunkData.SizeXZ;
+        int idx = lx + lz * ChunkData.SizeXZ + (ChunkData.Height - 1) * ChunkData.SizeXZ * ChunkData.SizeXZ;
+        for (int y = ChunkData.Height - 1; y >= 0; y--, idx -= ChunkData.SizeXZ * ChunkData.SizeXZ)
+        {
+            var t = (BlockType)col[idx];
+            if (t != BlockType.Air && !t.IsPlant()) return y + 1;   // the rain lands on top of it
+        }
+        return 0;
+    }
+
     /// <summary>True if the block at the given world voxel is non-air and non-water.</summary>
     public bool IsSolidAt(int worldX, int worldY, int worldZ)
     {
         var t = GetBlockAt(worldX, worldY, worldZ);
-        return t != BlockType.Air && t != BlockType.Water;
+        return t != BlockType.Air && t != BlockType.Water && !t.IsPlant();
     }
 
     private static readonly VoxelEngineConfig _raycastConfig = new()
@@ -566,9 +587,9 @@ public class WorldService
             maxDistance,
             packed =>
             {
-                // Stop on everything except water (so rays pass through water).
+                // Stop on everything except water and plants (so rays pass through them).
                 var type = (BlockType)PackedBlock.GetType(packed);
-                return type != BlockType.Water;
+                return type != BlockType.Water && !type.IsPlant();
             });
     }
 
@@ -652,7 +673,8 @@ public class WorldService
         col[idx] = 0;
         RecordEdit(cx, cz, idx, 0);
         MarkBlockDirty(worldX, worldY, worldZ);
-        return (BlockType)original;
+        // Granite is mined as stone, gravel dug as sand
+        return ((BlockType)original).Material();
     }
 
     private void RecordEdit(int cx, int cz, int idx, byte newByte)
@@ -760,7 +782,8 @@ public class WorldService
                 {
                     if (now != 0) continue;
                     RecordEdit(cx, cz, idx, 0);
-                    changed[(BlockType)original] = changed.GetValueOrDefault((BlockType)original) + 1;
+                    var kind = ((BlockType)original).Material();
+                    changed[kind] = changed.GetValueOrDefault(kind) + 1;
                 }
                 else
                 {

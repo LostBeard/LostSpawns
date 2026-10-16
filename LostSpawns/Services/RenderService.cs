@@ -36,6 +36,7 @@ public class RenderService : IDisposable
     // The block pipeline draws the world's columns; the sky pipeline draws behind it; creatures (GLB meshes) share the pass
     private TerrainRenderer? _terrain;
     private SkyRenderer? _sky;
+    private WeatherRenderer? _weatherView;
     private EntityMeshPipeline? _entityPipeline;
     private float _animTime;
 
@@ -116,6 +117,8 @@ public class RenderService : IDisposable
         _terrain.Init(_device, _queue, _canvasFormat);
         _sky = new SkyRenderer();
         _sky.Init(_device, _queue, _canvasFormat);
+        _weatherView = new WeatherRenderer();
+        _weatherView.Init(_device, _queue, _canvasFormat, _sky.Atlas!);
 
         _entityPipeline = new EntityMeshPipeline();
         _entityPipeline.Init(_device, _queue, _canvasFormat);
@@ -242,6 +245,9 @@ public class RenderService : IDisposable
         // Water last so it blends over the ground and creatures behind it
         _terrain.DrawWater(pass);
 
+        // The rain over everything
+        _weatherView!.Draw(pass, _world, in vp, cameraPos, rain, sky.Daylight);
+
         pass.End();
         using var cmdBuf = encoder.Finish();
         _queue!.Submit(new[] { cmdBuf });
@@ -285,6 +291,8 @@ public class RenderService : IDisposable
 
         _entityPipeline?.Dispose();
         _entityPipeline = null;
+        _weatherView?.Dispose();
+        _weatherView = null;
         _sky?.Dispose();
         _sky = null;
         _terrain?.Dispose();

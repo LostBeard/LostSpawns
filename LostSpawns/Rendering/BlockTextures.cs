@@ -9,7 +9,8 @@ public static class BlockTiles
     public const int GrassTop = 0, GrassSide = 1, Dirt = 2, Stone = 3, Sand = 4, LogSide = 5, LogTop = 6, Leaves = 7;
     /// <summary>Eight frames of the water surface, a seamless loop.</summary>
     public const int Water0 = 8, WaterFrames = 8;
-    public const int Count = Water0 + WaterFrames;
+    public const int Gravel = 16, Granite = 17, TallGrass = 18, Fern = 19, Dandelion = 20, Aster = 21;
+    public const int Count = 22;
 }
 
 /// <summary>
@@ -36,6 +37,12 @@ public static class BlockTextures
         Paint(rgba, BlockTiles.LogSide, (u, v) => new Vector4(LogSide(u, v), 1f));
         Paint(rgba, BlockTiles.LogTop, (u, v) => new Vector4(LogTop(u, v), 1f));
         Paint(rgba, BlockTiles.Leaves, Leaves);
+        Paint(rgba, BlockTiles.Gravel, (u, v) => new Vector4(Gravel(u, v), 1f));
+        Paint(rgba, BlockTiles.Granite, (u, v) => new Vector4(Granite(u, v), 1f));
+        Paint(rgba, BlockTiles.TallGrass, GrassTuft);
+        Paint(rgba, BlockTiles.Fern, FernFrond);
+        Paint(rgba, BlockTiles.Dandelion, (u, v) => Flower(u, v, 601, new Vector3(1.0f, 0.85f, 0.15f), new Vector3(0.95f, 0.62f, 0.05f), 9, 0.10f));
+        Paint(rgba, BlockTiles.Aster, (u, v) => Flower(u, v, 602, new Vector3(0.72f, 0.52f, 0.92f), new Vector3(1.0f, 0.86f, 0.20f), 12, 0.115f));
         for (int k = 0; k < BlockTiles.WaterFrames; k++)
         {
             int frame = k;
@@ -181,7 +188,7 @@ public static class BlockTextures
     {
         float clump = Value(u, v, 8, 8, 81) * 0.55f + Value(u, v, 16, 16, 82) * 0.30f + Value(u, v, 32, 32, 83) * 0.15f;
         if (clump < 0.36f) return new Vector4(0f, 0f, 0f, 0f);
-        float l = 0.52f + 0.55f * (Value(u, v, 12, 12, 84) - 0.4f);
+        float l = 0.74f + 0.55f * (Value(u, v, 12, 12, 84) - 0.4f);
         // Edges of a clump are in shadow, its middle catches the light
         l *= 0.72f + 0.55f * SmoothStep(0.36f, 0.66f, clump);
         return new Vector4(l, l * 1.0f, l * 0.9f, 1f);
@@ -201,5 +208,144 @@ public static class BlockTextures
         float caustic = MathF.Pow(ridge, 6f);
         float l = 0.66f + 0.20f * n + 0.30f * caustic;
         return new Vector3(l * 0.95f, l, l);
+    }
+
+    // --- rock and pebbles ---
+
+    private static Vector3 Gravel(float u, float v)
+    {
+        // Pebbles: each cell of a cellular pattern is one stone with its own grey-brown tone
+        var (f1, f2) = Cell(u, v, 7, 701);
+        float edge = SmoothStep(0.0f, 0.10f, f2 - f1);
+        float tone = Rand((int)(u * 7 + f1 * 3), (int)(v * 7 + f2 * 3), 702);
+        var stone = Mix(new Vector3(0.40f, 0.38f, 0.36f), new Vector3(0.66f, 0.62f, 0.56f), tone);
+        float lit = 0.80f + 0.30f * (1f - f1);
+        var c = stone * lit * (0.55f + 0.45f * edge);
+        c += new Vector3((Value(u, v, 64, 64, 703) - 0.5f) * 0.08f);
+        return c;
+    }
+
+    private static Vector3 Granite(float u, float v)
+    {
+        // Pinkish-grey coastal granite: coarse speckle of dark and light grains, broad blotches, a few cracks
+        float broad = Fbm(u, v, 3, 3, 4, 711);
+        var baseColor = Mix(new Vector3(0.50f, 0.47f, 0.46f), new Vector3(0.62f, 0.55f, 0.52f), Fbm(u, v, 2, 2, 2, 712));
+        var c = baseColor * (0.70f + 0.55f * broad);
+        float grain = Value(u, v, 40, 40, 713);
+        if (grain > 0.80f) c = Mix(c, new Vector3(0.80f, 0.72f, 0.68f), 0.6f);
+        else if (grain < 0.16f) c = Mix(c, new Vector3(0.16f, 0.16f, 0.18f), 0.55f);
+        var (f1, f2) = Cell(u, v, 3, 714);
+        c *= 0.58f + 0.42f * SmoothStep(0.0f, 0.05f, f2 - f1);
+        float lichen = Fbm(u, v, 4, 4, 3, 715);
+        if (lichen > 0.66f) c = Mix(c, new Vector3(0.50f, 0.55f, 0.34f), (lichen - 0.66f) * 2.0f);
+        return c;
+    }
+
+    // --- plants: crossed quads showing a sprite on a transparent tile ---
+
+    // Distance from point p to the segment a-b
+    private static float SegmentDistance(Vector2 p, Vector2 a, Vector2 b)
+    {
+        var ab = b - a;
+        float t = Math.Clamp(Vector2.Dot(p - a, ab) / MathF.Max(Vector2.Dot(ab, ab), 1e-6f), 0f, 1f);
+        return Vector2.Distance(p, a + ab * t);
+    }
+
+    private static Vector4 GrassTuft(float u, float v)
+    {
+        // Blades rooted along the bottom edge: each a tapering, leaning curve of its own height and tone. Grayscale: the biome tint colours it.
+        float best = 0f;
+        bool hit = false;
+        for (int i = 0; i < 15; i++)
+        {
+            float bx = 0.10f + 0.80f * Rand(i, 0, 801);
+            float h = 0.45f + 0.50f * Rand(i, 1, 802);
+            float lean = (Rand(i, 2, 803) - 0.5f) * 0.38f;
+            float t = (1f - v) / h;                // 0 at the ground, 1 at the tip
+            if (t < 0f || t > 1f) continue;
+            float xc = bx + lean * t * t;
+            float half = 0.030f * (1f - t) + 0.004f;
+            if (MathF.Abs(u - xc) > half) continue;
+            float tone = 0.72f + 0.55f * t + 0.25f * (Rand(i, 3, 804) - 0.5f);
+            if (!hit || tone > best) best = tone;
+            hit = true;
+        }
+        if (!hit) return new Vector4(0f, 0f, 0f, 0f);
+        float l = Math.Clamp(best, 0.5f, 1.25f);
+        return new Vector4(l, l, l * 0.9f, 1f);
+    }
+
+    private static Vector4 FernFrond(float u, float v)
+    {
+        var p = new Vector2(u, v);
+        var root = new Vector2(0.5f, 1.0f);
+        float bestD = 9f;
+        float shade = 0f;
+        for (int f = 0; f < 6; f++)
+        {
+            // Fronds fan out from the root, each arching over to a side
+            float ang = (-0.95f + 1.9f * f / 5f) + (Rand(f, 0, 811) - 0.5f) * 0.18f;
+            float len = 0.62f + 0.22f * Rand(f, 1, 812);
+            var dir = new Vector2(MathF.Sin(ang), -MathF.Cos(ang));
+            var bend = new Vector2((ang < 0f ? -1f : 1f) * 0.12f, 0.10f);
+            Vector2 At(float t) => root + dir * len * t + bend * t * t * len;
+            // The midrib
+            Vector2 prev = root;
+            for (int seg = 1; seg <= 8; seg++)
+            {
+                var q = At(seg / 8f);
+                float d = SegmentDistance(p, prev, q) - 0.011f;
+                if (d < bestD) { bestD = d; shade = 0.55f + 0.2f * (seg / 8f); }
+                prev = q;
+            }
+            // Leaflets on both sides, shorter toward the tip
+            for (int k = 1; k <= 8; k++)
+            {
+                float t = k / 9f;
+                var c = At(t);
+                var next = At(MathF.Min(t + 0.05f, 1f));
+                var tangent = Vector2.Normalize(next - c);
+                var normal = new Vector2(-tangent.Y, tangent.X);
+                float size = 0.17f * (1f - t * 0.75f);
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    var tip = c + (normal * side + tangent * 0.55f) * size;
+                    float d = SegmentDistance(p, c, tip) - 0.016f * (1f - t * 0.5f);
+                    if (d < bestD) { bestD = d; shade = 0.70f + 0.35f * t; }
+                }
+            }
+        }
+        if (bestD > 0f) return new Vector4(0f, 0f, 0f, 0f);
+        float l = shade;
+        return new Vector4(l, l, l * 0.9f, 1f);
+    }
+
+    private static Vector4 Flower(float u, float v, int seed, Vector3 petals, Vector3 center, int petalCount, float headRadius)
+    {
+        var p = new Vector2(u, v);
+        float sway = (Rand(1, 1, seed) - 0.5f) * 0.10f;
+        var root = new Vector2(0.5f, 1.0f);
+        var head = new Vector2(0.5f + sway, 0.40f);
+        // The stem and two leaves
+        float d = SegmentDistance(p, root, head) - 0.013f;
+        if (d < 0f) return new Vector4(0.24f, 0.45f, 0.16f, 1f);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            var from = Vector2.Lerp(root, head, 0.25f);
+            var to = from + new Vector2(side * 0.22f, -0.13f);
+            if (SegmentDistance(p, from, to) < 0.018f) return new Vector4(0.28f, 0.50f, 0.18f, 1f);
+        }
+        // The head: petals around a centre
+        var rel = p - head;
+        float r = rel.Length();
+        if (r < headRadius * 0.45f) return new Vector4(center, 1f);
+        if (r < headRadius * 1.6f)
+        {
+            float a = MathF.Atan2(rel.Y, rel.X);
+            float lobe = 0.5f + 0.5f * MathF.Cos(a * petalCount);
+            float edge = headRadius * (1.0f + 0.6f * lobe);
+            if (r < edge) return new Vector4(petals * (0.85f + 0.2f * lobe), 1f);
+        }
+        return new Vector4(0f, 0f, 0f, 0f);
     }
 }
