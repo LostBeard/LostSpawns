@@ -20,6 +20,9 @@ public sealed class VrService : IDisposable
     /// <summary>A headset session is running.</summary>
     public bool IsActive => _session?.IsActive == true;
 
+    /// <summary>How many columns out from the player the headset view draws (<c>?vrdd=N</c> on the home or game page sets it, for tuning on a headset).</summary>
+    public int DrawRadius { get; set; } = VrWorld.DefaultDrawRadius;
+
     /// <summary>Why the last <see cref="BeginAsync"/> failed.</summary>
     public string? LastError { get; private set; }
 

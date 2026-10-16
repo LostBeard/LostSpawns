@@ -488,6 +488,21 @@ public class EntityService
     /// We compare a horizontal-biased aim vector so the test doesn't require
     /// the player to aim pixel-perfect at the billboard's vertical center.
     /// </summary>
+    /// <summary>
+    /// How high above its feet to aim at a creature (the middle of its body): the models are real size now, so a rabbit's chest is a quarter
+    /// of a block up and a bear's most of one.
+    /// </summary>
+    public static float AimHeight(EntityKind kind) => kind switch
+    {
+        EntityKind.Rabbit => 0.25f,
+        EntityKind.Crow => 0.3f,
+        EntityKind.Boar => 0.45f,
+        EntityKind.Wolf => 0.55f,
+        EntityKind.Deer => 0.85f,
+        EntityKind.Bear => 0.85f,
+        _ => 0.6f,
+    };
+
     public WanderingEntity? FindTargetInCone(Vector3 origin, Vector3 forward, float maxDist, float minDot)
     {
         WanderingEntity? best = null;
@@ -499,9 +514,8 @@ public class EntityService
 
         foreach (var e in Entities)
         {
-            // Aim at the billboard's chest, not its feet (matches the +0.8 offset
-            // HudService uses when it projects the billboard).
-            var target = new Vector3(e.Position.X, e.Position.Y + 0.8f, e.Position.Z);
+            // Aim at the middle of the body, not the feet
+            var target = new Vector3(e.Position.X, e.Position.Y + AimHeight(e.Kind), e.Position.Z);
             var delta = target - origin;
             float d = delta.Length();
             if (d > maxDist || d < 1e-3f) continue;

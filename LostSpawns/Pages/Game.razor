@@ -267,6 +267,7 @@
         if (view.God) Stats.Invulnerable = true;
         if (view.Still) Wildlife.Frozen = true;
         Renderer.OcclusionOverride = view.Occlusion;
+        if (view.VrDrawRadius is { } vrRadius) Vr.DrawRadius = vrRadius;
         if (view.Dig > 0) _ = DigForDebugAsync(view.Dig);
         if (view.Spawn.Count > 0) SpawnForDebug(view.Spawn);
     }
@@ -332,6 +333,7 @@
             _blit = new LostSpawns.Xr.WebGlXrBlit();
             _blit.Initialize(session.GL!);
             _vr ??= new LostSpawns.Xr.VrWorld(JS, Engine, World, Time, Weather, Wildlife);
+            _vr.DrawRadius = Vr.DrawRadius;
             _vr.Start(Renderer.Camera.Position, Renderer.Camera.Yaw);
         }
         catch (Exception ex)
@@ -1270,7 +1272,7 @@
         // Death blood spray: 3 blood-splatter calls = 9 droplets total at
         // the kill position. Bigger spray than the per-hit splatter so
         // killing blow reads as a finishing impact, not a regular hit.
-        var deathPos = new System.Numerics.Vector3(e.Position.X, e.Position.Y + 0.8f, e.Position.Z);
+        var deathPos = new System.Numerics.Vector3(e.Position.X, e.Position.Y + LostSpawns.Services.EntityService.AimHeight(e.Kind), e.Position.Z);
         for (int i = 0; i < 3; i++) Hud.ShowBloodSplatter(deathPos);
 
         // Loot now lands on the ground at the entity's death position -
@@ -1299,7 +1301,7 @@
         // hit landed" cue. Crows get an extra splatter at their position
         // for the feather-flying-everywhere read since they're feathery.
         var hitPos = new System.Numerics.Vector3(
-            e.Position.X, e.Position.Y + 0.8f, e.Position.Z);
+            e.Position.X, e.Position.Y + LostSpawns.Services.EntityService.AimHeight(e.Kind), e.Position.Z);
         Hud.ShowBloodSplatter(hitPos);
         if (e.Kind == LostSpawns.Services.EntityKind.Crow)
             Hud.ShowBloodSplatter(hitPos);

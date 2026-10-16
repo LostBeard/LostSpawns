@@ -191,6 +191,7 @@ Developer URL parameters, for checking the picture (nothing here changes a norma
 | `?spawn=wolf,deer,bear` | Put these creatures in a row ahead of the camera |
 | `?still=1` | The wildlife stands still |
 | `?god=1` | The player takes no damage |
+| `?vrdd=5` | The headset's draw distance in columns (default 7), on the home or game page; the headset logs its frame times and draw counts every 240 frames |
 | `?dig=3` | Break 3 blocks along the view ray after loading (checks that an edit re-meshes) |
 
 `_tools/render-probe` drives Chrome through Playwright, loads such a URL and saves a screenshot and the console log.

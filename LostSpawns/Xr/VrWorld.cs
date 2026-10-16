@@ -18,8 +18,8 @@ namespace LostSpawns.Xr;
 /// </summary>
 public sealed class VrWorld : IDisposable
 {
-    /// <summary>Columns round the player that are kept (a headset's GPU is a phone's).</summary>
-    public const int DrawRadius = 7;
+    /// <summary>Columns round the player that are kept by default (a headset's GPU is a phone's); <c>?vrdd=N</c> changes it for tuning.</summary>
+    public const int DefaultDrawRadius = 7;
     /// <summary>Metres a second at full stick; a pressed-in left stick or a grip runs.</summary>
     public const float WalkSpeed = 3.5f, RunSpeed = 7f;
     private const float FillLightStrength = 0.18f;
@@ -56,6 +56,14 @@ public sealed class VrWorld : IDisposable
     private float _groundY;
     private bool _groundKnown;
     private bool _disposed;
+    // Where the time of the frames goes, reported every few seconds (what to look at when tuning for a headset)
+    private readonly System.Diagnostics.Stopwatch _frameClock = new();
+    private double _frameMsSum, _frameMsMax, _eyeMsSum, _gapMsSum;
+    private int _framesInReport;
+    private double _lastFrameStart = -1;
+
+    /// <summary>How many columns out from the player the world is kept and drawn.</summary>
+    public int DrawRadius { get; set; } = DefaultDrawRadius;
 
     /// <summary>The world has columns and the renderers exist: frames draw.</summary>
     public bool Ready { get; private set; }
@@ -129,6 +137,10 @@ public sealed class VrWorld : IDisposable
     public void OnFrame(XrFrameData f, XrSession session, WebGlXrBlit blit)
     {
         if (!Ready || _disposed || f.Views.Length == 0 || session.Layer == null) return;
+        _frameClock.Restart();
+        // Time between the starts of two frames: 11.1 ms is a 90 Hz headset keeping up
+        if (_lastFrameStart >= 0) _gapMsSum += f.Time - _lastFrameStart;
+        _lastFrameStart = f.Time;
 
         _worldFromRoom ??= XrMath.WorldFromRoom(f.HeadPosition, f.HeadOrientation, _spawn, new Vector3(MathF.Cos(_startYaw), 0f, MathF.Sin(_startYaw)));
         _headOrientation = f.HeadOrientation;
@@ -180,13 +192,28 @@ public sealed class VrWorld : IDisposable
         var first = f.Views[0].Viewport;
         EnsureTargets((int)first.Width, (int)first.Height);
 
+        double eyeStart = _frameClock.Elapsed.TotalMilliseconds;
         foreach (var view in f.Views)
         {
             DrawEye(view, m, in sky, rain, fogEnd, seconds);
             blit.Blit(_bridge!, session.Layer.Framebuffer!, view.Viewport);
         }
         FramesDrawn++;
-        if (FramesDrawn % 240 == 1) Console.WriteLine($"[Vr] frame {FramesDrawn}: head {head:F1}, ground {_groundY:F1}, {LastVisibleColumns} columns in view, {_world.LoadedColumns} loaded");
+
+        // CPU time of this frame (what recording the draws and the copies cost on the page's thread; the GPU runs on its own clock)
+        double ms = _frameClock.Elapsed.TotalMilliseconds;
+        _frameMsSum += ms;
+        _frameMsMax = Math.Max(_frameMsMax, ms);
+        _eyeMsSum += ms - eyeStart;
+        if (++_framesInReport >= 240)
+        {
+            var st = _terrain.Stats;
+            Console.WriteLine($"[Vr] frame {FramesDrawn}: head {head:F1}, ground {_groundY:F1} | every {_gapMsSum / _framesInReport:F1} ms, cpu {_frameMsSum / _framesInReport:F1} ms "
+                + $"(max {_frameMsMax:F1}; the two eyes {_eyeMsSum / _framesInReport:F1}) | per eye {st.VisibleColumns} columns, {st.DrawCalls} draws, {st.VisibleQuads} quads, "
+                + $"{_creatures.PartCount} creature parts, {_particles.EmitterCount} emitters | {_world.LoadedColumns} columns loaded, eye {_eyeWidth} x {_eyeHeight}");
+            _frameMsSum = _frameMsMax = _eyeMsSum = _gapMsSum = 0;
+            _framesInReport = 0;
+        }
     }
 
     // The bridge canvas and its depth buffer are one eye big
