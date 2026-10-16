@@ -37,6 +37,7 @@ public sealed class PoiService
     {
         _placed.Clear();
         if (ids != null) foreach (var id in ids) _placed.Add(id);
+        Console.WriteLine($"[Poi] {_placed.Count} buildings already looted (from the save)");
         _lastCellX = int.MinValue;
     }
 
@@ -70,6 +71,7 @@ public sealed class PoiService
     {
         _placed.Add(plan.Id);
         int seed = _world.Seed;
+        Console.WriteLine($"[Poi] {plan.Kind} {plan.Id}: loot laid out ({_placed.Count} so far)");
         var spots = Structures.LootSpots(plan, seed);
         for (int i = 0; i < spots.Count; i++)
         {

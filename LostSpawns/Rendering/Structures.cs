@@ -67,18 +67,40 @@ public static class Structures
         if (plan.Kind == Kind.Well) return new List<Vector3>();
         int n = plan.Kind switch { Kind.Shed => 1 + (int)(Rand(plan.CellX, plan.CellZ, seed + 301) * 2f), Kind.Cabin => 2 + (int)(Rand(plan.CellX, plan.CellZ, seed + 301) * 2f), _ => 4 + (int)(Rand(plan.CellX, plan.CellZ, seed + 301) * 3f) };
         var spots = new List<Vector3>(n);
+        var tables = Tables(plan, seed);
         for (int i = 0; i < n; i++)
         {
             int ix = 1 + (int)(Rand(plan.CellX + i * 17, plan.CellZ, seed + 302) * (plan.Width - 2));
             int iz = 1 + (int)(Rand(plan.CellX, plan.CellZ + i * 13, seed + 303) * (plan.Depth - 2));
             // Not in the partition of a farmhouse
             if (plan.Kind == Kind.House && plan.X0 + ix == PartitionX(plan)) ix = Math.Max(1, ix - 1);
-            spots.Add(new Vector3(plan.X0 + ix + 0.5f, plan.FloorY + 1f, plan.Z0 + iz + 0.5f));
+            // On a table when the cell is one
+            float y = plan.FloorY + (tables.Contains((ix, iz)) ? 2f : 1f);
+            spots.Add(new Vector3(plan.X0 + ix + 0.5f, y, plan.Z0 + iz + 0.5f));
         }
         return spots;
     }
 
     private static int PartitionX(Plan p) => p.X0 + p.Width / 2;
+
+    /// <summary>The interior cells (offsets from the building's corner) with a table of planks on them: two cells side by side, one block high, with loot on top. A cabin has one, a farmhouse two; they keep off the walls, the doors and the partition.</summary>
+    public static List<(int Ix, int Iz)> Tables(Plan p, int seed)
+    {
+        var cells = new List<(int, int)>();
+        if (p.Kind is Kind.Shed or Kind.Well) return cells;
+        int count = p.Kind == Kind.Cabin ? 1 : 2;
+        for (int i = 0; i < count; i++)
+        {
+            int ix = 2 + (int)(Rand(p.CellX + i * 7, p.CellZ, seed + 311) * Math.Max(1, p.Width - 5));
+            int iz = 2 + (int)(Rand(p.CellX, p.CellZ + i * 5, seed + 312) * Math.Max(1, p.Depth - 4));
+            if (ix + 1 > p.Width - 3 || iz > p.Depth - 3) continue;
+            int mid = p.Width / 2;
+            if (p.Kind == Kind.House && (Math.Abs(ix - mid) <= 1 || Math.Abs(ix + 1 - mid) <= 1)) continue;
+            cells.Add((ix, iz));
+            cells.Add((ix + 1, iz));
+        }
+        return cells;
+    }
 
     /// <summary>Build the part of the building that lies in this chunk.</summary>
     public static void Place(ChunkData chunk, int cx, int cz, Vegetation.SurfaceFn surface, int seaLevel, int seed)
@@ -91,6 +113,7 @@ public static class Structures
         if (p.X0 + p.Width + 1 <= x0c || p.X0 - 1 >= x0c + ChunkData.SizeXZ || p.Z0 + p.Depth + 1 <= z0c || p.Z0 - 1 >= z0c + ChunkData.SizeXZ) return;
 
         int top = p.FloorY + WallHeight + 3;
+        var tables = Tables(p, seed);
         for (int wz = p.Z0 - 1; wz <= p.Z0 + p.Depth; wz++)
         for (int wx = p.X0 - 1; wx <= p.X0 + p.Width; wx++)
         {
@@ -116,6 +139,7 @@ public static class Structures
                 continue;
             }
             chunk.SetBlock(lx, p.FloorY, lz, BlockType.Planks);
+            if (tables.Contains((ix, iz))) chunk.SetBlock(lx, p.FloorY + 1, lz, BlockType.Planks);
 
             bool wallCell = ix == 0 || iz == 0 || ix == p.Width - 1 || iz == p.Depth - 1;
             bool partition = p.Kind == Kind.House && wx == PartitionX(p) && !wallCell;

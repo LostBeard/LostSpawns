@@ -80,6 +80,22 @@ try
         await Shot("soak-end");
         return;
     }
+    // "help": open the menu and its Controls page
+    if ((args.ElementAtOrDefault(3) ?? "") == "help")
+    {
+        await page.EvaluateAsync("window.__xr.x = true");
+        await Task.Delay(300);
+        await page.EvaluateAsync("window.__xr.x = false");
+        await Task.Delay(500);
+        await page.EvaluateAsync("window.__xr.aimAt(-0.06, 1.391, -0.75)");
+        await Task.Delay(600);
+        await page.EvaluateAsync("window.__xr.trigger = true");
+        await Task.Delay(300);
+        await page.EvaluateAsync("window.__xr.trigger = false");
+        await Task.Delay(600);
+        await Shot("2-help");
+        return;
+    }
     // "die": hurt the player to death with F9, look at the headset's death menu, point at Respawn and press it
     if ((args.ElementAtOrDefault(3) ?? "") == "die")
     {

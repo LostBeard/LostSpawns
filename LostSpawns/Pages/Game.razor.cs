@@ -17,7 +17,7 @@ namespace LostSpawns.Pages;
 public partial class Game
 {
     private VrUi? _vrUi;
-    private VrPanel? _vrWrist, _vrMenu, _vrToast, _vrFlash, _vrPack;
+    private VrPanel? _vrWrist, _vrMenu, _vrToast, _vrFlash, _vrPack, _vrHelp;
     private UILabel? _vrWristHeader, _vrWristHeld, _vrToastLabel, _vrMenuStatus;
     private readonly (UIPanel Fill, UIPanel Back)[] _vrBars = new (UIPanel, UIPanel)[5];
     private readonly UIButton[] _vrHotbarButtons = new UIButton[9];
@@ -50,15 +50,18 @@ public partial class Game
         BuildVrToast();
         BuildVrMenu();
         BuildVrPack();
+        BuildVrHelp();
         _vrUi.Panels.Add(_vrFlash!);
         _vrUi.Panels.Add(_vrWrist!);
         _vrUi.Panels.Add(_vrToast!);
         _vrUi.Panels.Add(_vrMenu!);
         _vrUi.Panels.Add(_vrPack!);
+        _vrUi.Panels.Add(_vrHelp!);
         _vr.Ui = _vrUi;
         _vr.UiRenderer = () => Hud.UiRenderer;
         _vr.HeldProvider = () => new HeldView(Inventory.ActiveItem?.Id, Hud.SwingArc, Hud.SwingStrength, 0f, 0f);
         AttachVrHandlers();
+        Hud.Notify("Press X for the menu: hotbar, crafting, controls");
     }
 
     private void AttachVrHandlers()
@@ -160,6 +163,7 @@ public partial class Game
         Button(p, "Backpack", 152, 416, () => { _vrPack!.Model = _vrMenu!.Model; _vrMenu.IsOpen = false; _vrPack.IsOpen = true; });
         Button(p, "Leave VR", 280, 416, () => { _ = Vr.Session.ExitAsync(); });
         Button(p, "Close", 24, 474, () => _vrMenu!.IsOpen = false);
+        Button(p, "Controls", 280, 474, () => { _vrHelp!.Model = _vrMenu!.Model; _vrMenu.IsOpen = false; _vrHelp.IsOpen = true; });
 
         _vrRespawn = new UIButton { Text = "Respawn", X = 152, Y = 474, Width = 248, Height = 50, Visible = false };
         _vrRespawn.OnClick = VrRespawn;
@@ -198,6 +202,30 @@ public partial class Game
             p.AddChild(b);
         }
         Button(p, "Back", 24, 320, () => { _vrMenu!.Model = _vrPack!.Model; _vrPack.IsOpen = false; _vrMenu.IsOpen = true; });
+    }
+
+    // How to play, for anyone handed the headset
+    private void BuildVrHelp()
+    {
+        _vrHelp = new VrPanel(800, 470);
+        var p = _vrHelp.Panel;
+        p.AddChild(new UILabel { X = 24, Y = 16, Text = "Controls", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
+        string[] lines =
+        {
+            "Left stick: walk (click it, or squeeze a grip, to run)",
+            "Right stick: turn (click it to switch smooth / snap turning)",
+            "Right trigger: swing the tool - chop, mine, hit (hold to keep going)",
+            "Left trigger: eat or drink what is in your hand, or place a block",
+            "A / B: next / previous hotbar slot",
+            "Y: feed a campfire, or drink from water you point at",
+            "X: this menu (hotbar, eat, drink, heal, sleep, backpack, crafting)",
+            "Point the right controller at a button and pull its trigger.",
+            "The numbers over your left wrist: health, food, water, stamina, warmth.",
+            "Stand by a fire at night. Wolves hunt in the dark; the infected live in the ruins.",
+        };
+        for (int i = 0; i < lines.Length; i++)
+            p.AddChild(new UILabel { X = 24, Y = 70 + i * 32, Width = 760, Text = lines[i], FontSize = FontSize.Body, Color = Color.FromArgb(255, 205, 215, 228) });
+        Button(p, "Back", 24, 410, () => { _vrMenu!.Model = _vrHelp!.Model; _vrHelp.IsOpen = false; _vrMenu.IsOpen = true; });
     }
 
     private static string Short(string name, int max) => name.Length <= max ? name : name[..(max - 1)] + ".";
@@ -239,19 +267,19 @@ public partial class Game
         Renderer.Camera.Pitch = Math.Clamp(pitch, -89f, 89f);
 
         bool dead = Hud.IsDead;
-        if (dead && !_vrMenu!.IsOpen) { _vrPack!.IsOpen = false; OpenVrMenu(f); }
+        if (dead && !_vrMenu!.IsOpen) { _vrPack!.IsOpen = false; _vrHelp!.IsOpen = false; OpenVrMenu(f); }
         _vrRespawn!.Visible = dead;
 
         // The menu: X opens and closes it; the right ray points at it and the trigger clicks
         if (f.LeftPrimary && !_vrXWas && !dead)
         {
-            if (_vrMenu!.IsOpen || _vrPack!.IsOpen) { _vrMenu.IsOpen = false; _vrPack!.IsOpen = false; } else OpenVrMenu(f);
+            if (_vrMenu!.IsOpen || _vrPack!.IsOpen || _vrHelp!.IsOpen) { _vrMenu.IsOpen = false; _vrPack!.IsOpen = false; _vrHelp!.IsOpen = false; } else OpenVrMenu(f);
         }
         _vrXWas = f.LeftPrimary;
         Vector3? ro = f.RightHasRay ? f.RightRayOrigin : null;
         Vector3? rd = f.RightHasRay ? f.RightRayDirection : null;
-        var pointed = _vrPack!.IsOpen ? _vrPack : _vrMenu!;
-        bool menuOpen = _vrMenu!.IsOpen || _vrPack.IsOpen;
+        var pointed = _vrHelp!.IsOpen ? _vrHelp : _vrPack!.IsOpen ? _vrPack : _vrMenu!;
+        bool menuOpen = _vrMenu!.IsOpen || _vrPack!.IsOpen || _vrHelp.IsOpen;
         bool onMenu = menuOpen && pointed.Step(ro, rd, f.RightTrigger, dt);
         _vrUi!.ShowRay = menuOpen && ro != null;
         if (ro is { } rayO && rd is { } rayD)
