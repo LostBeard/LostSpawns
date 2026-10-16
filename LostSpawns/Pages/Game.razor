@@ -2314,10 +2314,45 @@
         Nav.NavigateTo("/");
     }
 
+    // Where the player's ears are: the head in the headset (the camera is the hand there), the camera on the desktop
+    private (System.Numerics.Vector3 Position, float YawDegrees) ListenerPose()
+    {
+        if (_inVr && _vr != null) { var (head, yaw, _) = _vr.Pose; return (head, yaw); }
+        return (Renderer.Camera.Position, Renderer.Camera.Yaw);
+    }
+
+    // Sound with something solid between the source and the ears is dull
+    private bool IsMuffled(System.Numerics.Vector3 source, System.Numerics.Vector3 ear)
+    {
+        var from = new System.Numerics.Vector3(source.X, source.Y + 1.2f, source.Z);
+        var to = ear - from;
+        float d = to.Length();
+        if (d < 1f) return false;
+        var block = World.Raycast(from, to, d);
+        return block.DidHit && System.Numerics.Vector3.Distance(from, block.HitPosition) < d - 0.6f;
+    }
+
     private void HandleInfectedNoticed(LostSpawns.Services.WanderingEntity e)
     {
-        float dx = e.Position.X - Renderer.Camera.Position.X, dz = e.Position.Z - Renderer.Camera.Position.Z;
-        if (dx * dx + dz * dz < 25f * 25f) Audio.PlayInfectedGroan();
+        var (ear, yaw) = ListenerPose();
+        Audio.PlayInfectedGroanAt(e.Position, ear, yaw, IsMuffled(e.Position, ear));
+    }
+
+    // The infected are heard before they are seen: a dragging step for each stride, quicker when charging, dull behind a wall
+    private void TickInfectedSteps(float dt)
+    {
+        var (ear, yaw) = ListenerPose();
+        foreach (var e in Wildlife.Entities)
+        {
+            if (e.Kind != LostSpawns.Services.EntityKind.Infected) continue;
+            float speed = e.Velocity.Length();
+            e.StepDistance += speed * dt;
+            if (e.StepDistance < (e.Runner ? 1.7f : 1.1f)) continue;
+            e.StepDistance = 0f;
+            float dx = e.Position.X - ear.X, dz = e.Position.Z - ear.Z;
+            if (dx * dx + dz * dz > 40f * 40f || speed < 0.1f) continue;
+            Audio.PlayShambleStepAt(e.Position, ear, yaw, IsMuffled(e.Position, ear), e.Runner || e.Alert == LostSpawns.Services.AlertMode.Charge);
+        }
     }
 
     private void HandleDied()
@@ -2690,6 +2725,7 @@
         // Danger / wind / rain Update* tear down retired continuous loops
         // (always-on low sine was the growing hum). One-shots still play.
         TickDangerAudio();
+        TickInfectedSteps(deltaTime);
 
         // Pack warning: 3+ wolves charging within range = real trouble.
         // Toast fires once with a 30s cooldown so we don't spam during

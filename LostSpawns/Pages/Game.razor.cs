@@ -556,6 +556,7 @@ public partial class Game
         // The sounds: weather, danger, the night, the fire, and a footfall for each stride walked
         Audio.UpdateRainAmbient(Weather.RainIntensity);
         TickDangerAudio();
+        TickInfectedSteps(dt);
         TickThunderQueue(dt);
         TickAmbientAudio(dt);
         var head = _vr!.HeadInWorld;

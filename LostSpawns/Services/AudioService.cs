@@ -708,6 +708,85 @@ public class AudioService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Where a sound is heard from: the loudness falls with distance (nothing past 45 blocks), the stereo pan follows which side it is on, and a sound with
+    /// something solid in the way is dull. The listener's yaw is in degrees, 0 along +X as the game counts.
+    /// </summary>
+    private bool Spatialise(System.Numerics.Vector3 source, System.Numerics.Vector3 listener, float listenerYawDegrees, bool muffled, out float volume, out float pan)
+    {
+        float dx = source.X - listener.X, dz = source.Z - listener.Z;
+        float d = MathF.Sqrt(dx * dx + dz * dz);
+        volume = 0f; pan = 0f;
+        if (d > 45f) return false;
+        float att = 1f - d / 45f;
+        volume = att * att * (muffled ? 0.35f : 1f);
+        float yaw = listenerYawDegrees * MathF.PI / 180f;
+        // The listener's right is (-sin, cos) in the XZ plane
+        if (d > 0.01f) pan = Math.Clamp((dx * -MathF.Sin(yaw) + dz * MathF.Cos(yaw)) / d, -1f, 1f) * 0.85f;
+        return volume > 0.01f;
+    }
+
+    /// <summary>A groan from where an infected is.</summary>
+    public void PlayInfectedGroanAt(System.Numerics.Vector3 source, System.Numerics.Vector3 listener, float listenerYawDegrees, bool muffled)
+    {
+        if (_ctx is null || !Spatialise(source, listener, listenerYawDegrees, muffled, out float volume, out float pan)) return;
+        try
+        {
+            double t = _ctx.CurrentTime;
+            using var panner = _ctx.CreateStereoPanner();
+            panner.Pan.SetValueAtTime(pan, t);
+            panner.Connect(Destination);
+            foreach (float start in new[] { 96f, 103f })
+            {
+                using var osc = _ctx.CreateOscillator();
+                using var gain = _ctx.CreateGain();
+                osc.Type = "sawtooth";
+                osc.Frequency.SetValueAtTime(start, t);
+                osc.Frequency.ExponentialRampToValueAtTime(start * 0.62f, t + 0.8);
+                gain.Gain.SetValueAtTime(0, t);
+                gain.Gain.LinearRampToValueAtTime(0.09f * volume, t + 0.12);
+                gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.85);
+                osc.Connect(gain);
+                gain.Connect(panner);
+                osc.Start();
+                osc.Stop(t + 0.85);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayInfectedGroanAt failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>A dragging footfall from where an infected is; a runner's is quicker and harder.</summary>
+    public void PlayShambleStepAt(System.Numerics.Vector3 source, System.Numerics.Vector3 listener, float listenerYawDegrees, bool muffled, bool hard)
+    {
+        if (_ctx is null || !Spatialise(source, listener, listenerYawDegrees, muffled, out float volume, out float pan)) return;
+        try
+        {
+            double t = _ctx.CurrentTime;
+            using var panner = _ctx.CreateStereoPanner();
+            panner.Pan.SetValueAtTime(pan, t);
+            panner.Connect(Destination);
+            using var osc = _ctx.CreateOscillator();
+            using var gain = _ctx.CreateGain();
+            osc.Type = "triangle";
+            osc.Frequency.SetValueAtTime(hard ? 95f : 70f, t);
+            osc.Frequency.ExponentialRampToValueAtTime(38f, t + 0.14);
+            gain.Gain.SetValueAtTime(0, t);
+            gain.Gain.LinearRampToValueAtTime((hard ? 0.20f : 0.14f) * volume, t + 0.01);
+            gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.16);
+            osc.Connect(gain);
+            gain.Connect(panner);
+            osc.Start();
+            osc.Stop(t + 0.16);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayShambleStepAt failed: {ex.Message}");
+        }
+    }
+
     /// <summary>A rattling groan for one of the infected: two detuned saws sinking in pitch, the beat between them the rattle.</summary>
     public void PlayInfectedGroan()
     {

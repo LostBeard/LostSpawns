@@ -58,6 +58,8 @@ public sealed class WanderingEntity
     public bool Runner;
     /// <summary>Seconds until this one next looks for the player (sight is a ray cast, so it is not done every frame).</summary>
     public float SightTimer;
+    /// <summary>Distance walked since its last audible step (blocks).</summary>
+    public float StepDistance;
     /// <summary>What to call it on screen.</summary>
     public string Name => Kind == EntityKind.Infected && Runner ? "Runner" : Kind.ToString();
 }
