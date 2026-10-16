@@ -56,6 +56,8 @@ public sealed class WanderingEntity
     public float AttackCooldown;
     /// <summary>An infected that runs: quicker and frailer than a shambler.</summary>
     public bool Runner;
+    /// <summary>Seconds until this one next looks for the player (sight is a ray cast, so it is not done every frame).</summary>
+    public float SightTimer;
     /// <summary>What to call it on screen.</summary>
     public string Name => Kind == EntityKind.Infected && Runner ? "Runner" : Kind.ToString();
 }
@@ -197,6 +199,9 @@ public class EntityService
     /// <summary>How close an infected has to be to notice the player (blocks); Game.razor halves it while sneaking.</summary>
     public float InfectedAggroRange { get; set; } = 18f;
 
+    /// <summary>How close the player is heard through walls (blocks): the infected see only what they have a line of sight to, but they hear a step close by. Game.razor halves it while sneaking.</summary>
+    public float InfectedHearRange { get; set; } = 7f;
+
     /// <summary>The infected further than this from the player are forgotten (blocks), so the island does not fill up with them.</summary>
     public const float InfectedForgetRange = 150f;
 
@@ -231,7 +236,23 @@ public class EntityService
             {
                 float idx = playerPos.X - e.Position.X, idz = playerPos.Z - e.Position.Z;
                 float d2 = idx * idx + idz * idz;
+                bool notices = false;
                 if (e.Alert == AlertMode.Idle && d2 <= InfectedAggroRange * InfectedAggroRange)
+                {
+                    // Heard close by, or seen: a clear line from its eyes to the player's (checked a few times a second)
+                    e.SightTimer -= dt;
+                    if (d2 <= InfectedHearRange * InfectedHearRange) notices = true;
+                    else if (e.SightTimer <= 0f)
+                    {
+                        e.SightTimer = 0.3f;
+                        var eye = new Vector3(e.Position.X, e.Position.Y + 1.5f, e.Position.Z);
+                        var to = playerPos - eye;
+                        float dist = to.Length();
+                        var block = dist > 0.5f ? world.Raycast(eye, to, dist) : default;
+                        notices = !(block.DidHit && Vector3.Distance(eye, block.HitPosition) < dist - 0.6f);
+                    }
+                }
+                if (notices)
                 {
                     e.Alert = AlertMode.Charge;
                     e.AlertTimer = 8f;

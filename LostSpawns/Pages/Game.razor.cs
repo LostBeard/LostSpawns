@@ -537,6 +537,7 @@ public partial class Game
         Wildlife.WolfAggroRange = (Fires.GetWarmthBonusAt(Renderer.Camera.Position) > 0.01f ? 5f : 10f) * (sneaking ? 0.5f : 1f);
         Wildlife.BearAggroRange = sneaking ? 7.5f : 15f;
         Wildlife.InfectedAggroRange = sneaking ? 9f : 18f;
+        Wildlife.InfectedHearRange = sneaking ? 3.5f : 7f;
         Fires.FuelDecayMultiplier = 1f + Weather.RainIntensity * 1.5f;
         Fires.Tick(dt, Renderer.Camera.Position, Inventory);
         Pois.Tick(dt, Renderer.Camera.Position);
