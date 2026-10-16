@@ -41,7 +41,7 @@ From the Lost solution root:
 dotnet run _tools/render-probe/render-probe.cs
 
 # Custom URL, prefix, settle time
-dotnet run _tools/render-probe/render-probe.cs -- http://localhost:5019/vr vr-probe 10
+dotnet run _tools/render-probe/render-probe.cs -- http://localhost:5019/game?time=0.4 shot 10
 ```
 
 Arg order: `<url> [prefix] [wait-seconds]`.

@@ -37,6 +37,13 @@
 <div class="game-container">
     <canvas id="gameCanvas" @ref="_canvasRef" width="1280" height="720"
             tabindex="0" @onclick="OnCanvasClick"></canvas>
+    @if (_ready && _vrSupported && !_inVr)
+    {
+        <button type="button" class="vr-enter" @onclick="EnterVrAsync" title="Continue in your headset, from where you stand"
+                style="position:fixed;right:16px;top:200px;z-index:20;padding:8px 16px;border:1px solid #5b6a74;border-radius:4px;background:rgba(20,26,30,0.85);color:#e3e8e2;font:600 14px system-ui,sans-serif;cursor:pointer;">
+            Enter VR
+        </button>
+    }
 </div>
 
 @code {
@@ -66,32 +73,12 @@
         StateHasChanged();
 
         // Load real-world Deer Isle heightmap
-        var heightmapLoader = new LostSpawns.Services.HeightmapLoader();
-        try
-        {
-            await heightmapLoader.LoadAsync(JS, "maps/deer_isle.heightmap");
-            heightmapLoader.SetCellSize(15.62f); // 16km / 1024 grid
-            World.InitWithHeightmap(heightmapLoader, seed: 42);
-            _status = "Deer Isle terrain loaded!";
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Game] Heightmap load failed: {ex.Message}, falling back to procedural");
-            World.Init(seed: 42);
-        }
+        await LostSpawns.Services.WorldBootstrap.StartWorldAsync(JS, World);
+        _status = "Deer Isle terrain loaded!";
         StateHasChanged();
 
         // Camera above terrain - spawn on the island, not in the ocean
-        int spawnHeight = World.GetHeightAt(0, 0);
-        // If spawn is underwater, find higher ground nearby
-        if (spawnHeight <= 64) // 64 = sea level in HeightmapLoader
-        {
-            for (int search = 1; search < 200; search += 4)
-            {
-                int h = World.GetHeightAt(search * 16, search * 16);
-                if (h > 68) { spawnHeight = h; break; }
-            }
-        }
+        int spawnHeight = LostSpawns.Services.WorldBootstrap.SpawnHeight(World);
         // Spawn camera a few blocks above the terrain top so gravity settles the
         // player cleanly on the grass. EyeHeight 1.8 = eyes; adding 2 = small fall.
         Renderer.Camera.Position = new System.Numerics.Vector3(0, spawnHeight + EyeHeight + 2f, 0);
@@ -157,6 +144,9 @@
         Weather.OnLightningStrike += HandleLightningSound;
 
         Renderer.OnUpdate = OnGameUpdate;
+        // A headset on this device? The button to continue in it shows when it is
+        _xr = new LostSpawns.Xr.XrSession(JS);
+        _vrSupported = await _xr.IsVrSupportedAsync();
         // The tool in the player's hand is drawn in 3D: tell the renderer what it is and how it swings
         Renderer.HeldProvider = () => new LostSpawns.Rendering.HeldView(Inventory.ActiveItem?.Id, Hud.SwingArc, Hud.SwingStrength, Hud.BobX, Hud.BobY);
 
@@ -314,6 +304,79 @@
             await Task.Delay(1500);
             Console.WriteLine($"[Dig] remesh took {World.LastRemeshMs:F1} ms, {World.LastSectionsMeshed} column(s) meshed, pending {World.DirtyRemeshPending}");
         }
+    }
+
+    // --- VR on this page: the desktop view pauses, the headset takes over the same world and player, and the desktop camera is put where the head was on the way out ---
+    private LostSpawns.Xr.XrSession? _xr;
+    private LostSpawns.Xr.WebGlXrBlit? _blit;
+    private LostSpawns.Xr.VrWorld? _vr;
+    private bool _vrSupported, _inVr;
+    private int _vrFrameErrors;
+
+    private async Task EnterVrAsync()
+    {
+        if (_inVr || _xr == null) return;
+        // The session is requested first thing: an await before it can spend the click's user activation
+        try { await _xr.EnterAsync("immersive-vr"); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Vr] could not enter: {ex.Message}");
+            Hud.NotifyWarning("VR could not start: " + ex.Message);
+            return;
+        }
+        _inVr = true;
+        Renderer.StopRenderLoop();
+        try
+        {
+            _blit = new LostSpawns.Xr.WebGlXrBlit();
+            _blit.Initialize(_xr.GL!);
+            _vr ??= new LostSpawns.Xr.VrWorld(JS, Engine, World, Time, Weather, Wildlife);
+            _vr.Start(Renderer.Camera.Position, Renderer.Camera.Yaw);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Vr] could not start the headset view: {ex}");
+            await _xr.ExitAsync();
+            LeaveVr();
+            return;
+        }
+        _vrFrameErrors = 0;
+        _xr.OnFrame += OnXrFrame;
+        _xr.OnEnded += LeaveVr;
+        StateHasChanged();
+    }
+
+    private void OnXrFrame(LostSpawns.Xr.XrFrameData frame)
+    {
+        try { _vr!.OnFrame(frame, _xr!, _blit!); }
+        catch (Exception ex)
+        {
+            if (_vrFrameErrors++ < 3) Console.WriteLine($"[Vr] frame failed: {ex}");
+        }
+    }
+
+    // The session is over (the headset's own button, or a start that failed): the desktop view takes over from where the head was
+    private void LeaveVr()
+    {
+        if (!_inVr) return;
+        if (_xr != null) { _xr.OnFrame -= OnXrFrame; _xr.OnEnded -= LeaveVr; }
+        if (_vr != null)
+        {
+            var (head, yaw, pitch) = _vr.Pose;
+            Renderer.Camera.Position = head;
+            Renderer.Camera.Yaw = yaw;
+            Renderer.Camera.Pitch = Math.Clamp(pitch, -80f, 80f);
+        }
+        _verticalVelocity = 0;
+        _peakFallSpeed = 0;
+        _grounded = false;
+        _blit?.Dispose();
+        _blit = null;
+        _inVr = false;
+        // The headset kept a smaller ring of columns round the player: plan the desktop's own again
+        World.ForceRestream();
+        Renderer.StartRenderLoop();
+        InvokeAsync(StateHasChanged);
     }
 
     // Save-to-localStorage autosave timer. Runs inside OnGameUpdate so time is
@@ -2961,6 +3024,8 @@
 
     public ValueTask DisposeAsync()
     {
+        _xr?.Dispose();
+        _vr?.Dispose();
         Input.OnEscapePressed -= HandleEscape;
         Input.OnPointerLockChanged -= HandlePointerLockChanged;
         Input.OnInventoryTogglePressed -= HandleInventoryToggle;

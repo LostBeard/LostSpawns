@@ -10,7 +10,7 @@
 // Examples:
 //   dotnet run _tools/render-probe/render-probe.cs
 //   dotnet run _tools/render-probe/render-probe.cs -- http://localhost:5019/game
-//   dotnet run _tools/render-probe/render-probe.cs -- http://localhost:5019/vr vr-probe 8
+//   dotnet run _tools/render-probe/render-probe.cs -- http://localhost:5019/game?time=0.4 shot 8
 //
 // Output:
 //   _tools/render-probe/output/render-{prefix}-{stamp}.png

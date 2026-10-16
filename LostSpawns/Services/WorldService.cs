@@ -128,6 +128,9 @@ public class WorldService
         IsInitialized = true;
     }
 
+    /// <summary>Make the next <see cref="UpdateDesiredChunks"/> plan again even if the player is still in the same column (a different draw distance was in use).</summary>
+    public void ForceRestream() { _lastCX = int.MinValue; _lastCZ = int.MinValue; }
+
     public List<(int cx, int cz)> UpdateDesiredChunks(Vector3 playerPos, int drawDistance)
     {
         int pcx = (int)MathF.Floor(playerPos.X / ChunkData.SizeXZ);
