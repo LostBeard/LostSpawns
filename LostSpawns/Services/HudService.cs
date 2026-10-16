@@ -32,6 +32,11 @@ public class HudService : IDisposable
     private readonly CampfireService _fires;
     private readonly GroundItemService _ground;
     private readonly PoiService? _pois;
+
+    // A survival game does not mark every animal, pile of loot and building on the map (the markers stay in the code behind this switch)
+    private const bool MinimapTracksEverything = false;
+    private IReadOnlyList<WanderingEntity> MinimapEntities => MinimapTracksEverything ? _entities.Entities : System.Array.Empty<WanderingEntity>();
+    private IReadOnlyList<GroundItem> MinimapLoot => MinimapTracksEverything ? _ground.Items : System.Array.Empty<GroundItem>();
     private readonly HashSet<string> _buildingMarkers = new();
 
     // Rain particle state. Each particle stores its current Y, per-particle speed,
@@ -2539,7 +2544,7 @@ public class HudService : IDisposable
         // is cheap for ~5 entities and keeps the marker list in sync with the
         // mutable entity list (births, deaths, wanders). Marker ID convention:
         // "entity.{id}" so we don't collide with POIs like "spawn".
-        foreach (var e in _entities.Entities)
+        foreach (var e in MinimapEntities)
         {
             string markerId = $"entity.{e.Id}";
             // EntityKind -> marker type + label colour (live code path since the
@@ -2583,7 +2588,7 @@ public class HudService : IDisposable
         }
 
         // The buildings round about, so there is somewhere to head for
-        if (_pois != null)
+        if (_pois != null && MinimapTracksEverything)
         {
             var seen = new HashSet<string>();
             foreach (var b in _pois.Nearby)
@@ -2609,7 +2614,7 @@ public class HudService : IDisposable
         // Ground loot markers - one per uncollected drop. Removed once the
         // ground item is picked up (the player dot hits them), so stale
         // markers can't accumulate.
-        foreach (var g in _ground.Items)
+        foreach (var g in MinimapLoot)
         {
             // Use the item's own name as label so the player can distinguish
             // mushrooms / berries / meat / pelts on the minimap without

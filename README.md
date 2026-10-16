@@ -31,7 +31,7 @@ The scope is intentionally ambitious: a full DayZ-scale persistent open world wi
 - **Combat** — Melee (axe/pick), bow with feather arrows, sneak attack 1.75x bonus, bleed status, knockback
 - **Wildlife** — Rabbit, boar, crow, deer, wolf, bear; pack behavior, herd panic, charging predators, wounded flee
 - **The infected** — grey, shambling, tough; they live in the ruined buildings and come out in the dark, notice you within 18 blocks (9 sneaking), follow until you are far off, and walk the real blocks (walls and trunks stop them, they climb a one block step or a window sill)
-- **Ruined buildings** — sheds, cabins, farmhouses (planks, cobble, tables, doors, windows, holes in the roof) and stone wells (a pool to drink from, `F`), all placed by a pure function of the cell and the seed; loot lies inside (canned food, bandages, water, cloth, rope, wood) and stays taken; a roof keeps the rain off you; the minimap marks them
+- **Ruined buildings** — sheds, cabins, farmhouses (planks, cobble, tables, doors, windows, holes in the roof) and stone wells (a pool to drink from, `F`), all placed by a pure function of the cell and the seed; loot lies inside (canned food, bandages, water, cloth, rope, wood) and stays taken; a roof keeps the rain off you
 - **Day-night escalation** — Wolves spawn after dark, density + HP scale per day, dawn break-off
 - **Crafting** — C key, level-gated recipes, tier 2 stone tools, fur coat, bandage, torches, campfire, bonfire, planks and cobblestone to build with (RMB)
 - **Campfires** — Fuel decay, auto-cook raw meat, warmth aura, sleep-to-dawn, mercy fire on respawn
