@@ -13,6 +13,12 @@ public sealed class DebugView
     public float? Rain { get; private set; }
     /// <summary>Break this many blocks along the camera ray (nearest first) a moment after loading, to check that an edit re-meshes (<c>?dig=N</c>).</summary>
     public int Dig { get; private set; }
+    /// <summary>The player cannot be hurt (<c>?god=1</c>).</summary>
+    public bool God { get; private set; }
+    /// <summary>The wildlife stands still (<c>?still=1</c>).</summary>
+    public bool Still { get; private set; }
+    /// <summary>Creatures to place in a row a few blocks ahead of the camera, standing still (<c>?spawn=wolf,deer,rabbit</c>).</summary>
+    public List<EntityKind> Spawn { get; } = new();
     public (float x, float z, float yaw, float pitch, float up)? Camera { get; private set; }
 
     public static DebugView Parse(string uri)
@@ -30,6 +36,12 @@ public sealed class DebugView
                 case "time" when TryFloat(value, out var t): view.Time = t; break;
                 case "rain" when TryFloat(value, out var r): view.Rain = r; break;
                 case "dig" when int.TryParse(value, out var d): view.Dig = d; break;
+                case "god": view.God = value != "0"; break;
+                case "still": view.Still = value != "0"; break;
+                case "spawn":
+                    foreach (var name in value.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                        if (Enum.TryParse<EntityKind>(name, ignoreCase: true, out var kind)) view.Spawn.Add(kind);
+                    break;
                 case "cam":
                     var f = value.Split(',');
                     if (f.Length >= 4 && TryFloat(f[0], out var x) && TryFloat(f[1], out var z) && TryFloat(f[2], out var yaw) && TryFloat(f[3], out var pitch))

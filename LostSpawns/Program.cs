@@ -24,7 +24,6 @@ builder.Services.AddSingleton<VoxelEngineService>();
 builder.Services.AddSingleton<WorldService>();
 builder.Services.AddSingleton<WorldTimeService>();
 builder.Services.AddSingleton<EntityService>();
-builder.Services.AddSingleton<GltfMeshService>();
 builder.Services.AddSingleton<RenderService>();
 // PlayerStats first because InventoryService now constructor-injects it for consumables.
 builder.Services.AddSingleton<PlayerStatsService>();

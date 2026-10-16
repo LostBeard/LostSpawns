@@ -411,8 +411,12 @@ public class PlayerStatsService
     /// Fires OnDied once on the frame Health first hits 0. The cause is recorded
     /// in LastDamageCause on every hit and frozen onto LastCauseOfDeath on death.
     /// </summary>
+    /// <summary>The player takes no damage (a developer view, <c>?god=1</c>: to look at wildlife that attacks).</summary>
+    public bool Invulnerable { get; set; }
+
     public void TakeDamage(float amount, DamageCause cause = DamageCause.Unknown)
     {
+        if (Invulnerable) return;
         if (amount <= 0) return;
         // Always remember the most recent attribution - the death screen reads
         // whichever cause was active at the moment HP crossed zero.

@@ -15,7 +15,6 @@
 @inject CampfireService Fires
 @inject GroundItemService Ground
 @inject AudioService Audio
-@inject GltfMeshService Meshes
 @inject CraftingService Crafter
 @inject InventoryService Inventory
 @inject SaveService Save
@@ -183,14 +182,9 @@
         World.UpdateDesiredChunks(Renderer.Camera.Position, Settings.DrawDistance);
 
         // Seed wildlife near spawn. World already has heights for the initial
-        // radius so GetHeightAt calls are cheap. Entities appear as colored dots
-        // on the minimap immediately; 3D rendering of their bodies is a follow-up.
+        // radius so GetHeightAt calls are cheap. Entities show on the minimap
+        // immediately and are drawn in 3D by CreatureRenderer.
         Wildlife.SpawnStarter(Renderer.Camera.Position, World);
-
-        // Preload CC0 wildlife GLBs into JS ArrayBuffers (header-validated),
-        // then upload POSITION/NORMAL/index views to WebGPU for 3D draw.
-        await Meshes.PreloadCatalogAsync();
-        Renderer.UploadEntityMeshes();
 
         // Drop a starter campfire a couple blocks east of spawn. Gives the
         // player an obvious warmth anchor and a target for future "cook meat"
@@ -282,7 +276,26 @@
             _verticalVelocity = 0;
             _peakFallSpeed = 0;
         }
+        if (view.God) Stats.Invulnerable = true;
+        if (view.Still) Wildlife.Frozen = true;
         if (view.Dig > 0) _ = DigForDebugAsync(view.Dig);
+        if (view.Spawn.Count > 0) SpawnForDebug(view.Spawn);
+    }
+
+    /// <summary>?spawn=wolf,deer: place these creatures in a row, about 7 blocks ahead of the camera, so they can be looked at.</summary>
+    private void SpawnForDebug(List<LostSpawns.Services.EntityKind> kinds)
+    {
+        var cam = Renderer.Camera;
+        var forward = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(cam.Front.X, 0f, cam.Front.Z));
+        var right = new System.Numerics.Vector3(-forward.Z, 0f, forward.X);
+        for (int i = 0; i < kinds.Count; i++)
+        {
+            float offset = (i - (kinds.Count - 1) / 2f) * 3.2f;
+            var pos = cam.Position + forward * 7f + right * offset;
+            var e = Wildlife.Spawn(kinds[i], pos, World);
+            // A heading shows the creature side on, the way a screenshot wants it (frozen wildlife does not move, so it only sets the yaw)
+            e.Velocity = right * 0.06f;
+        }
     }
 
     /// <summary>?dig=N: after the world has settled, break N blocks along the view ray and log what the world did, to check that an edit re-meshes.</summary>

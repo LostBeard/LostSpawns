@@ -31,7 +31,6 @@ public class HudService : IDisposable
     private readonly EntityService _entities;
     private readonly CampfireService _fires;
     private readonly GroundItemService _ground;
-    private readonly GltfMeshService _meshes;
 
     // Rain particle state. Each particle stores its current Y, per-particle speed,
     // and X (randomized once at spawn). Updated in Update(dt); drawn in OnPostRender
@@ -424,7 +423,7 @@ public class HudService : IDisposable
     /// <summary>True while the death screen is on top of the screen stack.</summary>
     public bool IsDead => _ui.Screens.ActiveScreen == "death";
 
-    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather, EntityService entities, CampfireService fires, GroundItemService ground, GltfMeshService meshes)
+    public HudService(GameUIService ui, PlayerStatsService stats, InventoryService inventory, SettingsService settings, WorldTimeService worldTime, CraftingService crafting, WeatherService weather, EntityService entities, CampfireService fires, GroundItemService ground)
     {
         _ui = ui;
         _stats = stats;
@@ -436,7 +435,6 @@ public class HudService : IDisposable
         _entities = entities;
         _fires = fires;
         _ground = ground;
-        _meshes = meshes;
         // Seed breath puffs past their lifetime so they aren't rendered as a
         // ghost ring at (0, 0) on the first few frames before the emitter
         // has had a chance to spawn real ones.
@@ -2305,10 +2303,20 @@ public class HudService : IDisposable
 
         foreach (var e in _entities.Entities)
         {
-            // Offset the sample point up a bit so the billboard tracks the
-            // entity's "chest" rather than its feet - reads more natural in view.
+            // The label sits over the creature's head: a rabbit's is low, a deer's high.
+            float headHeight = e.Kind switch
+            {
+                EntityKind.Rabbit => 0.5f,
+                EntityKind.Crow => 0.45f,
+                EntityKind.Boar => 1.05f,
+                EntityKind.Wolf => 1.2f,
+                EntityKind.Deer => 1.9f,
+                EntityKind.Bear => 2.0f,
+                _ => 1f,
+            };
+            float baseY = e.Position.Y;
             var worldPos = new System.Numerics.Vector4(
-                e.Position.X, e.Position.Y + 0.8f, e.Position.Z, 1f);
+                e.Position.X, baseY + headHeight, e.Position.Z, 1f);
 
             var clip = System.Numerics.Vector4.Transform(worldPos, vp);
             if (clip.W <= 0.001f) continue; // behind camera
@@ -2337,153 +2345,11 @@ public class HudService : IDisposable
             // reads "oh no" before the player hits the HP bar.
             if (e.Kind == EntityKind.Bear) size *= 1.7f;
 
-            // Per-kind color. A recent hit (HitFlashTimer > 0) overrides with
-            // a bright white flash so the player gets a clear "swing landed"
-            // confirmation before the billboard settles back to the kind tint.
-            // Per-instance ColorJitter tweaks RGB by +/- 25 so a herd doesn't
-            // look like clones - one rabbit might be lighter, another darker.
-            int jitter = (int)((e.ColorJitter - 0.5f) * 50f);
-            var color = e.HitFlashTimer > 0
-                ? System.Drawing.Color.FromArgb(250, 255, 255, 255)
-                : e.Kind switch
-            {
-                EntityKind.Boar   => System.Drawing.Color.FromArgb(230, Math.Clamp(140 + jitter, 80, 200), Math.Clamp(90 + jitter, 50, 150), Math.Clamp(60 + jitter / 2, 30, 110)),
-                EntityKind.Crow   => System.Drawing.Color.FromArgb(230, Math.Clamp(30 + jitter / 2, 10, 80), Math.Clamp(30 + jitter / 2, 10, 80), Math.Clamp(30 + jitter / 2, 10, 80)),
-                EntityKind.Wolf   => System.Drawing.Color.FromArgb(230, Math.Clamp(130 + jitter, 80, 200), Math.Clamp(130 + jitter, 80, 200), Math.Clamp(150 + jitter, 100, 220)),
-                EntityKind.Deer   => System.Drawing.Color.FromArgb(230, Math.Clamp(170 + jitter, 110, 220), Math.Clamp(120 + jitter, 70, 180), Math.Clamp(80 + jitter, 40, 140)),
-                EntityKind.Bear   => System.Drawing.Color.FromArgb(230, Math.Clamp(95 + jitter / 2, 60, 140), Math.Clamp(60 + jitter / 2, 35, 100), Math.Clamp(35 + jitter / 2, 15, 80)),
-                _                 => System.Drawing.Color.FromArgb(230, Math.Clamp(200 + jitter, 140, 240), Math.Clamp(190 + jitter, 130, 230), Math.Clamp(180 + jitter, 120, 220)),
-            };
-
             float x = screenX - size / 2f;
             float y = screenY - size / 2f;
 
-            // When a WebGPU mesh is drawing this kind, skip the 2D silhouette
-            // (shadow + body). Keep HP / name / aggro overlays.
-            bool gpuMesh = _meshes.HasGpuMeshForKind(e.Kind);
+            // The creature itself is drawn in 3D by CreatureRenderer; what stays here is the label over its head: its health, its name and the alert.
 
-            // Ground shadow: a dark translucent oval beneath the billboard
-            // that helps the entity read as "standing on terrain" rather
-            // than "floating". Crows skip this because they ARE floating.
-            // Shadow offset shifts left/right based on the sun's projected
-            // screen X so shadows point away from the world-locked sun.
-            if (!gpuMesh && e.Kind != EntityKind.Crow)
-            {
-                float shadowY = y + size + size * 0.05f;
-                float shadowW = size * 0.9f;
-                float shadowH = size * 0.15f;
-                float shadowOffset = 0f;
-                if (_sunVisible && viewportWidth > 0)
-                {
-                    // Sun on the right of screen -> shadow shifts left of the entity.
-                    float sunU = (_sunScreenX / viewportWidth) - 0.5f;
-                    shadowOffset = sunU * size * -0.4f;
-                }
-                _ui.Renderer.DrawRect(
-                    x + (size - shadowW) * 0.5f + shadowOffset, shadowY,
-                    shadowW, shadowH,
-                    System.Drawing.Color.FromArgb(110, 10, 10, 10));
-            }
-
-            if (!gpuMesh)
-            {
-            // Per-kind silhouette: extra rects that stick out above / below
-            // the body to suggest ears, snout, wings, etc. All decorations
-            // use the same body color so hit flashes apply uniformly.
-            switch (e.Kind)
-            {
-                case EntityKind.Rabbit:
-                    // Body + two small ears on top.
-                    _ui.Renderer.DrawRect(x, y, size, size, color);
-                    float earW = size * 0.18f;
-                    float earH = size * 0.35f;
-                    _ui.Renderer.DrawRect(x + size * 0.20f, y - earH, earW, earH, color);
-                    _ui.Renderer.DrawRect(x + size * 0.62f, y - earH, earW, earH, color);
-                    break;
-                case EntityKind.Boar:
-                    // Wider body + snout sticking right.
-                    _ui.Renderer.DrawRect(x, y + size * 0.1f, size, size * 0.9f, color);
-                    _ui.Renderer.DrawRect(x + size * 0.85f, y + size * 0.35f, size * 0.25f, size * 0.35f, color);
-                    break;
-                case EntityKind.Crow:
-                    // Narrow body + two wing rects flared down-left/right.
-                    _ui.Renderer.DrawRect(x + size * 0.3f, y, size * 0.4f, size, color);
-                    _ui.Renderer.DrawRect(x, y + size * 0.4f, size * 0.4f, size * 0.3f, color);
-                    _ui.Renderer.DrawRect(x + size * 0.6f, y + size * 0.4f, size * 0.4f, size * 0.3f, color);
-                    break;
-                case EntityKind.Deer:
-                    // Tall narrow body + small head on top + two antler prongs.
-                    _ui.Renderer.DrawRect(x + size * 0.15f, y + size * 0.25f, size * 0.7f, size * 0.75f, color);
-                    _ui.Renderer.DrawRect(x + size * 0.30f, y, size * 0.40f, size * 0.30f, color);
-                    // Antlers - thin verticals above head, slightly splayed.
-                    _ui.Renderer.DrawRect(x + size * 0.32f, y - size * 0.25f, size * 0.06f, size * 0.25f, color);
-                    _ui.Renderer.DrawRect(x + size * 0.62f, y - size * 0.25f, size * 0.06f, size * 0.25f, color);
-                    break;
-                case EntityKind.Bear:
-                    // Wide body + small rounded head + small ears + low stance.
-                    // Bears read as bulky low-slung threats compared to wolves.
-                    _ui.Renderer.DrawRect(x, y + size * 0.30f, size, size * 0.70f, color);
-                    _ui.Renderer.DrawRect(x + size * 0.30f, y + size * 0.05f, size * 0.40f, size * 0.40f, color);
-                    // Two tiny ears poking up from the head.
-                    _ui.Renderer.DrawRect(x + size * 0.30f, y, size * 0.10f, size * 0.10f, color);
-                    _ui.Renderer.DrawRect(x + size * 0.60f, y, size * 0.10f, size * 0.10f, color);
-                    // Glowing amber eyes that pulse on charge. Even in
-                    // daytime so the player sees an aggro'd bear approach
-                    // through tree cover. Stays hidden during hit flash.
-                    if (e.Alert == AlertMode.Charge && e.HitFlashTimer <= 0)
-                    {
-                        float eyePulse = 0.6f + 0.4f * MathF.Sin(
-                            (float)Environment.TickCount * 0.010f + e.Id);
-                        int eyeAlpha = (int)(230 * eyePulse);
-                        var eyeColor = System.Drawing.Color.FromArgb(eyeAlpha, 255, 180, 30);
-                        float eyeSize = MathF.Max(2f, size * 0.07f);
-                        _ui.Renderer.DrawRect(
-                            x + size * 0.36f, y + size * 0.12f, eyeSize, eyeSize, eyeColor);
-                        _ui.Renderer.DrawRect(
-                            x + size * 0.56f, y + size * 0.12f, eyeSize, eyeSize, eyeColor);
-                    }
-                    break;
-                case EntityKind.Wolf:
-                    // Body + head (upper-left block) + tail (upper-right thin).
-                    _ui.Renderer.DrawRect(x, y + size * 0.2f, size, size * 0.8f, color);
-                    _ui.Renderer.DrawRect(x - size * 0.1f, y, size * 0.45f, size * 0.45f, color);
-                    _ui.Renderer.DrawRect(x + size * 0.95f, y + size * 0.15f, size * 0.18f, size * 0.35f, color);
-                    // Glowing red eyes at night - tiny pulsing dots centered
-                    // on the head block. Pulse phase derived from entity Id
-                    // so packs of wolves don't flicker in unison.
-                    if (_worldTime.IsNight && e.HitFlashTimer <= 0)
-                    {
-                        // Charging wolves glow brighter + bigger eyes -
-                        // intimidation tell that the wolf locked onto you.
-                        bool charging = e.Alert == AlertMode.Charge;
-                        float eyePulse = 0.7f + 0.3f * MathF.Sin(
-                            (float)Environment.TickCount * (charging ? 0.014f : 0.008f) + e.Id);
-                        int eyeBaseAlpha = charging ? 255 : 230;
-                        int eyeAlpha = (int)(eyeBaseAlpha * eyePulse);
-                        var eyeColor = charging
-                            ? System.Drawing.Color.FromArgb(eyeAlpha, 255, 80, 0)
-                            : System.Drawing.Color.FromArgb(eyeAlpha, 255, 50, 30);
-                        float eyeSize = MathF.Max(2f, size * (charging ? 0.10f : 0.08f));
-                        _ui.Renderer.DrawRect(
-                            x + size * 0.02f, y + size * 0.15f, eyeSize, eyeSize, eyeColor);
-                        _ui.Renderer.DrawRect(
-                            x + size * 0.22f, y + size * 0.15f, eyeSize, eyeSize, eyeColor);
-                    }
-                    break;
-                default:
-                    _ui.Renderer.DrawRect(x, y, size, size, color);
-                    break;
-            }
-
-            // Thin dark outline around the bounding box of the main body so
-            // the silhouette pops against terrain. Extra-limb rects don't
-            // get their own outline - keeps the code simple + reads fine.
-            var border = System.Drawing.Color.FromArgb(200, 10, 10, 15);
-            _ui.Renderer.DrawRect(x, y, size, 2, border);
-            _ui.Renderer.DrawRect(x, y + size - 2, size, 2, border);
-            _ui.Renderer.DrawRect(x, y, 2, size, border);
-            _ui.Renderer.DrawRect(x + size - 2, y, 2, size, border);
-            } // !gpuMesh silhouette
 
             // HP bar above the body when damaged. Bar fill normalizes to the
             // entity's MaxHealth so wolves (1.8 HP) and boars (1.5 HP) read as

@@ -20,7 +20,6 @@ public class RenderService : IDisposable
     private readonly WeatherService _weather;
     private readonly SettingsService _settings;
     private readonly EntityService _entities;
-    private readonly GltfMeshService _meshes;
 
     private GPUDevice? _device;
     private GPUQueue? _queue;
@@ -33,11 +32,11 @@ public class RenderService : IDisposable
     private int _canvasWidth;
     private int _canvasHeight;
 
-    // The block pipeline draws the world's columns; the sky pipeline draws behind it; creatures (GLB meshes) share the pass
+    // The block pipeline draws the world's columns; the sky pipeline draws behind it; the creatures (boxes with painted fur) share the pass
     private TerrainRenderer? _terrain;
     private SkyRenderer? _sky;
     private WeatherRenderer? _weatherView;
-    private EntityMeshPipeline? _entityPipeline;
+    private CreatureRenderer? _creatures;
     private float _animTime;
 
     // World reference (set during init)
@@ -69,14 +68,13 @@ public class RenderService : IDisposable
     public int TotalSectionCount => _world?.LoadedSections ?? 0;
     public int TotalColumnCount => _world?.LoadedColumns ?? 0;
 
-    public RenderService(SpawnJSRuntime js, WorldTimeService worldTime, WeatherService weather, SettingsService settings, EntityService entities, GltfMeshService meshes)
+    public RenderService(SpawnJSRuntime js, WorldTimeService worldTime, WeatherService weather, SettingsService settings, EntityService entities)
     {
         _js = js;
         _worldTime = worldTime;
         _weather = weather;
         _settings = settings;
         _entities = entities;
-        _meshes = meshes;
     }
 
     public void Init(HTMLCanvasElement canvas, Accelerator accelerator, WorldService world)
@@ -120,24 +118,14 @@ public class RenderService : IDisposable
         _weatherView = new WeatherRenderer();
         _weatherView.Init(_device, _queue, _canvasFormat, _sky.Atlas!);
 
-        _entityPipeline = new EntityMeshPipeline();
-        _entityPipeline.Init(_device, _queue, _canvasFormat);
+        // The creatures read the terrain's frame uniforms, so they are lit and fogged like the ground
+        _creatures = new CreatureRenderer();
+        _creatures.Init(_device, _queue, _canvasFormat, _terrain.FrameBuffer);
 
         CreateDepthTexture();
 
         IsInitialized = true;
         Console.WriteLine($"[Render] Pipeline ready ({_canvasWidth}x{_canvasHeight})");
-    }
-
-    /// <summary>
-    /// Upload any GLBs already fetched into GPU mesh buffers. Call after
-    /// <see cref="GltfMeshService.PreloadCatalogAsync"/>.
-    /// </summary>
-    public void UploadEntityMeshes()
-    {
-        if (_device == null || _queue == null) return;
-        _meshes.UploadCachedToGpu(_device, _queue);
-        Console.WriteLine($"[Render] Entity GPU meshes: {_meshes.GpuMeshCount}");
     }
 
     public void StartRenderLoop()
@@ -225,6 +213,9 @@ public class RenderService : IDisposable
 
         VisibleChunkCount = _terrain.PrepareVisible(_world, in frustum, cameraPos, fogEnd + 24f);
 
+        // Pose the wildlife for this moment (uploads their boxes before the pass)
+        _creatures!.Prepare(_entities.Entities, cameraPos, _animTime, fogEnd);
+
         // Single encoder, single render pass, single submit
         using var encoder = _device.CreateCommandEncoder();
         // Cleared to the fog colour: what lies past the fog (not drawn) looks exactly like fogged terrain
@@ -235,12 +226,8 @@ public class RenderService : IDisposable
 
         _terrain.DrawSolid(pass);
 
-        // Entity GLB meshes share this pass's depth buffer (reversed-Z).
-        if (_entityPipeline != null && _meshes.GpuMeshCount > 0)
-        {
-            _entityPipeline.DrawEntities(
-                pass, vp, _entities.Entities, _meshes.ResolveWildlifeMesh, sky.SunDirection, _animTime);
-        }
+        // The creatures: depth tested against the ground, before the water so water in front of one blends over it
+        _creatures!.Draw(pass);
 
         // Water last so it blends over the ground and creatures behind it
         _terrain.DrawWater(pass);
@@ -289,8 +276,8 @@ public class RenderService : IDisposable
         _rafCallback?.Dispose();
         _rafCallback = null;
 
-        _entityPipeline?.Dispose();
-        _entityPipeline = null;
+        _creatures?.Dispose();
+        _creatures = null;
         _weatherView?.Dispose();
         _weatherView = null;
         _sky?.Dispose();

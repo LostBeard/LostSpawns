@@ -184,8 +184,12 @@ public class EntityService
     public float BearAggroRange { get; set; } = 15f;
 
     /// <summary>Advance every entity. Call from the active-play branch only.</summary>
+    /// <summary>The wildlife stands where it is (a developer view, <c>?still=1</c>: to look at a creature without it walking off or charging).</summary>
+    public bool Frozen { get; set; }
+
     public void Tick(float dt, WorldService world, Vector3 playerPos, bool isNight = false)
     {
+        if (Frozen) return;
         foreach (var e in Entities)
         {
             if (e.HitFlashTimer > 0) e.HitFlashTimer = MathF.Max(0, e.HitFlashTimer - dt);
