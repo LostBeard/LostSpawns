@@ -40,6 +40,25 @@ try
 {
     await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 120_000 });
     // "pause": look at the game's pause menu (it offers Enter VR when the mock headset is there) instead of entering
+    // "pausevr": open the pause menu, press Enter VR there, then swing at the ground: does play work after switching in from the pause menu?
+    if ((args.ElementAtOrDefault(3) ?? "") == "pausevr")
+    {
+        await Task.Delay(waitSec * 1000);
+        await page.Locator("#gameCanvas").PressAsync("Escape");
+        await Task.Delay(1500);
+        await page.Mouse.ClickAsync(640, 418);
+        await Task.Delay(6000);
+        await page.EvaluateAsync("window.__xr.aimAt(0.3, 0.2, -2.5)");
+        await Task.Delay(500);
+        await page.EvaluateAsync("window.__xr.trigger = true");
+        await Task.Delay(200);
+        await page.EvaluateAsync("window.__xr.trigger = false");
+        await Task.Delay(600);
+        string vr = Path.Combine(outDir, $"{name}-{stamp}-pausevr.png");
+        await page.ScreenshotAsync(new PageScreenshotOptions { Path = vr, Clip = new Clip { X = 0, Y = 0, Width = 1024, Height = 512 } });
+        Console.WriteLine($"[probe] screenshot pausevr: {vr}");
+        return;
+    }
     if ((args.ElementAtOrDefault(3) ?? "") == "pause")
     {
         await Task.Delay(waitSec * 1000);

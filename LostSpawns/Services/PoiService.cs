@@ -79,11 +79,12 @@ public sealed class PoiService
             _ground.Drop(spots[i], Roll(roll, plan.Kind));
         }
 
-        // The sick keep to the buildings: none in a shed, one in a cabin, one or two in a farmhouse; not on top of the player, and not too many at once
+        // The sick keep to the buildings: none in a shed, one in a cabin, one or two in a farmhouse; not near the player or the spawn, and not too many at once
         int infected = plan.Kind switch { Structures.Kind.Shed => 0, Structures.Kind.Well => 0, Structures.Kind.Cabin => 1, _ => 1 + (int)(TileNoise.Rand(plan.CellX, plan.CellZ, seed + 402) * 2f) };
         var c = plan.Centre;
         float dx = c.X - playerPos.X, dz = c.Z - playerPos.Z;
-        if (dx * dx + dz * dz < 25f * 25f) return;
+        // Not within sight of a new player, nor near where everyone starts
+        if (dx * dx + dz * dz < 45f * 45f || c.X * c.X + c.Z * c.Z < 70f * 70f) return;
         for (int i = 0; i < infected && _wildlife.InfectedCount < 12; i++)
         {
             var at = new Vector3(c.X + (i == 0 ? 0f : 1.5f), c.Y, c.Z);

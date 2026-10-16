@@ -363,6 +363,8 @@
     {
         if (_inVr || !Vr.IsActive) return;
         _inVr = true;
+        // Started from the pause menu: its screen would stay on top of the stack and count as a menu open, so no swing or placing would work
+        Hud.HidePauseMenu();
         Renderer.StopRenderLoop();
         var session = Vr.Session;
         try

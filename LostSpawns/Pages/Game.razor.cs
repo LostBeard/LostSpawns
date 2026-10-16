@@ -129,14 +129,14 @@ public partial class Game
 
     private void BuildVrToast()
     {
-        _vrToast = new VrPanel(620, 64) { ReadOnly = true };
+        _vrToast = new VrPanel(620, 64, 0.0013f) { ReadOnly = true };
         _vrToastLabel = new UILabel { X = 20, Y = 14, Width = 580, Height = 36, Text = "", FontSize = FontSize.Heading, Color = Color.White };
         _vrToast.Panel.AddChild(_vrToastLabel);
     }
 
     private void BuildVrMenu()
     {
-        _vrMenu = new VrPanel(800, 620);
+        _vrMenu = new VrPanel(800, 620, 0.0011f);
         var p = _vrMenu.Panel;
         p.AddChild(new UILabel { X = 24, Y = 16, Text = "Lost Spawns", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
         _vrMenuStatus = new UILabel { X = 24, Y = 56, Width = 740, Height = 24, Text = "", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 170, 190, 210) };
@@ -189,7 +189,7 @@ public partial class Game
     // The backpack: a click on a slot swaps it with the slot of the hotbar in the hand
     private void BuildVrPack()
     {
-        _vrPack = new VrPanel(800, 400);
+        _vrPack = new VrPanel(800, 400, 0.0011f);
         var p = _vrPack.Panel;
         p.AddChild(new UILabel { X = 24, Y = 16, Text = "Backpack", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
         p.AddChild(new UILabel { X = 24, Y = 56, Width = 740, Text = "Pick a slot to swap it with the hotbar slot in your hand", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 170, 190, 210) });
@@ -207,7 +207,7 @@ public partial class Game
     // How to play, for anyone handed the headset
     private void BuildVrHelp()
     {
-        _vrHelp = new VrPanel(800, 470);
+        _vrHelp = new VrPanel(800, 470, 0.0011f);
         var p = _vrHelp.Panel;
         p.AddChild(new UILabel { X = 24, Y = 16, Text = "Controls", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
         string[] lines =
