@@ -1,0 +1,350 @@
+using System.Drawing;
+using System.Numerics;
+using LostSpawns.Rendering;
+using LostSpawns.Services;
+using LostSpawns.Xr;
+using SpawnDev.GameUI;
+using SpawnDev.GameUI.Elements;
+
+namespace LostSpawns.Pages;
+
+/// <summary>
+/// The game in the headset. The world is drawn by <see cref="VrWorld"/>; this is the play: the right controller is the player's arm (its ray is
+/// where tools hit and blocks go), the triggers and buttons stand in for the mouse and the keys, the player's numbers are on a panel over the left
+/// wrist, and a menu (X) holds the hotbar, the quick actions and the crafting list. The desktop's own handlers do the work, aimed along the
+/// controller (the camera is put there each frame).
+/// </summary>
+public partial class Game
+{
+    private VrUi? _vrUi;
+    private VrPanel? _vrWrist, _vrMenu, _vrToast, _vrFlash;
+    private UILabel? _vrWristHeader, _vrWristHeld, _vrToastLabel, _vrMenuStatus;
+    private readonly (UIPanel Fill, UIPanel Back)[] _vrBars = new (UIPanel, UIPanel)[5];
+    private readonly UIButton[] _vrHotbarButtons = new UIButton[9];
+    private readonly List<(UIButton Button, LostSpawns.Services.CraftingRecipe Recipe)> _vrCraftButtons = new();
+    private UIButton? _vrRespawn;
+    private double _vrLastTime = -1;
+    private bool _vrRtWas, _vrLtWas, _vrAWas, _vrBWas, _vrXWas, _vrYWas;
+    private float _vrRepeat;
+    private float _vrFlashLevel;
+    private float _vrToastAge = 99f;
+    private bool _vrHandlersAttached;
+
+    private static readonly string[] BarNames = { "HP", "Food", "Water", "Stamina", "Warmth" };
+    private static readonly Color[] BarColors =
+    {
+        Color.FromArgb(255, 210, 60, 60), Color.FromArgb(255, 220, 150, 50), Color.FromArgb(255, 70, 150, 230),
+        Color.FromArgb(255, 90, 200, 90), Color.FromArgb(255, 235, 120, 60),
+    };
+
+    private void EnsureVrUi()
+    {
+        if (_vrUi != null || _vr == null) return;
+        _vrUi = new VrUi();
+        BuildVrFlash();
+        BuildVrWrist();
+        BuildVrToast();
+        BuildVrMenu();
+        _vrUi.Panels.Add(_vrFlash!);
+        _vrUi.Panels.Add(_vrWrist!);
+        _vrUi.Panels.Add(_vrToast!);
+        _vrUi.Panels.Add(_vrMenu!);
+        _vr.Ui = _vrUi;
+        _vr.UiRenderer = () => Hud.UiRenderer;
+        _vr.HeldProvider = () => new HeldView(Inventory.ActiveItem?.Id, Hud.SwingArc, Hud.SwingStrength, 0f, 0f);
+        AttachVrHandlers();
+    }
+
+    private void AttachVrHandlers()
+    {
+        if (_vrHandlersAttached) return;
+        _vrHandlersAttached = true;
+        Stats.OnDamageTaken += VrOnDamage;
+        Hud.OnNotified += VrOnNotified;
+    }
+
+    private void DetachVrHandlers()
+    {
+        if (!_vrHandlersAttached) return;
+        _vrHandlersAttached = false;
+        Stats.OnDamageTaken -= VrOnDamage;
+        Hud.OnNotified -= VrOnNotified;
+    }
+
+    private void VrOnDamage(float amount) => _vrFlashLevel = MathF.Min(1f, 0.45f + amount * 2.5f);
+
+    private void VrOnNotified(string text, SpawnDev.GameUI.Elements.NotificationType type)
+    {
+        if (_vrToastLabel == null) return;
+        _vrToastLabel.Text = text;
+        _vrToastLabel.Color = type switch
+        {
+            SpawnDev.GameUI.Elements.NotificationType.Success => Color.FromArgb(255, 130, 230, 130),
+            SpawnDev.GameUI.Elements.NotificationType.Warning => Color.FromArgb(255, 245, 210, 90),
+            SpawnDev.GameUI.Elements.NotificationType.Damage => Color.FromArgb(255, 255, 120, 110),
+            SpawnDev.GameUI.Elements.NotificationType.Achievement => Color.FromArgb(255, 255, 215, 90),
+            _ => Color.FromArgb(255, 225, 235, 245),
+        };
+        _vrToastAge = 0f;
+    }
+
+    // --- The panels ---
+
+    private void BuildVrFlash()
+    {
+        _vrFlash = new VrPanel(1500, 900) { ReadOnly = true };
+        _vrFlash.Panel.BackgroundColor = Color.FromArgb(0, 200, 20, 20);
+        _vrFlash.Panel.BorderWidth = 0;
+        _vrFlash.Panel.CornerRadius = 0;
+    }
+
+    private void BuildVrWrist()
+    {
+        _vrWrist = new VrPanel(300, 226) { ReadOnly = true, IsOpen = true };
+        var p = _vrWrist.Panel;
+        _vrWristHeader = new UILabel { X = 12, Y = 8, Text = "", FontSize = FontSize.Body, Color = Color.FromArgb(255, 225, 235, 245) };
+        p.AddChild(_vrWristHeader);
+        for (int i = 0; i < _vrBars.Length; i++)
+        {
+            float y = 40 + i * 30;
+            p.AddChild(new UILabel { X = 12, Y = y, Text = BarNames[i], FontSize = FontSize.Caption, Color = Color.FromArgb(255, 200, 210, 222) });
+            var back = new UIPanel { X = 92, Y = y + 2, Width = 190, Height = 18, CornerRadius = 4, BorderWidth = 0, BackgroundColor = Color.FromArgb(255, 40, 46, 56) };
+            var fill = new UIPanel { X = 92, Y = y + 2, Width = 190, Height = 18, CornerRadius = 4, BorderWidth = 0, BackgroundColor = BarColors[i] };
+            p.AddChild(back);
+            p.AddChild(fill);
+            _vrBars[i] = (fill, back);
+        }
+        _vrWristHeld = new UILabel { X = 12, Y = 196, Text = "", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 235, 215, 160) };
+        p.AddChild(_vrWristHeld);
+    }
+
+    private void BuildVrToast()
+    {
+        _vrToast = new VrPanel(620, 64) { ReadOnly = true };
+        _vrToastLabel = new UILabel { X = 20, Y = 14, Width = 580, Height = 36, Text = "", FontSize = FontSize.Heading, Color = Color.White };
+        _vrToast.Panel.AddChild(_vrToastLabel);
+    }
+
+    private void BuildVrMenu()
+    {
+        _vrMenu = new VrPanel(800, 620);
+        var p = _vrMenu.Panel;
+        p.AddChild(new UILabel { X = 24, Y = 16, Text = "Lost Spawns", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
+        _vrMenuStatus = new UILabel { X = 24, Y = 56, Width = 740, Height = 24, Text = "", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 170, 190, 210) };
+        p.AddChild(_vrMenuStatus);
+
+        p.AddChild(new UILabel { X = 24, Y = 92, Text = "Hotbar (A / B change it)", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 200, 210, 222) });
+        for (int i = 0; i < 9; i++)
+        {
+            int slot = i;
+            var b = new UIButton { Text = "", X = 24 + (i % 3) * 128, Y = 118 + (i / 3) * 58, Width = 120, Height = 50 };
+            b.OnClick = () => Inventory.ActiveHotbarIndex = slot;
+            _vrHotbarButtons[i] = b;
+            p.AddChild(b);
+        }
+
+        // Quick actions: the desktop's own keys
+        Button(p, "Eat", 24, 300, () => HandleQuickEat());
+        Button(p, "Drink", 152, 300, () => HandleQuickDrink());
+        Button(p, "Heal", 280, 300, () => HandleQuickHeal());
+        Button(p, "Feed fire", 24, 358, () => HandleFeedFire());
+        Button(p, "Sleep", 152, 358, () => HandleSleep());
+        Button(p, "Drop item", 280, 358, () => HandleDropActive());
+        Button(p, "Save", 24, 416, () => HandleQuickSave());
+        Button(p, "Leave VR", 152, 416, () => { _ = Vr.Session.ExitAsync(); });
+        Button(p, "Close", 280, 416, () => _vrMenu!.IsOpen = false);
+
+        _vrRespawn = new UIButton { Text = "Respawn", X = 24, Y = 490, Width = 360, Height = 70, Visible = false };
+        _vrRespawn.OnClick = VrRespawn;
+        p.AddChild(_vrRespawn);
+
+        p.AddChild(new UILabel { X = 430, Y = 92, Text = "Crafting", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 200, 210, 222) });
+        int n = 0;
+        foreach (var recipe in Crafter.Recipes)
+        {
+            var captured = recipe;
+            var b = new UIButton { Text = recipe.DisplayName, X = 430 + (n % 2) * 180, Y = 118 + (n / 2) * 52, Width = 170, Height = 44 };
+            b.OnClick = () =>
+            {
+                if (Crafter.TryCraft(captured)) Hud.NotifySuccess($"Crafted {captured.Output.Name}");
+                else Hud.NotifyWarning($"Missing materials for {captured.DisplayName}");
+            };
+            _vrCraftButtons.Add((b, recipe));
+            p.AddChild(b);
+            n++;
+        }
+    }
+
+    private static void Button(UIPanel parent, string text, float x, float y, Action onClick)
+    {
+        var b = new UIButton { Text = text, X = x, Y = y, Width = 120, Height = 50 };
+        b.OnClick = onClick;
+        parent.AddChild(b);
+    }
+
+    private void VrRespawn()
+    {
+        HandleRespawnClicked();
+        // The player is back at the spawn: the room is carried there
+        _vr?.Start(Renderer.Camera.Position, Renderer.Camera.Yaw);
+        _vrMenu!.IsOpen = false;
+    }
+
+    // --- One frame of play in the headset (after the world was drawn) ---
+
+    private void VrGameFrame(XrFrameData f)
+    {
+        if (_vr == null || !_vr.Ready) return;
+        EnsureVrUi();
+        float dt = _vrLastTime < 0 ? 0f : (float)Math.Clamp((f.Time - _vrLastTime) / 1000.0, 0.0, 0.1);
+        _vrLastTime = f.Time;
+        var m = _vr.WorldFromRoomNow ?? Matrix4x4.Identity;
+        var head = _vr.HeadInWorld;
+
+        // The aim is the right controller's ray; without one, where the head looks. The desktop camera is put there so the game's own handlers use it.
+        Vector3 aimOrigin, aimDir;
+        if (_vr.RightHand is { } hand) { aimOrigin = hand.Position; aimDir = hand.Direction; }
+        else { aimOrigin = head; aimDir = Vector3.Normalize(Vector3.TransformNormal(Vector3.Transform(-Vector3.UnitZ, f.HeadOrientation), m)); }
+        var (yaw, pitch) = XrMath.AnglesOf(aimDir);
+        Renderer.Camera.Position = aimOrigin;
+        Renderer.Camera.Yaw = yaw;
+        Renderer.Camera.Pitch = Math.Clamp(pitch, -89f, 89f);
+
+        bool dead = Hud.IsDead;
+        if (dead && !_vrMenu!.IsOpen) OpenVrMenu(f);
+        _vrRespawn!.Visible = dead;
+
+        // The menu: X opens and closes it; the right ray points at it and the trigger clicks
+        if (f.LeftPrimary && !_vrXWas && !dead)
+        {
+            if (_vrMenu!.IsOpen) _vrMenu.IsOpen = false; else OpenVrMenu(f);
+        }
+        _vrXWas = f.LeftPrimary;
+        Vector3? ro = f.RightHasRay ? f.RightRayOrigin : null;
+        Vector3? rd = f.RightHasRay ? f.RightRayDirection : null;
+        bool onMenu = _vrMenu!.IsOpen && _vrMenu.Step(ro, rd, f.RightTrigger, dt);
+        _vrUi!.ShowRay = _vrMenu.IsOpen && ro != null;
+        if (ro is { } rayO && rd is { } rayD)
+        {
+            _vrUi.RayOrigin = rayO;
+            _vrUi.RayDirection = rayD;
+            _vrUi.RayHovering = onMenu;
+            if (_vrMenu.RayToPanelPixel(rayO, rayD, out float hitDistance) != null) _vrUi.RayHit = hitDistance;
+        }
+
+        // Play: only with the menu shut and the player alive
+        bool playing = !_vrMenu.IsOpen && !dead;
+        if (playing)
+        {
+            if (f.RightTrigger)
+            {
+                _vrRepeat -= dt;
+                if (!_vrRtWas || _vrRepeat <= 0f)
+                {
+                    _vrRepeat = 0.4f;
+                    Hud.TriggerSwing(1f);
+                    HandleInteract();
+                }
+            }
+            if (f.LeftTrigger && !_vrLtWas) VrUseOrPlace();
+            if (f.RightPrimary && !_vrAWas) Inventory.ActiveHotbarIndex = (Inventory.ActiveHotbarIndex + 1) % 9;
+            if (f.RightSecondary && !_vrBWas) Inventory.ActiveHotbarIndex = (Inventory.ActiveHotbarIndex + 8) % 9;
+            if (f.LeftSecondary && !_vrYWas) HandleFeedFire();
+        }
+        _vrRtWas = f.RightTrigger;
+        _vrLtWas = f.LeftTrigger;
+        _vrAWas = f.RightPrimary;
+        _vrBWas = f.RightSecondary;
+        _vrYWas = f.LeftSecondary;
+
+        VrSurvivalTick(dt, f);
+        VrUpdatePanels(f, dt, m, head);
+    }
+
+    // The left trigger: use what is in the hand (eat it, drink it) or put it down as a block
+    private void VrUseOrPlace()
+    {
+        var item = Inventory.ActiveItem;
+        if (item != null && Inventory.Effects.ContainsKey(item.Id) && Inventory.TryUseSlot(fromHotbar: true, index: Inventory.ActiveHotbarIndex)) return;
+        HandlePlaceBlock();
+    }
+
+    // What the desktop frame does besides moving: the clock, hunger and warmth, the fires, loot, the buildings' loot and the autosave
+    private void VrSurvivalTick(float dt, XrFrameData f)
+    {
+        bool sprinting = (f.LeftThumb || f.LeftGrip || f.RightGrip) && (f.LeftStick.LengthSquared() > 0.05f) && Stats.Stamina > 0.05f && Stats.BleedSecondsRemaining <= 0;
+        Wildlife.DayNumber = Time.DayNumber;
+        float ambient = ComputeAmbientTemperature(dt);
+        Stats.StaminaRegenBlocked = IsHostileNearby(Renderer.Camera.Position, 6f);
+        Stats.Tick(dt, ambient, sprinting);
+        Wildlife.WolfAggroRange = Fires.GetWarmthBonusAt(Renderer.Camera.Position) > 0.01f ? 5f : 10f;
+        Wildlife.BearAggroRange = 15f;
+        Wildlife.InfectedAggroRange = 18f;
+        Fires.FuelDecayMultiplier = 1f + Weather.RainIntensity * 1.5f;
+        Fires.Tick(dt, Renderer.Camera.Position, Inventory);
+        Pois.Tick(dt, Renderer.Camera.Position);
+        Ground.Tick(Renderer.Camera.Position, Inventory);
+        _saveTimer += dt;
+        if (_saveTimer >= SaveService.AutoSaveIntervalSeconds)
+        {
+            _saveTimer = 0;
+            Save.SaveNow(Renderer.Camera.Position, Renderer.Camera.Yaw, Renderer.Camera.Pitch);
+        }
+        // The HUD's timers (swings, toasts, numbers) run on this too
+        Hud.Update(dt, Renderer.Camera.Position, Renderer.Camera.Yaw);
+    }
+
+    private void OpenVrMenu(XrFrameData f)
+    {
+        var fwd = Vector3.Transform(-Vector3.UnitZ, f.HeadOrientation);
+        fwd.Y = 0;
+        fwd = fwd.LengthSquared() < 1e-8f ? -Vector3.UnitZ : Vector3.Normalize(fwd);
+        var at = f.HeadPosition + fwd * 0.75f - Vector3.UnitY * 0.12f;
+        _vrMenu!.Model = VrPanel.FacingUpright(at, f.HeadPosition);
+        _vrMenu.IsOpen = true;
+    }
+
+    private void VrUpdatePanels(XrFrameData f, float dt, Matrix4x4 m, Vector3 head)
+    {
+        var headRoom = f.HeadPosition;
+        var fwdRoom = Vector3.Transform(-Vector3.UnitZ, f.HeadOrientation);
+        var upRoom = Vector3.Transform(Vector3.UnitY, f.HeadOrientation);
+        var rightRoom = Vector3.Transform(Vector3.UnitX, f.HeadOrientation);
+
+        // The numbers, over the left wrist (or low on the left of the view when that hand is not tracked)
+        float[] values = { Stats.Health, Stats.Hunger, Stats.Thirst, Stats.Stamina, Stats.Temperature };
+        for (int i = 0; i < _vrBars.Length; i++)
+            _vrBars[i].Fill.Width = MathF.Max(2f, 190f * Math.Clamp(values[i], 0f, 1f));
+        int minutes = (int)(Time.DayFraction * 24f * 60f);
+        _vrWristHeader!.Text = $"Day {Time.DayNumber + 1}   {minutes / 60:D2}:{minutes % 60:D2}   Lv {Stats.Level}";
+        var held = Inventory.ActiveItem;
+        _vrWristHeld!.Text = held == null ? $"[{Inventory.ActiveHotbarIndex + 1}] empty hands" : $"[{Inventory.ActiveHotbarIndex + 1}] {held.Name}" + (held.Count > 1 ? $" x{held.Count}" : "");
+        _vrWrist!.Model = f.LeftHasRay
+            ? VrPanel.Facing(f.LeftRayOrigin + Vector3.UnitY * 0.13f + (headRoom - f.LeftRayOrigin) * 0.12f, headRoom)
+            : VrPanel.Facing(headRoom + fwdRoom * 0.55f - rightRoom * 0.32f - upRoom * 0.30f, headRoom);
+
+        // The latest message, low in front of the eyes for a few seconds
+        _vrToastAge += dt;
+        _vrToast!.IsOpen = _vrToastAge < 3.5f;
+        _vrToast.Model = VrPanel.Facing(headRoom + fwdRoom * 0.9f - upRoom * 0.22f, headRoom);
+
+        // A hit reddens the view for a moment
+        _vrFlashLevel = MathF.Max(0f, _vrFlashLevel - dt * 2.2f);
+        _vrFlash!.IsOpen = _vrFlashLevel > 0.01f;
+        _vrFlash.Panel.BackgroundColor = Color.FromArgb((int)(150 * _vrFlashLevel), 200, 20, 20);
+        _vrFlash.Model = VrPanel.Facing(headRoom + fwdRoom * 0.35f, headRoom);
+
+        // The menu's live parts
+        if (_vrMenu!.IsOpen)
+        {
+            _vrMenuStatus!.Text = Hud.IsDead ? "You died." : $"HP {(int)(Stats.Health * 100)}%   Food {(int)(Stats.Hunger * 100)}%   Water {(int)(Stats.Thirst * 100)}%   Warmth {(int)(Stats.Temperature * 100)}%";
+            for (int i = 0; i < 9; i++)
+            {
+                var it = i < Inventory.Hotbar.Count ? Inventory.Hotbar[i] : null;
+                string name = it == null ? "-" : it.Name + (it.Count > 1 ? $" x{it.Count}" : "");
+                _vrHotbarButtons[i].Text = (i == Inventory.ActiveHotbarIndex ? "> " : "") + (i + 1) + " " + name;
+            }
+            foreach (var (button, recipe) in _vrCraftButtons) button.Enabled = Crafter.CanCraft(recipe);
+        }
+    }
+}

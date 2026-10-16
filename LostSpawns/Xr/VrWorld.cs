@@ -32,6 +32,8 @@ public sealed class VrWorld : IDisposable
     private readonly WorldTimeService _time;
     private readonly WeatherService _weather;
     private readonly EntityService _wildlife;
+    private readonly CampfireService _fires;
+    private readonly GroundItemService _ground;
     private readonly XrLocomotion _loco = new();
 
     private GPUDevice? _device;
@@ -65,6 +67,17 @@ public sealed class VrWorld : IDisposable
     /// <summary>How many columns out from the player the world is kept and drawn.</summary>
     public int DrawRadius { get; set; } = DefaultDrawRadius;
 
+    /// <summary>The panels (status, menu) drawn over each eye, and the GameUI renderer that draws them; both set by the game page.</summary>
+    public VrUi? Ui { get; set; }
+    public Func<SpawnDev.GameUI.UIRenderer?>? UiRenderer { get; set; }
+    /// <summary>What the right hand holds and how it swings, asked each frame.</summary>
+    public Func<HeldView>? HeldProvider { get; set; }
+    /// <summary>The right hand in the world: where it is and which way the controller points (null: not tracked this frame).</summary>
+    public (Vector3 Position, Vector3 Direction)? RightHand { get; private set; }
+    /// <summary>Room to world, as of the last frame (null before the first).</summary>
+    public Matrix4x4? WorldFromRoomNow => _worldFromRoom;
+    private double _lastSeconds;
+
     /// <summary>The world has columns and the renderers exist: frames draw.</summary>
     public bool Ready { get; private set; }
     public float TurnDegreesPerSecond { get => _loco.SmoothTurnDegreesPerSecond; set => _loco.SmoothTurnDegreesPerSecond = value; }
@@ -85,8 +98,10 @@ public sealed class VrWorld : IDisposable
         }
     }
 
-    public VrWorld(SpawnJSRuntime js, VoxelEngineService engine, WorldService world, WorldTimeService time, WeatherService weather, EntityService wildlife)
+    public VrWorld(SpawnJSRuntime js, VoxelEngineService engine, WorldService world, WorldTimeService time, WeatherService weather, EntityService wildlife, CampfireService fires, GroundItemService ground)
     {
+        _fires = fires;
+        _ground = ground;
         _js = js;
         _engine = engine;
         _world = world;
@@ -182,10 +197,17 @@ public sealed class VrWorld : IDisposable
         var sky = Atmosphere.At(_time.DayFraction, rain, 0f);
         float fogEnd = MathF.Max(DrawRadius * 16f - 12f, 48f) * (1f - 0.35f * rain);
 
+        _lastSeconds = seconds;
+        RightHand = f.RightHasRay ? (Vector3.Transform(f.RightRayOrigin, m), Vector3.Normalize(Vector3.TransformNormal(f.RightRayDirection, m))) : null;
+
         _creatures!.Begin();
         _creatures.AddCreatures(_wildlife.Entities, head, seconds, 100f);
+        _creatures.AddFires(_fires.Fires, head, 100f);
+        _creatures.AddItems(_ground.Items, head, seconds, 40f);
+        if (RightHand is { } hand && HeldProvider?.Invoke() is { } held) _creatures.AddHeldAt(in held, hand.Position, hand.Direction);
         _creatures.Commit();
         _particles!.Begin(seconds);
+        _particles.AddFires(_fires.Fires, head, 100f, sky.Daylight);
         _particles.AddFireflies(_world, head, sky.Night, rain);
         _particles.Commit();
 
@@ -275,7 +297,17 @@ public sealed class VrWorld : IDisposable
         pass.End();
         using var commands = encoder.Finish();
         _queue!.Submit(new[] { commands });
+
+        // The panels over the world: the eye's view from the room (they are placed in the room, in metres)
+        if (Ui != null && UiRenderer?.Invoke() is { } uiRenderer)
+        {
+            Ui.EnsureTargets(_device, _queue, _eyeWidth, _eyeHeight);
+            Ui.DrawEye(_device, _queue, uiRenderer, view.RoomView * view.Projection, colorView);
+        }
     }
+
+    /// <summary>A short burst of particles (dust where a block broke, blood where a creature was hit) at a world position.</summary>
+    public void Burst(ParticleKinds kind, Vector3 position, double seconds) => _particles?.AddBurst(kind, position, _lastSeconds, seconds);
 
     public void Dispose()
     {

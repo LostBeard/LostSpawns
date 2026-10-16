@@ -2084,7 +2084,16 @@ public class HudService : IDisposable
 
     /// <summary>Push a toast notification onto the HUD. Fades and drops automatically.</summary>
     public void Notify(string text, NotificationType type = NotificationType.Info)
-        => Notifications?.Push(text, type);
+    {
+        Notifications?.Push(text, type);
+        OnNotified?.Invoke(text, type);
+    }
+
+    /// <summary>A toast was pushed (the headset view shows them on a panel of its own).</summary>
+    public event Action<string, NotificationType>? OnNotified;
+
+    /// <summary>The GameUI renderer that draws the HUD (the headset's panels are drawn with it too).</summary>
+    public SpawnDev.GameUI.UIRenderer? UiRenderer => _ui.IsInitialized ? _ui.Renderer : null;
 
     /// <summary>Green-accent success toast (pickup, craft success, XP gain).</summary>
     public void NotifySuccess(string text) => Notify(text, NotificationType.Success);

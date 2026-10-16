@@ -275,6 +275,29 @@ public sealed class CreatureRenderer : IDisposable
         if (tool != null) EmitHeld(tool, in toWorld);
     }
 
+    /// <summary>The tool in a hand in the room (the headset): its working end points the way the controller does, tilted up a little, swinging down through an arc.</summary>
+    public void AddHeldAt(in HeldView held, Vector3 handPosition, Vector3 pointing)
+    {
+        if (!_pipe.IsReady || held.ItemId is null) return;
+        var tool = HeldModels.For(held.ItemId);
+        if (tool == null) return;
+        var forward = pointing.LengthSquared() < 1e-8f ? -Vector3.UnitZ : Vector3.Normalize(pointing);
+        var side = Vector3.Cross(forward, Vector3.UnitY);
+        side = side.LengthSquared() < 1e-8f ? Vector3.UnitX : Vector3.Normalize(side);
+        // Held out ahead with the head of the tool raised; a swing brings it down across the front
+        float arc = held.SwingArc * held.SwingStrength;
+        var toolDir = Vector3.Normalize(forward + Vector3.UnitY * 0.9f);
+        toolDir = Vector3.Transform(toolDir, Quaternion.CreateFromAxisAngle(side, 1.7f * arc));
+        var turnAxis = Vector3.Cross(Vector3.UnitY, toolDir);
+        var turn = turnAxis.LengthSquared() < 1e-10f ? Quaternion.Identity
+            : Quaternion.CreateFromAxisAngle(Vector3.Normalize(turnAxis), MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, toolDir), -1f, 1f)));
+        const float PixelScale = 0.5f;
+        // The model has its working end at -y; flipped, it is at +y, which is turned to the way the tool points
+        var toWorld = Matrix4x4.CreateScale(PixelScale / 16f) * Matrix4x4.CreateScale(-1f, -1f, 1f)
+            * Matrix4x4.CreateFromQuaternion(turn) * Matrix4x4.CreateTranslation(handPosition + forward * 0.05f);
+        EmitHeld(tool, in toWorld);
+    }
+
     private void EmitHeld(CreatureModel model, in Matrix4x4 toWorld)
     {
         Reserve(model.Parts.Length);

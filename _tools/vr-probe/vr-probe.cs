@@ -62,6 +62,46 @@ try
         Console.WriteLine($"[probe] screenshot {label}: {path}");
     }
     await Shot("1-start");
+    // "play": the gameplay layer: wrist numbers, the X menu, pointing at it, a swing with the right trigger
+    // "die": hurt the player to death with F9, look at the headset's death menu, point at Respawn and press it
+    if ((args.ElementAtOrDefault(3) ?? "") == "die")
+    {
+        for (int i = 0; i < 12; i++) { await page.Keyboard.PressAsync("F9"); await Task.Delay(120); }
+        await Task.Delay(1200);
+        await Shot("2-dead");
+        await page.EvaluateAsync("window.__xr.aimAt(-0.196, 1.365, -0.75)");
+        await Task.Delay(700);
+        await Shot("3-at-respawn");
+        await page.EvaluateAsync("window.__xr.trigger = true");
+        await Task.Delay(300);
+        await page.EvaluateAsync("window.__xr.trigger = false");
+        await Task.Delay(2500);
+        await Shot("4-respawned");
+        return;
+    }
+    if ((args.ElementAtOrDefault(3) ?? "") == "play")
+    {
+        async Task Press(string flag, int ms = 350) { await page.EvaluateAsync($"window.__xr.{flag} = true"); await Task.Delay(ms); await page.EvaluateAsync($"window.__xr.{flag} = false"); await Task.Delay(250); }
+        await Press("x");
+        await Task.Delay(500);
+        await Shot("2-menu");
+        // the menu is 0.75 m ahead of the head, a little low; its hotbar buttons are on the left
+        await page.EvaluateAsync("window.__xr.aimAt(-0.2, 1.5, -0.75)");
+        await Task.Delay(700);
+        await Shot("3-pointing");
+        await Press("trigger");
+        await Press("x");
+        // menu shut: aim at the ground ahead and swing
+        await page.EvaluateAsync("window.__xr.aimAt(0.3, 0.2, -2.5)");
+        await Task.Delay(500);
+        await page.EvaluateAsync("window.__xr.trigger = true");
+        await Task.Delay(180);
+        await Shot("4-swing");
+        await page.EvaluateAsync("window.__xr.trigger = false");
+        await Task.Delay(1500);
+        await Shot("5-after");
+        return;
+    }
     // Walk: the left stick forward (pushed forward reads -1 on y)
     await page.EvaluateAsync("window.__xr.left = [0, -1]");
     await Task.Delay(5000);

@@ -368,7 +368,7 @@
         {
             _blit = new LostSpawns.Xr.WebGlXrBlit();
             _blit.Initialize(session.GL!);
-            _vr ??= new LostSpawns.Xr.VrWorld(JS, Engine, World, Time, Weather, Wildlife);
+            _vr ??= new LostSpawns.Xr.VrWorld(JS, Engine, World, Time, Weather, Wildlife, Fires, Ground);
             _vr.DrawRadius = Vr.DrawRadius;
             _vr.Start(Renderer.Camera.Position, Renderer.Camera.Yaw);
         }
@@ -380,13 +380,19 @@
             return;
         }
         _vrFrameErrors = 0;
+        _vrLastTime = -1;
+        Renderer.BurstTap = (kind, position, seconds) => _vr?.Burst(kind, position, seconds);
         session.OnFrame += OnXrFrame;
         session.OnEnded += LeaveVr;
     }
 
     private void OnXrFrame(LostSpawns.Xr.XrFrameData frame)
     {
-        try { _vr!.OnFrame(frame, Vr.Session, _blit!); }
+        try
+        {
+            _vr!.OnFrame(frame, Vr.Session, _blit!);
+            VrGameFrame(frame);
+        }
         catch (Exception ex)
         {
             if (_vrFrameErrors++ < 3) Console.WriteLine($"[Vr] frame failed: {ex}");
@@ -399,6 +405,8 @@
         if (!_inVr) return;
         Vr.Session.OnFrame -= OnXrFrame;
         Vr.Session.OnEnded -= LeaveVr;
+        Renderer.BurstTap = null;
+        DetachVrHandlers();
         if (_vr != null)
         {
             var (head, yaw, pitch) = _vr.Pose;
@@ -2353,6 +2361,51 @@
         RecapturePointerForGameplay();
     }
 
+    /// <summary>
+    /// The air temperature the player's body is heading for (the time of day, the rain, a fire's warmth, a coat, a torch in hand), and the
+    /// healing speed that comes with the warmth and a fresh resurrection. Used by both the desktop frame and the headset's.
+    /// </summary>
+    private float ComputeAmbientTemperature(float deltaTime)
+    {
+        // Rain shifts temperature target colder (wet + wind = chill). Clothing
+        // system will eventually scale this, but for now rain always bites.
+        // Campfire warmth bonus is additive on top - stand next to the fire
+        // during a cold rain and the bonus can fully cancel the chill.
+        float warmthBonus = Fires.GetWarmthBonusAt(Renderer.Camera.Position);
+        // Fur Coat, if crafted + held, gives a flat +0.15 warmth anywhere.
+        // Passive for MVP (no equipment slot system yet) - just having one
+        // in inventory is enough to notice the temperature track.
+        float coatBonus = Inventory.HasItem("gear.fur_coat") ? 0.15f : 0f;
+        // Held torch grants a small warmth bonus on top - actively holding
+        // a flame in your hand should help on a cold night, even if you
+        // haven't placed it yet. Smaller than a coat (0.08 vs 0.15) so the
+        // coat is still the better long-term gear choice.
+        float torchBonus = Inventory.ActiveItem?.Id == "craft.torch" ? 0.08f : 0f;
+        // Clamp to [0.05, 0.85] so stacking fire + coat + noon sun doesn't
+        // drive the player into heatstroke range, and an unfueled night
+        // can't collapse the ambient below the bottom of the temp track.
+        float ambient = Math.Clamp(
+            Time.TargetTemperature
+                - Weather.RainIntensity * 0.1f
+                + warmthBonus
+                + coatBonus
+                + torchBonus,
+            0.05f, 0.85f);
+        // Camping = faster recovery. Multiplier scales with warmth so a
+        // barely-in-range fire helps less than one the player is practically
+        // sitting in, but still beats out-in-the-cold. Resurrection grace
+        // window stacks on top so a player who just respawned heals fast
+        // even before they make it to a fire.
+        float regenMul = warmthBonus > 0 ? 1f + warmthBonus * 3f : 1f;
+        if (_resurrectGraceTimer > 0)
+        {
+            _resurrectGraceTimer -= deltaTime;
+            regenMul += 1.0f;
+        }
+        Stats.HealthRegenMultiplier = regenMul;
+        return ambient;
+    }
+
     private void OnGameUpdate(float deltaTime)
     {
         // During initial terrain load: drive the loading progress bar from
@@ -2665,42 +2718,7 @@
         {
             _crackleTimer = 0f;
         }
-        // Rain shifts temperature target colder (wet + wind = chill). Clothing
-        // system will eventually scale this, but for now rain always bites.
-        // Campfire warmth bonus is additive on top - stand next to the fire
-        // during a cold rain and the bonus can fully cancel the chill.
-        float warmthBonus = Fires.GetWarmthBonusAt(Renderer.Camera.Position);
-        // Fur Coat, if crafted + held, gives a flat +0.15 warmth anywhere.
-        // Passive for MVP (no equipment slot system yet) - just having one
-        // in inventory is enough to notice the temperature track.
-        float coatBonus = Inventory.HasItem("gear.fur_coat") ? 0.15f : 0f;
-        // Held torch grants a small warmth bonus on top - actively holding
-        // a flame in your hand should help on a cold night, even if you
-        // haven't placed it yet. Smaller than a coat (0.08 vs 0.15) so the
-        // coat is still the better long-term gear choice.
-        float torchBonus = Inventory.ActiveItem?.Id == "craft.torch" ? 0.08f : 0f;
-        // Clamp to [0.05, 0.85] so stacking fire + coat + noon sun doesn't
-        // drive the player into heatstroke range, and an unfueled night
-        // can't collapse the ambient below the bottom of the temp track.
-        float ambient = Math.Clamp(
-            Time.TargetTemperature
-                - Weather.RainIntensity * 0.1f
-                + warmthBonus
-                + coatBonus
-                + torchBonus,
-            0.05f, 0.85f);
-        // Camping = faster recovery. Multiplier scales with warmth so a
-        // barely-in-range fire helps less than one the player is practically
-        // sitting in, but still beats out-in-the-cold. Resurrection grace
-        // window stacks on top so a player who just respawned heals fast
-        // even before they make it to a fire.
-        float regenMul = warmthBonus > 0 ? 1f + warmthBonus * 3f : 1f;
-        if (_resurrectGraceTimer > 0)
-        {
-            _resurrectGraceTimer -= deltaTime;
-            regenMul += 1.0f;
-        }
-        Stats.HealthRegenMultiplier = regenMul;
+        float ambient = ComputeAmbientTemperature(deltaTime);
 
         // Stamina regen pauses while a hostile is within 6 blocks and
         // charging - can't catch your breath with a wolf running you down.
@@ -3071,6 +3089,8 @@
 
     public ValueTask DisposeAsync()
     {
+        DetachVrHandlers();
+        _vrUi?.Dispose();
         _vr?.Dispose();
         Input.OnEscapePressed -= HandleEscape;
         Input.OnPointerLockChanged -= HandlePointerLockChanged;

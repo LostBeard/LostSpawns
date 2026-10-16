@@ -58,7 +58,14 @@ public class RenderService : IDisposable
     public Func<HeldView>? HeldProvider { get; set; }
 
     /// <summary>A short burst of particles (dust where a block broke, blood where a creature was hit) at a world position.</summary>
-    public void ParticleBurst(ParticleKinds kind, Vector3 position, double seconds) => _particles?.AddBurst(kind, position, _animTime, seconds);
+    public void ParticleBurst(ParticleKinds kind, Vector3 position, double seconds)
+    {
+        _particles?.AddBurst(kind, position, _animTime, seconds);
+        BurstTap?.Invoke(kind, position, seconds);
+    }
+
+    /// <summary>Also told of every burst (the headset view has particles of its own to show them with).</summary>
+    public Action<ParticleKinds, Vector3, double>? BurstTap { get; set; }
     public bool IsInitialized { get; private set; }
     public Action<float>? OnUpdate { get; set; }
 
