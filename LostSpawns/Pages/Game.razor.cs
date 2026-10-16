@@ -30,6 +30,7 @@ public partial class Game
     private float _vrFlashLevel;
     private float _vrToastAge = 99f;
     private bool _vrHandlersAttached;
+    private float _vrStandHeight;
     private Vector3? _vrStepFrom;
     private float _vrStepDistance;
     private bool _vrStepAlt;
@@ -75,6 +76,7 @@ public partial class Game
 
     private void DetachVrHandlers()
     {
+        Input.KeysDown.Remove("ControlLeft");
         if (!_vrHandlersAttached) return;
         _vrHandlersAttached = false;
         Stats.OnDamageTaken -= VrOnDamage;
@@ -216,7 +218,7 @@ public partial class Game
     // How to play, for anyone handed the headset
     private void BuildVrHelp()
     {
-        _vrHelp = new VrPanel(800, 470, 0.0011f);
+        _vrHelp = new VrPanel(800, 520, 0.0011f);
         var p = _vrHelp.Panel;
         p.AddChild(new UILabel { X = 24, Y = 16, Text = "Controls", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
         string[] lines =
@@ -227,6 +229,7 @@ public partial class Game
             "Left trigger: eat or drink what is in your hand, or place a block",
             "A / B: next / previous hotbar slot",
             "Y: feed a campfire, or drink from water you point at",
+            "Crouch for real to sneak: animals and the infected notice you from half as far",
             "X: this menu (hotbar, eat, drink, heal, sleep, backpack, crafting)",
             "Point the right controller at a button and pull its trigger.",
             "The numbers over your left wrist: health, food, water, stamina, warmth.",
@@ -234,7 +237,7 @@ public partial class Game
         };
         for (int i = 0; i < lines.Length; i++)
             p.AddChild(new UILabel { X = 24, Y = 70 + i * 32, Width = 760, Text = lines[i], FontSize = FontSize.Body, Color = Color.FromArgb(255, 205, 215, 228) });
-        Button(p, "Back", 24, 410, () => { _vrMenu!.Model = _vrHelp!.Model; _vrHelp.IsOpen = false; _vrMenu.IsOpen = true; });
+        Button(p, "Back", 24, 460, () => { _vrMenu!.Model = _vrHelp!.Model; _vrHelp.IsOpen = false; _vrMenu.IsOpen = true; });
     }
 
     private static string Short(string name, int max) => name.Length <= max ? name : name[..(max - 1)] + ".";
@@ -400,9 +403,14 @@ public partial class Game
         float ambient = ComputeAmbientTemperature(dt);
         Stats.StaminaRegenBlocked = IsHostileNearby(Renderer.Camera.Position, 6f);
         Stats.Tick(dt, ambient, sprinting);
-        Wildlife.WolfAggroRange = Fires.GetWarmthBonusAt(Renderer.Camera.Position) > 0.01f ? 5f : 10f;
-        Wildlife.BearAggroRange = 15f;
-        Wildlife.InfectedAggroRange = 18f;
+        // Crouching for real (the head well below the tallest it has been lately) is sneaking: the desktop's Ctrl, which the handlers look for
+        _vrStandHeight = MathF.Max(_vrStandHeight * 0.9995f, f.HeadPosition.Y);
+        bool sneaking = f.HeadPosition.Y < _vrStandHeight - 0.4f;
+        if (sneaking) Input.KeysDown.Add("ControlLeft"); else Input.KeysDown.Remove("ControlLeft");
+        Hud.IsSneaking = sneaking;
+        Wildlife.WolfAggroRange = (Fires.GetWarmthBonusAt(Renderer.Camera.Position) > 0.01f ? 5f : 10f) * (sneaking ? 0.5f : 1f);
+        Wildlife.BearAggroRange = sneaking ? 7.5f : 15f;
+        Wildlife.InfectedAggroRange = sneaking ? 9f : 18f;
         Fires.FuelDecayMultiplier = 1f + Weather.RainIntensity * 1.5f;
         Fires.Tick(dt, Renderer.Camera.Position, Inventory);
         Pois.Tick(dt, Renderer.Camera.Position);
