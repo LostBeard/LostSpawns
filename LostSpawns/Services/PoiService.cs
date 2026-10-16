@@ -78,7 +78,7 @@ public sealed class PoiService
         }
 
         // The sick keep to the buildings: none in a shed, one in a cabin, one or two in a farmhouse; not on top of the player, and not too many at once
-        int infected = plan.Kind switch { Structures.Kind.Shed => 0, Structures.Kind.Cabin => 1, _ => 1 + (int)(TileNoise.Rand(plan.CellX, plan.CellZ, seed + 402) * 2f) };
+        int infected = plan.Kind switch { Structures.Kind.Shed => 0, Structures.Kind.Well => 0, Structures.Kind.Cabin => 1, _ => 1 + (int)(TileNoise.Rand(plan.CellX, plan.CellZ, seed + 402) * 2f) };
         var c = plan.Centre;
         float dx = c.X - playerPos.X, dz = c.Z - playerPos.Z;
         if (dx * dx + dz * dz < 25f * 25f) return;

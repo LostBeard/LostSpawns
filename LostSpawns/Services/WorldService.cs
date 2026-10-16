@@ -588,6 +588,18 @@ public class WorldService
     /// adapts our byte[] column cache to the library's int[] PackedBlock section view.
     /// Water blocks are treated as transparent for interaction.
     /// </summary>
+    /// <summary>Like <see cref="Raycast"/> but the ray stops at water too (to drink from it); plants are still passed through.</summary>
+    public RaycastHit RaycastWater(Vector3 origin, Vector3 dir, float maxDistance)
+    {
+        return VoxelRaycast.CastWorld(
+            GetSectionBlocksForRaycast,
+            _raycastConfig,
+            origin,
+            Vector3.Normalize(dir),
+            maxDistance,
+            packed => !((BlockType)PackedBlock.GetType(packed)).IsPlant());
+    }
+
     public RaycastHit Raycast(Vector3 origin, Vector3 dir, float maxDistance)
     {
         return VoxelRaycast.CastWorld(

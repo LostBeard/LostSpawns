@@ -14,7 +14,8 @@ public static class Structures
     public const int CellSize = 48;
     public const int WallHeight = 4;
 
-    public enum Kind { Shed, Cabin, House }
+    /// <summary>A well is a pool 3 x 3 behind a low cobble rim: somewhere to drink inland.</summary>
+    public enum Kind { Shed, Cabin, House, Well }
 
     /// <summary>A building: its footprint in world blocks, the level of its floor, which wall has the door, and how far gone it is.</summary>
     public readonly record struct Plan(int CellX, int CellZ, Kind Kind, int X0, int Z0, int Width, int Depth, int FloorY, int DoorSide, float Ruin)
@@ -30,11 +31,12 @@ public static class Structures
         if (Rand(cellX, cellZ, seed + 101) > 0.3f) return null;
 
         float roll = Rand(cellX, cellZ, seed + 102);
-        var kind = roll < 0.3f ? Kind.Shed : roll < 0.78f ? Kind.Cabin : Kind.House;
+        var kind = roll < 0.25f ? Kind.Shed : roll < 0.62f ? Kind.Cabin : roll < 0.86f ? Kind.House : Kind.Well;
         int w, d;
         switch (kind)
         {
             case Kind.Shed: w = 4 + (int)(Rand(cellX, cellZ, seed + 103) * 2f); d = 4 + (int)(Rand(cellX, cellZ, seed + 104) * 2f); break;
+            case Kind.Well: w = 5; d = 5; break;
             case Kind.Cabin: w = 7 + (int)(Rand(cellX, cellZ, seed + 103) * 3f); d = 6 + (int)(Rand(cellX, cellZ, seed + 104) * 2f); break;
             default: w = 10 + (int)(Rand(cellX, cellZ, seed + 103) * 3f); d = 8 + (int)(Rand(cellX, cellZ, seed + 104) * 2f); break;
         }
@@ -62,6 +64,7 @@ public static class Structures
     /// <summary>Where loot lies inside a building (the floor cells, standing height), a few for a shed, more for a house.</summary>
     public static List<Vector3> LootSpots(Plan plan, int seed)
     {
+        if (plan.Kind == Kind.Well) return new List<Vector3>();
         int n = plan.Kind switch { Kind.Shed => 1 + (int)(Rand(plan.CellX, plan.CellZ, seed + 301) * 2f), Kind.Cabin => 2 + (int)(Rand(plan.CellX, plan.CellZ, seed + 301) * 2f), _ => 4 + (int)(Rand(plan.CellX, plan.CellZ, seed + 301) * 3f) };
         var spots = new List<Vector3>(n);
         for (int i = 0; i < n; i++)
@@ -106,9 +109,14 @@ public static class Structures
                 if (at == BlockType.Air || at == BlockType.Water || at.IsPlant()) chunk.SetBlock(lx, y, lz, BlockType.Cobblestone);
                 else break;
             }
+            int ix = wx - p.X0, iz = wz - p.Z0;
+            if (p.Kind == Kind.Well)
+            {
+                BuildWell(chunk, p, lx, lz, wx, wz, ix, iz, seed);
+                continue;
+            }
             chunk.SetBlock(lx, p.FloorY, lz, BlockType.Planks);
 
-            int ix = wx - p.X0, iz = wz - p.Z0;
             bool wallCell = ix == 0 || iz == 0 || ix == p.Width - 1 || iz == p.Depth - 1;
             bool partition = p.Kind == Kind.House && wx == PartitionX(p) && !wallCell;
             if (wallCell || partition) BuildWall(chunk, p, lx, lz, wx, wz, ix, iz, partition, seed);
@@ -116,6 +124,21 @@ public static class Structures
             // The roof: planks, with holes where it has fallen in
             if (Rand(wx, wz + 7, seed + 205) > 0.18f * (0.4f + p.Ruin)) chunk.SetBlock(lx, p.FloorY + WallHeight + 1, lz, BlockType.Planks);
         }
+    }
+
+    // A rim of cobble two blocks high round a pool that is two deep (the water's top is a block under the rim's)
+    private static void BuildWell(ChunkData chunk, Plan p, int lx, int lz, int wx, int wz, int ix, int iz, int seed)
+    {
+        bool rim = ix == 0 || iz == 0 || ix == p.Width - 1 || iz == p.Depth - 1;
+        if (rim)
+        {
+            chunk.SetBlock(lx, p.FloorY, lz, BlockType.Cobblestone);
+            if (Rand(wx, wz, seed + 210) >= 0.15f * p.Ruin) chunk.SetBlock(lx, p.FloorY + 1, lz, BlockType.Cobblestone);
+            return;
+        }
+        chunk.SetBlock(lx, p.FloorY - 2, lz, BlockType.Cobblestone);
+        chunk.SetBlock(lx, p.FloorY - 1, lz, BlockType.Water);
+        chunk.SetBlock(lx, p.FloorY, lz, BlockType.Water);
     }
 
     private static void BuildWall(ChunkData chunk, Plan p, int lx, int lz, int wx, int wz, int ix, int iz, bool partition, int seed)

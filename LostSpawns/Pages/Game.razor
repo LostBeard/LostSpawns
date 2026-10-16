@@ -266,7 +266,7 @@
             _verticalVelocity = 0;
             _peakFallSpeed = 0;
         }
-        if (view.Poi > 0) GoToBuildingForDebug(view.Poi, view.PoiYaw);
+        if (view.Poi > 0) GoToBuildingForDebug(view.Poi, view.PoiYaw, view.PoiKind);
         if (view.CraftingMenu) Hud.ToggleCrafting();
         if (view.God) Stats.Invulnerable = true;
         if (view.Still) Wildlife.Frozen = true;
@@ -277,14 +277,14 @@
     }
 
     /// <summary>?poi=N: stand 14 blocks from the Nth nearest building to the player, looking at it, so it can be looked at.</summary>
-    private void GoToBuildingForDebug(int n, float aroundDegrees)
+    private void GoToBuildingForDebug(int n, float aroundDegrees, string? kind)
     {
         var from = Renderer.Camera.Position;
         int cx0 = (int)MathF.Floor(from.X / LostSpawns.Rendering.Structures.CellSize), cz0 = (int)MathF.Floor(from.Z / LostSpawns.Rendering.Structures.CellSize);
         var found = new List<(float d, LostSpawns.Rendering.Structures.Plan plan)>();
         for (int dz = -12; dz <= 12; dz++)
         for (int dx = -12; dx <= 12; dx++)
-            if (World.StructureAt(cx0 + dx, cz0 + dz) is { } p)
+            if (World.StructureAt(cx0 + dx, cz0 + dz) is { } p && (kind == null || p.Kind.ToString().Equals(kind, StringComparison.OrdinalIgnoreCase)))
             {
                 var c = p.Centre;
                 found.Add((MathF.Abs(c.X - from.X) + MathF.Abs(c.Z - from.Z), p));
@@ -1730,7 +1730,7 @@
         // Drink water: raycast the camera forward. If the hit is on a Water
         // block, restore thirst + toast. Range matches block-break so any
         // water you could fill-a-bucket at is also drinkable.
-        var hit = World.Raycast(Renderer.Camera.Position, Renderer.Camera.Front, 5f);
+        var hit = World.RaycastWater(Renderer.Camera.Position, Renderer.Camera.Front, 5f);
         if (hit.DidHit && (LostSpawns.Models.BlockType)hit.BlockType == LostSpawns.Models.BlockType.Water)
         {
             if (Stats.Thirst >= 0.999f)
@@ -3026,6 +3026,13 @@
             string charging = targetEntity.Alert == LostSpawns.Services.AlertMode.Charge
                 ? "  [CHARGING]" : "";
             Hud.InteractionPrompt.Text = $"[LMB] Attack {targetEntity.Kind} ({hpPct}%){charging}";
+        }
+        else if (World.RaycastWater(Renderer.Camera.Position, Renderer.Camera.Front, 5f) is { DidHit: true } waterHit
+                 && (LostSpawns.Models.BlockType)waterHit.BlockType == LostSpawns.Models.BlockType.Water)
+        {
+            // Water is the first thing along the view: it can be drunk (F)
+            Hud.Crosshair.TargetType = SpawnDev.GameUI.Elements.CrosshairTarget.Interactive;
+            Hud.InteractionPrompt.Text = "[F] Drink";
         }
         else if (targetHit.DidHit)
         {

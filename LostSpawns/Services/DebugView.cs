@@ -30,6 +30,8 @@ public sealed class DebugView
     /// <summary>Open the crafting screen once loaded (<c>?menu=craft</c>), to look at it.</summary>
     public bool CraftingMenu { get; private set; }
     public float PoiYaw { get; private set; }
+    /// <summary>Only buildings of this kind count for <c>?poi=N</c> (<c>?poikind=well</c>).</summary>
+    public string? PoiKind { get; private set; }
     public (float x, float z, float yaw, float pitch, float up)? Camera { get; private set; }
 
     public static DebugView Parse(string uri)
@@ -51,6 +53,7 @@ public sealed class DebugView
                 case "still": view.Still = value != "0"; break;
                 case "menu": view.CraftingMenu = value == "craft"; break;
                 case "poi" when int.TryParse(value, out var pn): view.Poi = pn; break;
+                case "poikind": view.PoiKind = value; break;
                 case "poiyaw" when TryFloat(value, out var py): view.PoiYaw = py; break;
                 case "spawndist" when TryFloat(value, out var sd): view.SpawnDistance = sd; break;
                 case "ao": view.Occlusion = value != "0"; break;
