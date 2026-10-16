@@ -366,3 +366,4 @@ TerrainData/*.asc
 # Large terrain source data (processed into heightmap binary, not needed at runtime)
 TerrainData/
 /_pub_dig
+_tools/vr-probe/output/

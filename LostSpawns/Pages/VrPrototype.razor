@@ -905,6 +905,7 @@ void main() {
         catch (Exception ex)
         {
             _errorMessage = $"Frame {_frameCount}: {ex.GetType().Name}: {ex.Message}";
+            Console.WriteLine($"[VR] frame {_frameCount} failed: {ex}");
             InvokeAsync(StateHasChanged);
         }
     }
