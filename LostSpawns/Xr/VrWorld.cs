@@ -195,9 +195,22 @@ public sealed class VrWorld : IDisposable
         StickEffort = MathF.Min(1f, MathF.Max(XrLocomotion.ApplyDeadzone(f.LeftStick).Length(), MathF.Abs(XrLocomotion.ApplyDeadzone(f.RightStick).X)));
         var m = _loco.Step(_worldFromRoom.Value, f.HeadPosition, f.HeadOrientation, f.LeftStick, f.RightStick, dt, speed);
 
-        // The floor of the room follows the ground under the head
+        // Walls and trunks stop the stick-driven walk (a step of one block does not): the move is cut to what is free, sliding along a wall
+        if (_groundKnown)
+        {
+            var before = Vector3.Transform(f.HeadPosition, _worldFromRoom.Value);
+            var after = Vector3.Transform(f.HeadPosition, m);
+            if (WalkBlocked(after.X, after.Z, _groundY))
+            {
+                if (!WalkBlocked(after.X, before.Z, _groundY)) m *= Matrix4x4.CreateTranslation(0f, 0f, before.Z - after.Z);
+                else if (!WalkBlocked(before.X, after.Z, _groundY)) m *= Matrix4x4.CreateTranslation(before.X - after.X, 0f, 0f);
+                else m *= Matrix4x4.CreateTranslation(before.X - after.X, 0f, before.Z - after.Z);
+            }
+        }
+
+        // The floor of the room follows what is under the head: a floor, a step, a table top, the ground
         var head = Vector3.Transform(f.HeadPosition, m);
-        float ground = _world.GetHeightAt(head.X, head.Z) + 1f;
+        float ground = FloorAt(head.X, head.Z, _groundKnown ? _groundY : _world.GetHeightAt(head.X, head.Z) + 1f);
         if (!_groundKnown) { _groundY = ground; _groundKnown = true; }
         else _groundY += (ground - _groundY) * (1f - MathF.Exp(-10f * dt));
         m.M42 = _groundY;
@@ -259,6 +272,29 @@ public sealed class VrWorld : IDisposable
             _frameMsSum = _frameMsMax = _eyeMsSum = _gapMsSum = 0;
             _framesInReport = 0;
         }
+    }
+
+    /// <summary>The top of what stands under (x, z), up to a one block step above <paramref name="reference"/> and a few blocks below it; the terrain where nothing is loaded.</summary>
+    private float FloorAt(float x, float z, float reference)
+    {
+        int bx = (int)MathF.Floor(x), bz = (int)MathF.Floor(z);
+        int top = (int)MathF.Floor(reference + 1.1f);
+        for (int y = top; y >= (int)MathF.Floor(reference) - 5; y--)
+            if (_world.IsSolidAt(bx, y - 1, bz) && !_world.IsSolidAt(bx, y, bz)) return y;
+        return _world.GetHeightAt(x, z) + 1f;
+    }
+
+    /// <summary>Something solid at waist or head height round the player's centre (a body 0.5 m across), with the feet on <paramref name="floor"/>.</summary>
+    private bool WalkBlocked(float x, float z, float floor)
+    {
+        const float r = 0.25f;
+        int waist = (int)MathF.Floor(floor + 1.2f), head = (int)MathF.Floor(floor + 1.75f);
+        for (int i = 0; i < 4; i++)
+        {
+            int bx = (int)MathF.Floor(x + ((i & 1) == 0 ? -r : r)), bz = (int)MathF.Floor(z + ((i & 2) == 0 ? -r : r));
+            if (_world.IsSolidAt(bx, waist, bz) || _world.IsSolidAt(bx, head, bz)) return true;
+        }
+        return false;
     }
 
     // The gap between frames, against the best gap seen (the display's own period): well over it means frames are being dropped

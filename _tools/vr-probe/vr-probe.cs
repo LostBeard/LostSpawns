@@ -110,6 +110,14 @@ try
         await page.EvaluateAsync("clearInterval(window.__swing)");
         return;
     }
+    // "walk": push the left stick forward for a few seconds, a picture every 1.5 s (with ?poi=1 the player starts at a building: does the door let it in, the wall stop it?)
+    if ((args.ElementAtOrDefault(3) ?? "") == "walk")
+    {
+        await page.EvaluateAsync("window.__xr.left = [0, -1]");
+        for (int i = 0; i < 4; i++) { await Task.Delay(1500); await Shot($"walk-{i}"); }
+        await page.EvaluateAsync("window.__xr.left = [0, 0]");
+        return;
+    }
     // "settings": open the menu and its Settings page, switch the vignette on, walk and turn to see it
     if ((args.ElementAtOrDefault(3) ?? "") == "settings")
     {
