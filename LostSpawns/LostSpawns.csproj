@@ -22,9 +22,11 @@
 	<!-- SpawnDev libraries from local feed / nuget.org (was ProjectReference; flipped on 2026-04-25 -->
 	<!-- so GitHub Actions / GitHub Pages can build the project without local sources). -->
 	<ItemGroup>
-		<PackageReference Include="SpawnDev.SpawnJS.Cryptography" Version="2.0.2" />
-		<PackageReference Include="SpawnDev.GameUI" Version="0.1.0-rc.2" />
-		<PackageReference Include="SpawnDev.VoxelEngine" Version="0.1.1-local.3" />
+		<PackageReference Include="SpawnDev.SpawnJS" Version="3.0.4" />
+		<PackageReference Include="SpawnDev.SpawnJS.Blazor" Version="3.0.4" />
+		<PackageReference Include="SpawnDev.SpawnJS.Cryptography" Version="2.1.1" />
+		<PackageReference Include="SpawnDev.GameUI" Version="1.1.1-local.4" />
+		<PackageReference Include="SpawnDev.VoxelEngine" Version="0.2.0-rc.5-local.15" />
 	</ItemGroup>
 
 	<ItemGroup>

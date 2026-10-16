@@ -104,7 +104,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + duration + 0.05));
+            osc.Stop(t + duration + 0.05);
         }
         catch (Exception ex)
         {
@@ -162,7 +162,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 0.18));
+            osc.Stop(t + 0.18);
         }
         catch (Exception ex)
         {
@@ -190,7 +190,7 @@ public class AudioService : IDisposable
             thud.Connect(thudGain);
             thudGain.Connect(Destination);
             thud.Start();
-            thud.Stop((float)(t + 0.22));
+            thud.Stop(t + 0.22);
 
             using var chime = _ctx.CreateOscillator();
             using var chimeGain = _ctx.CreateGain();
@@ -202,8 +202,8 @@ public class AudioService : IDisposable
             chimeGain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.30);
             chime.Connect(chimeGain);
             chimeGain.Connect(Destination);
-            chime.Start((float)(t + 0.10));
-            chime.Stop((float)(t + 0.30));
+            chime.Start(t + 0.10);
+            chime.Stop(t + 0.30);
         }
         catch (Exception ex)
         {
@@ -231,7 +231,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 2.2));
+            osc.Stop(t + 2.2);
         }
         catch (Exception ex)
         {
@@ -257,7 +257,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 0.1));
+            osc.Stop(t + 0.1);
         }
         catch (Exception ex)
         {
@@ -291,7 +291,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 0.11));
+            osc.Stop(t + 0.11);
         }
         catch (Exception ex)
         {
@@ -317,7 +317,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 0.3));
+            osc.Stop(t + 0.3);
         }
         catch (Exception ex)
         {
@@ -344,7 +344,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 0.14));
+            osc.Stop(t + 0.14);
         }
         catch (Exception ex)
         {
@@ -388,7 +388,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 0.22));
+            osc.Stop(t + 0.22);
         }
         catch (Exception ex)
         {
@@ -493,7 +493,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 1.8));
+            osc.Stop(t + 1.8);
         }
         catch (Exception ex)
         {
@@ -519,7 +519,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 0.22));
+            osc.Stop(t + 0.22);
         }
         catch (Exception ex)
         {
@@ -550,7 +550,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 0.50));
+            osc.Stop(t + 0.50);
         }
         catch (Exception ex)
         {
@@ -581,7 +581,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 0.20));
+            osc.Stop(t + 0.20);
         }
         catch (Exception ex)
         {
@@ -628,7 +628,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 1.2));
+            osc.Stop(t + 1.2);
         }
         catch (Exception ex)
         {
@@ -657,7 +657,7 @@ public class AudioService : IDisposable
             osc1.Connect(gain1);
             gain1.Connect(Destination);
             osc1.Start();
-            osc1.Stop((float)(t + 0.30));
+            osc1.Stop(t + 0.30);
 
             using var osc2 = _ctx.CreateOscillator();
             using var gain2 = _ctx.CreateGain();
@@ -670,7 +670,7 @@ public class AudioService : IDisposable
             osc2.Connect(gain2);
             gain2.Connect(Destination);
             osc2.Start();
-            osc2.Stop((float)(t + 0.25));
+            osc2.Stop(t + 0.25);
         }
         catch (Exception ex)
         {
@@ -700,7 +700,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 0.30));
+            osc.Stop(t + 0.30);
         }
         catch (Exception ex)
         {
@@ -729,7 +729,7 @@ public class AudioService : IDisposable
             bass.Connect(bassGain);
             bassGain.Connect(Destination);
             bass.Start();
-            bass.Stop((float)(t + 0.55));
+            bass.Stop(t + 0.55);
 
             using var mid = _ctx.CreateOscillator();
             using var midGain = _ctx.CreateGain();
@@ -742,7 +742,7 @@ public class AudioService : IDisposable
             mid.Connect(midGain);
             midGain.Connect(Destination);
             mid.Start();
-            mid.Stop((float)(t + 0.50));
+            mid.Stop(t + 0.50);
         }
         catch (Exception ex)
         {
@@ -771,7 +771,7 @@ public class AudioService : IDisposable
             osc.Connect(gain);
             gain.Connect(Destination);
             osc.Start();
-            osc.Stop((float)(t + 0.14));
+            osc.Stop(t + 0.14);
         }
         catch (Exception ex)
         {
@@ -802,8 +802,8 @@ public class AudioService : IDisposable
                 gain.Gain.ExponentialRampToValueAtTime(0.0001f, start + 0.08);
                 osc.Connect(gain);
                 gain.Connect(Destination);
-                osc.Start((float)start);
-                osc.Stop((float)(start + 0.08));
+                osc.Start(start);
+                osc.Stop(start + 0.08);
             }
         }
         catch (Exception ex)
@@ -835,8 +835,8 @@ public class AudioService : IDisposable
                 gain.Gain.ExponentialRampToValueAtTime(0.0001f, start + 0.35);
                 osc.Connect(gain);
                 gain.Connect(Destination);
-                osc.Start((float)start);
-                osc.Stop((float)(start + 0.35));
+                osc.Start(start);
+                osc.Stop(start + 0.35);
             }
         }
         catch (Exception ex)
@@ -868,8 +868,8 @@ public class AudioService : IDisposable
                 gain.Gain.ExponentialRampToValueAtTime(0.0001f, start + 0.15);
                 osc.Connect(gain);
                 gain.Connect(Destination);
-                osc.Start((float)start);
-                osc.Stop((float)(start + 0.15));
+                osc.Start(start);
+                osc.Stop(start + 0.15);
             }
         }
         catch (Exception ex)
