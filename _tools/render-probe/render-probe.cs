@@ -101,6 +101,8 @@ page.Console += (_, msg) =>
     if (msg.Type is "error" or "warning")
         Console.WriteLine($"[probe] CONSOLE {line}");
 };
+// Which request failed (the console only says "Failed to load resource")
+page.RequestFailed += (_, req) => consoleLines.Add($"[requestfailed] {req.Url} {req.Failure}");
 page.PageError += (_, err) =>
 {
     double t = startClock.Elapsed.TotalSeconds;
