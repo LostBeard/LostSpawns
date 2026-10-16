@@ -30,6 +30,9 @@ public partial class Game
     private float _vrFlashLevel;
     private float _vrToastAge = 99f;
     private bool _vrHandlersAttached;
+    private Vector3? _vrStepFrom;
+    private float _vrStepDistance;
+    private bool _vrStepAlt;
 
     private static readonly string[] BarNames = { "HP", "Food", "Water", "Stamina", "Warmth" };
     private static readonly Color[] BarColors =
@@ -211,6 +214,7 @@ public partial class Game
         HandleRespawnClicked();
         // The player is back at the spawn: the room is carried there
         _vr?.Start(Renderer.Camera.Position, Renderer.Camera.Yaw);
+        _vrStepFrom = null;
         _vrMenu!.IsOpen = false;
     }
 
@@ -282,6 +286,12 @@ public partial class Game
         _vrAWas = f.RightPrimary;
         _vrBWas = f.RightSecondary;
         _vrYWas = f.LeftSecondary;
+        // A press is the moment the browser lets sound start (idempotent after the first)
+        if (f.RightTrigger || f.LeftTrigger || f.LeftPrimary || f.RightPrimary)
+        {
+            Audio.EnsureActive();
+            Audio.MasterVolume = Settings.MasterVolume;
+        }
 
         VrSurvivalTick(dt, f);
         VrUpdatePanels(f, dt, m, head);
@@ -318,6 +328,26 @@ public partial class Game
         }
         // The HUD's timers (swings, toasts, numbers) run on this too
         Hud.Update(dt, Renderer.Camera.Position, Renderer.Camera.Yaw);
+
+        // The sounds: weather, danger, the night, the fire, and a footfall for each stride walked
+        Audio.UpdateRainAmbient(Weather.RainIntensity);
+        TickDangerAudio();
+        TickThunderQueue(dt);
+        TickAmbientAudio(dt);
+        var head = _vr!.HeadInWorld;
+        if (_vrStepFrom is { } from)
+        {
+            float dx = head.X - from.X, dz = head.Z - from.Z;
+            _vrStepDistance += MathF.Sqrt(dx * dx + dz * dz);
+            if (_vrStepDistance >= 1.7f)
+            {
+                _vrStepDistance = 0f;
+                _vrStepAlt = !_vrStepAlt;
+                if (IsInWater() || Weather.RainIntensity > 0.25f) Audio.PlayWaterStep(_vrStepAlt);
+                else Audio.PlayStepSurface(GetUnderfootBlock(), _vrStepAlt);
+            }
+        }
+        _vrStepFrom = head;
     }
 
     private void OpenVrMenu(XrFrameData f)

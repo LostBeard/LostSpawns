@@ -382,6 +382,7 @@
         }
         _vrFrameErrors = 0;
         _vrLastTime = -1;
+        _vrStepFrom = null;
         Renderer.BurstTap = (kind, position, seconds) => _vr?.Burst(kind, position, seconds);
         session.OnFrame += OnXrFrame;
         session.OnEnded += LeaveVr;
@@ -2373,106 +2374,9 @@
     /// The air temperature the player's body is heading for (the time of day, the rain, a fire's warmth, a coat, a torch in hand), and the
     /// healing speed that comes with the warmth and a fresh resurrection. Used by both the desktop frame and the headset's.
     /// </summary>
-    /// <summary>Something solid over the player's head (a roof, a tree crown): the rain does not reach.</summary>
-    private bool IsUnderCover()
+    /// <summary>The danger drone and the HUD's red edge follow how many hostiles are charging close by.</summary>
+    private void TickDangerAudio()
     {
-        var p = Renderer.Camera.Position;
-        return World.RainHeightAt((int)MathF.Floor(p.X), (int)MathF.Floor(p.Z)) > p.Y + 0.4f;
-    }
-
-    private float ComputeAmbientTemperature(float deltaTime)
-    {
-        // Rain shifts temperature target colder (wet + wind = chill). Clothing
-        // system will eventually scale this, but for now rain always bites.
-        // Campfire warmth bonus is additive on top - stand next to the fire
-        // during a cold rain and the bonus can fully cancel the chill.
-        float warmthBonus = Fires.GetWarmthBonusAt(Renderer.Camera.Position);
-        // Fur Coat, if crafted + held, gives a flat +0.15 warmth anywhere.
-        // Passive for MVP (no equipment slot system yet) - just having one
-        // in inventory is enough to notice the temperature track.
-        float coatBonus = Inventory.HasItem("gear.fur_coat") ? 0.15f : 0f;
-        // Held torch grants a small warmth bonus on top - actively holding
-        // a flame in your hand should help on a cold night, even if you
-        // haven't placed it yet. Smaller than a coat (0.08 vs 0.15) so the
-        // coat is still the better long-term gear choice.
-        float torchBonus = Inventory.ActiveItem?.Id == "craft.torch" ? 0.08f : 0f;
-        // Clamp to [0.05, 0.85] so stacking fire + coat + noon sun doesn't
-        // drive the player into heatstroke range, and an unfueled night
-        // can't collapse the ambient below the bottom of the temp track.
-        float ambient = Math.Clamp(
-            Time.TargetTemperature
-                - (IsUnderCover() ? 0f : Weather.RainIntensity * 0.1f)
-                + warmthBonus
-                + coatBonus
-                + torchBonus,
-            0.05f, 0.85f);
-        // Camping = faster recovery. Multiplier scales with warmth so a
-        // barely-in-range fire helps less than one the player is practically
-        // sitting in, but still beats out-in-the-cold. Resurrection grace
-        // window stacks on top so a player who just respawned heals fast
-        // even before they make it to a fire.
-        float regenMul = warmthBonus > 0 ? 1f + warmthBonus * 3f : 1f;
-        if (_resurrectGraceTimer > 0)
-        {
-            _resurrectGraceTimer -= deltaTime;
-            regenMul += 1.0f;
-        }
-        Stats.HealthRegenMultiplier = regenMul;
-        return ambient;
-    }
-
-    private void OnGameUpdate(float deltaTime)
-    {
-        // During initial terrain load: drive the loading progress bar from
-        // WorldService.LoadedColumns, skip all gameplay input. Same short-circuit
-        // path as other modals so the camera doesn't drift while waiting.
-        if (Hud.IsLoading)
-        {
-            Input.ConsumeMouseDelta();
-            int loaded = World.LoadedColumns;
-            int expected = Math.Max(loaded, _initialLoadExpectedColumns);
-            float fraction = expected > 0 ? (float)loaded / expected : 0f;
-            Hud.SetLoadingProgress(fraction, $"{loaded} / {expected} chunks");
-            Hud.Update(deltaTime, Renderer.Camera.Position, Renderer.Camera.Yaw);
-            return;
-        }
-
-        // While any menu is open: don't feed camera movement, mouse look, or FPS
-        // counter updates. Chunk streaming + HUD input still run so the menu stays
-        // interactive. Drain mouse deltas so resuming doesn't snap the view.
-        // Silence continuous ambients - wind/rain oscillators keep sounding at
-        // their last gain if we skip Update* while menus are up.
-        if (Hud.IsAnyMenuOpen)
-        {
-            Input.ConsumeMouseDelta();
-            Audio.SilenceAmbients();
-            Hud.Update(deltaTime, Renderer.Camera.Position, Renderer.Camera.Yaw);
-            return;
-        }
-
-        // Sprint gate: holding Shift + actually moving + having stamina above the
-        // cutoff. 0.05 threshold prevents frame-by-frame flicker around zero.
-        bool movingKey =
-            Input.KeysDown.Contains("KeyW") || Input.KeysDown.Contains("KeyS") ||
-            Input.KeysDown.Contains("KeyA") || Input.KeysDown.Contains("KeyD");
-        bool shiftHeld =
-            Input.KeysDown.Contains("ShiftLeft") || Input.KeysDown.Contains("ShiftRight");
-        // Sprint requires stamina AND not bleeding - a wound drops the
-        // player's stride. Pairs with the bleed-blocks-sleep rule so the
-        // punishment for ignoring a wolf bite has real movement cost.
-        bool sprinting = shiftHeld && movingKey && Stats.Stamina > 0.05f
-                         && Stats.BleedSecondsRemaining <= 0;
-
-        // Gameplay simulation: time advances, survival stats decay, etc. Paused /
-        // inventory / settings / loading all short-circuit above this point so the
-        // world clock (and hunger/thirst) literally stop while menus are up.
-        // Temperature target comes from WorldTimeService so nights feel cold and
-        // days warm; future clothing system can modulate this before passing in.
-        Time.Tick(deltaTime);
-        Weather.Tick(deltaTime);
-        Audio.UpdateRainAmbient(Weather.RainIntensity);
-        // Danger / wind / rain Update* tear down retired continuous loops
-        // (always-on low sine was the growing hum). One-shots still play.
         float dangerIntensity = 0f;
         foreach (var ent in Wildlife.Entities)
         {
@@ -2487,101 +2391,11 @@
         // Push the same normalized intensity to the HUD so the red edge
         // vignette tracks the audio drone in lockstep.
         Hud.DangerIntensity = dangerNorm;
+    }
 
-        // Pack warning: 3+ wolves charging within range = real trouble.
-        // Toast fires once with a 30s cooldown so we don't spam during
-        // a sustained pack fight. Re-arms when the pack falls below 3.
-        int chargingWolves = 0;
-        foreach (var ent in Wildlife.Entities)
-        {
-            if (ent.Alert != LostSpawns.Services.AlertMode.Charge) continue;
-            if (ent.Kind != LostSpawns.Services.EntityKind.Wolf) continue;
-            float wdx = ent.Position.X - Renderer.Camera.Position.X;
-            float wdz = ent.Position.Z - Renderer.Camera.Position.Z;
-            if (wdx * wdx + wdz * wdz <= 25f * 25f) chargingWolves++;
-        }
-        if (chargingWolves >= 3 && _packWarningArmed
-            && (DateTime.UtcNow - _lastPackWarn).TotalSeconds >= 30)
-        {
-            Hud.NotifyDamage($"Pack closing! {chargingWolves} wolves");
-            _lastPackWarn = DateTime.UtcNow;
-            _packWarningArmed = false;
-        }
-        else if (chargingWolves < 3)
-        {
-            _packWarningArmed = true;
-        }
-
-        // New-record celebration: fires once per life when CurrentLife
-        // first exceeds the previous LongestLife. Two-beep ding + toast.
-        // Skip if there's no previous record (first run shouldn't ding).
-        if (!_newRecordPinged
-            && Stats.LongestLifeSeconds > 1f
-            && Stats.CurrentLifeSeconds > Stats.LongestLifeSeconds)
-        {
-            _newRecordPinged = true;
-            Audio.PlayBeep(880, 0.10f, 0.18f);
-            Audio.PlayBeep(1320, 0.14f, 0.18f);
-            Hud.NotifySuccess("New best run!");
-        }
-        // Heavy chargers (Bear, Boar) kick up dust trails as they run.
-        // Random chance per frame per entity keeps the look organic
-        // without flooding the particle buffer. ~25% per frame at 60fps
-        // means ~15 dust spawns per charging bear per second - enough
-        // to read as a continuous trail without drowning out other FX.
-        foreach (var ent in Wildlife.Entities)
-        {
-            if (ent.Alert != LostSpawns.Services.AlertMode.Charge) continue;
-            if (ent.Kind != LostSpawns.Services.EntityKind.Bear
-                && ent.Kind != LostSpawns.Services.EntityKind.Boar) continue;
-            if (_dustTrailRng.NextDouble() > 0.25) continue;
-            Hud.ShowDustPuff(new System.Numerics.Vector3(
-                ent.Position.X, ent.Position.Y - 0.4f, ent.Position.Z), 2);
-        }
-        TickThunderQueue(deltaTime);
-
-        // Rainwater collection: while it's actively raining hard, fill a
-        // bottle every 90s and slot it into inventory. The body catches
-        // what falls. No-op when rain is light / dry or inventory is full.
-        if (Weather.RainIntensity > 0.5f && !IsUnderCover())
-        {
-            _rainCollectTimer += deltaTime;
-            if (_rainCollectTimer >= 90f)
-            {
-                _rainCollectTimer = 0;
-                var bottle = new LostSpawns.Services.InventoryItem(
-                    "consume.water", "Water", 1, LostSpawns.Services.ItemCategory.Drink);
-                if (Inventory.TryAdd(bottle))
-                    Hud.NotifySuccess("+1 Water (rainwater)");
-            }
-        }
-        else
-        {
-            _rainCollectTimer = 0;
-        }
-
-        // Forage respawn: every 60s of active play, if total ground items
-        // are below 6, drop one new mushroom/berry in the player's
-        // walking radius. World feels foraged-from-nature instead of
-        // a one-shot starter.
-        _forageRespawnTimer += deltaTime;
-        if (_forageRespawnTimer >= 60f)
-        {
-            _forageRespawnTimer = 0;
-            if (Ground.Items.Count < 6)
-            {
-                float angle = (float)(_forageRng.NextDouble() * Math.PI * 2);
-                float dist = 10f + (float)_forageRng.NextDouble() * 20f;
-                float fx = Renderer.Camera.Position.X + MathF.Cos(angle) * dist;
-                float fz = Renderer.Camera.Position.Z + MathF.Sin(angle) * dist;
-                int fy = World.GetHeightAt(fx, fz) + 1;
-                bool isMushroom = _forageRng.NextDouble() < 0.5;
-                var item = isMushroom
-                    ? new LostSpawns.Services.InventoryItem("food.mushroom", "Mushroom", 1, LostSpawns.Services.ItemCategory.Food)
-                    : new LostSpawns.Services.InventoryItem("food.berry",    "Berries",  1, LostSpawns.Services.ItemCategory.Food);
-                Ground.Drop(new System.Numerics.Vector3(fx, fy, fz), item);
-            }
-        }
+    /// <summary>The sounds of the world round the player: wind, the heartbeat and gasps, crickets, howls, owls, birds, the fire's crackle.</summary>
+    private void TickAmbientAudio(float deltaTime)
+    {
         // Wind/rain/danger continuous loops retired in AudioService - these
         // calls only tear down leftovers from older builds.
         float windPitch = -MathF.Cos(Time.DayFraction * MathF.PI * 2f);
@@ -2733,6 +2547,205 @@
         {
             _crackleTimer = 0f;
         }
+    }
+
+    /// <summary>Something solid over the player's head (a roof, a tree crown): the rain does not reach.</summary>
+    private bool IsUnderCover()
+    {
+        var p = Renderer.Camera.Position;
+        return World.RainHeightAt((int)MathF.Floor(p.X), (int)MathF.Floor(p.Z)) > p.Y + 0.4f;
+    }
+
+    private float ComputeAmbientTemperature(float deltaTime)
+    {
+        // Rain shifts temperature target colder (wet + wind = chill). Clothing
+        // system will eventually scale this, but for now rain always bites.
+        // Campfire warmth bonus is additive on top - stand next to the fire
+        // during a cold rain and the bonus can fully cancel the chill.
+        float warmthBonus = Fires.GetWarmthBonusAt(Renderer.Camera.Position);
+        // Fur Coat, if crafted + held, gives a flat +0.15 warmth anywhere.
+        // Passive for MVP (no equipment slot system yet) - just having one
+        // in inventory is enough to notice the temperature track.
+        float coatBonus = Inventory.HasItem("gear.fur_coat") ? 0.15f : 0f;
+        // Held torch grants a small warmth bonus on top - actively holding
+        // a flame in your hand should help on a cold night, even if you
+        // haven't placed it yet. Smaller than a coat (0.08 vs 0.15) so the
+        // coat is still the better long-term gear choice.
+        float torchBonus = Inventory.ActiveItem?.Id == "craft.torch" ? 0.08f : 0f;
+        // Clamp to [0.05, 0.85] so stacking fire + coat + noon sun doesn't
+        // drive the player into heatstroke range, and an unfueled night
+        // can't collapse the ambient below the bottom of the temp track.
+        float ambient = Math.Clamp(
+            Time.TargetTemperature
+                - (IsUnderCover() ? 0f : Weather.RainIntensity * 0.1f)
+                + warmthBonus
+                + coatBonus
+                + torchBonus,
+            0.05f, 0.85f);
+        // Camping = faster recovery. Multiplier scales with warmth so a
+        // barely-in-range fire helps less than one the player is practically
+        // sitting in, but still beats out-in-the-cold. Resurrection grace
+        // window stacks on top so a player who just respawned heals fast
+        // even before they make it to a fire.
+        float regenMul = warmthBonus > 0 ? 1f + warmthBonus * 3f : 1f;
+        if (_resurrectGraceTimer > 0)
+        {
+            _resurrectGraceTimer -= deltaTime;
+            regenMul += 1.0f;
+        }
+        Stats.HealthRegenMultiplier = regenMul;
+        return ambient;
+    }
+
+    private void OnGameUpdate(float deltaTime)
+    {
+        // During initial terrain load: drive the loading progress bar from
+        // WorldService.LoadedColumns, skip all gameplay input. Same short-circuit
+        // path as other modals so the camera doesn't drift while waiting.
+        if (Hud.IsLoading)
+        {
+            Input.ConsumeMouseDelta();
+            int loaded = World.LoadedColumns;
+            int expected = Math.Max(loaded, _initialLoadExpectedColumns);
+            float fraction = expected > 0 ? (float)loaded / expected : 0f;
+            Hud.SetLoadingProgress(fraction, $"{loaded} / {expected} chunks");
+            Hud.Update(deltaTime, Renderer.Camera.Position, Renderer.Camera.Yaw);
+            return;
+        }
+
+        // While any menu is open: don't feed camera movement, mouse look, or FPS
+        // counter updates. Chunk streaming + HUD input still run so the menu stays
+        // interactive. Drain mouse deltas so resuming doesn't snap the view.
+        // Silence continuous ambients - wind/rain oscillators keep sounding at
+        // their last gain if we skip Update* while menus are up.
+        if (Hud.IsAnyMenuOpen)
+        {
+            Input.ConsumeMouseDelta();
+            Audio.SilenceAmbients();
+            Hud.Update(deltaTime, Renderer.Camera.Position, Renderer.Camera.Yaw);
+            return;
+        }
+
+        // Sprint gate: holding Shift + actually moving + having stamina above the
+        // cutoff. 0.05 threshold prevents frame-by-frame flicker around zero.
+        bool movingKey =
+            Input.KeysDown.Contains("KeyW") || Input.KeysDown.Contains("KeyS") ||
+            Input.KeysDown.Contains("KeyA") || Input.KeysDown.Contains("KeyD");
+        bool shiftHeld =
+            Input.KeysDown.Contains("ShiftLeft") || Input.KeysDown.Contains("ShiftRight");
+        // Sprint requires stamina AND not bleeding - a wound drops the
+        // player's stride. Pairs with the bleed-blocks-sleep rule so the
+        // punishment for ignoring a wolf bite has real movement cost.
+        bool sprinting = shiftHeld && movingKey && Stats.Stamina > 0.05f
+                         && Stats.BleedSecondsRemaining <= 0;
+
+        // Gameplay simulation: time advances, survival stats decay, etc. Paused /
+        // inventory / settings / loading all short-circuit above this point so the
+        // world clock (and hunger/thirst) literally stop while menus are up.
+        // Temperature target comes from WorldTimeService so nights feel cold and
+        // days warm; future clothing system can modulate this before passing in.
+        Time.Tick(deltaTime);
+        Weather.Tick(deltaTime);
+        Audio.UpdateRainAmbient(Weather.RainIntensity);
+        // Danger / wind / rain Update* tear down retired continuous loops
+        // (always-on low sine was the growing hum). One-shots still play.
+        TickDangerAudio();
+
+        // Pack warning: 3+ wolves charging within range = real trouble.
+        // Toast fires once with a 30s cooldown so we don't spam during
+        // a sustained pack fight. Re-arms when the pack falls below 3.
+        int chargingWolves = 0;
+        foreach (var ent in Wildlife.Entities)
+        {
+            if (ent.Alert != LostSpawns.Services.AlertMode.Charge) continue;
+            if (ent.Kind != LostSpawns.Services.EntityKind.Wolf) continue;
+            float wdx = ent.Position.X - Renderer.Camera.Position.X;
+            float wdz = ent.Position.Z - Renderer.Camera.Position.Z;
+            if (wdx * wdx + wdz * wdz <= 25f * 25f) chargingWolves++;
+        }
+        if (chargingWolves >= 3 && _packWarningArmed
+            && (DateTime.UtcNow - _lastPackWarn).TotalSeconds >= 30)
+        {
+            Hud.NotifyDamage($"Pack closing! {chargingWolves} wolves");
+            _lastPackWarn = DateTime.UtcNow;
+            _packWarningArmed = false;
+        }
+        else if (chargingWolves < 3)
+        {
+            _packWarningArmed = true;
+        }
+
+        // New-record celebration: fires once per life when CurrentLife
+        // first exceeds the previous LongestLife. Two-beep ding + toast.
+        // Skip if there's no previous record (first run shouldn't ding).
+        if (!_newRecordPinged
+            && Stats.LongestLifeSeconds > 1f
+            && Stats.CurrentLifeSeconds > Stats.LongestLifeSeconds)
+        {
+            _newRecordPinged = true;
+            Audio.PlayBeep(880, 0.10f, 0.18f);
+            Audio.PlayBeep(1320, 0.14f, 0.18f);
+            Hud.NotifySuccess("New best run!");
+        }
+        // Heavy chargers (Bear, Boar) kick up dust trails as they run.
+        // Random chance per frame per entity keeps the look organic
+        // without flooding the particle buffer. ~25% per frame at 60fps
+        // means ~15 dust spawns per charging bear per second - enough
+        // to read as a continuous trail without drowning out other FX.
+        foreach (var ent in Wildlife.Entities)
+        {
+            if (ent.Alert != LostSpawns.Services.AlertMode.Charge) continue;
+            if (ent.Kind != LostSpawns.Services.EntityKind.Bear
+                && ent.Kind != LostSpawns.Services.EntityKind.Boar) continue;
+            if (_dustTrailRng.NextDouble() > 0.25) continue;
+            Hud.ShowDustPuff(new System.Numerics.Vector3(
+                ent.Position.X, ent.Position.Y - 0.4f, ent.Position.Z), 2);
+        }
+        TickThunderQueue(deltaTime);
+
+        // Rainwater collection: while it's actively raining hard, fill a
+        // bottle every 90s and slot it into inventory. The body catches
+        // what falls. No-op when rain is light / dry or inventory is full.
+        if (Weather.RainIntensity > 0.5f && !IsUnderCover())
+        {
+            _rainCollectTimer += deltaTime;
+            if (_rainCollectTimer >= 90f)
+            {
+                _rainCollectTimer = 0;
+                var bottle = new LostSpawns.Services.InventoryItem(
+                    "consume.water", "Water", 1, LostSpawns.Services.ItemCategory.Drink);
+                if (Inventory.TryAdd(bottle))
+                    Hud.NotifySuccess("+1 Water (rainwater)");
+            }
+        }
+        else
+        {
+            _rainCollectTimer = 0;
+        }
+
+        // Forage respawn: every 60s of active play, if total ground items
+        // are below 6, drop one new mushroom/berry in the player's
+        // walking radius. World feels foraged-from-nature instead of
+        // a one-shot starter.
+        _forageRespawnTimer += deltaTime;
+        if (_forageRespawnTimer >= 60f)
+        {
+            _forageRespawnTimer = 0;
+            if (Ground.Items.Count < 6)
+            {
+                float angle = (float)(_forageRng.NextDouble() * Math.PI * 2);
+                float dist = 10f + (float)_forageRng.NextDouble() * 20f;
+                float fx = Renderer.Camera.Position.X + MathF.Cos(angle) * dist;
+                float fz = Renderer.Camera.Position.Z + MathF.Sin(angle) * dist;
+                int fy = World.GetHeightAt(fx, fz) + 1;
+                bool isMushroom = _forageRng.NextDouble() < 0.5;
+                var item = isMushroom
+                    ? new LostSpawns.Services.InventoryItem("food.mushroom", "Mushroom", 1, LostSpawns.Services.ItemCategory.Food)
+                    : new LostSpawns.Services.InventoryItem("food.berry",    "Berries",  1, LostSpawns.Services.ItemCategory.Food);
+                Ground.Drop(new System.Numerics.Vector3(fx, fy, fz), item);
+            }
+        }
+        TickAmbientAudio(deltaTime);
         float ambient = ComputeAmbientTemperature(deltaTime);
 
         // Stamina regen pauses while a hostile is within 6 blocks and
