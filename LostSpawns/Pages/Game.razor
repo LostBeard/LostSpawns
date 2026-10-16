@@ -270,6 +270,7 @@
         if (view.CraftingMenu) Hud.ToggleCrafting();
         if (view.God) Stats.Invulnerable = true;
         if (view.Still) Wildlife.Frozen = true;
+        Hud.ShowCreatureTags = view.Tags;
         Renderer.OcclusionOverride = view.Occlusion;
         if (view.VrDrawRadius is { } vrRadius) { Vr.DrawRadius = vrRadius; Vr.AdaptiveDrawRadius = false; }
         if (view.Dig > 0) _ = DigForDebugAsync(view.Dig);
@@ -1009,7 +1010,7 @@
         // wandering rabbit even if there's a tree behind it. Cone dot 0.95
         // (~18 deg half-angle) gives a bit of melee aim assist without being
         // a free-win autolock; range 5 blocks matches the block-break reach.
-        var target = Wildlife.FindTargetInCone(origin, dir, maxDist: 5f, minDot: 0.95f);
+        var target = Wildlife.FindTargetInCone(origin, dir, maxDist: 5f, minDot: 0.95f, World);
         if (target is not null)
         {
             float dmg = DamageForEquippedTool();
@@ -2163,7 +2164,7 @@
         // more damage (0.7 vs 0.55 axe, drops rabbit in one shot).
         var origin = Renderer.Camera.Position;
         var dir = Renderer.Camera.Front;
-        var target = Wildlife.FindTargetInCone(origin, dir, maxDist: 20f, minDot: 0.99f);
+        var target = Wildlife.FindTargetInCone(origin, dir, maxDist: 20f, minDot: 0.99f, World);
 
         // Always consume an arrow + charge the cooldown, even on a miss -
         // you loosed it, it's gone. Bow string also wears per shot (regardless
@@ -3028,7 +3029,7 @@
         // same cone parameters as combat so the prompt only shows when a
         // swing would actually land.
         var targetEntity = Wildlife.FindTargetInCone(
-            Renderer.Camera.Position, Renderer.Camera.Front, maxDist: 5f, minDot: 0.95f);
+            Renderer.Camera.Position, Renderer.Camera.Front, maxDist: 5f, minDot: 0.95f, World);
 
         if (targetEntity is not null)
         {

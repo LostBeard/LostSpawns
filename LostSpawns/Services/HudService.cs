@@ -33,6 +33,9 @@ public class HudService : IDisposable
     private readonly GroundItemService _ground;
     private readonly PoiService? _pois;
 
+    /// <summary>Name tags and health bars over the creatures, seen through everything: off in the game (an admin or debug view can switch it on, <c>?tags=1</c>).</summary>
+    public bool ShowCreatureTags { get; set; }
+
     // A survival game does not mark every animal, pile of loot and building on the map (the markers stay in the code behind this switch)
     private const bool MinimapTracksEverything = false;
     private IReadOnlyList<WanderingEntity> MinimapEntities => MinimapTracksEverything ? _entities.Entities : System.Array.Empty<WanderingEntity>();
@@ -1919,7 +1922,7 @@ public class HudService : IDisposable
         float aspect = (float)viewportWidth / viewportHeight;
         var vp = _renderer.Camera.GetVpMatrix(aspect);
 
-        foreach (var e in _entities.Entities)
+        foreach (var e in ShowCreatureTags ? (IReadOnlyList<WanderingEntity>)_entities.Entities : System.Array.Empty<WanderingEntity>())
         {
             // The label sits over the creature's head: a rabbit's is low, a deer's high.
             float headHeight = e.Kind switch

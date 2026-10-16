@@ -617,7 +617,7 @@ public class EntityService
         _ => 0.6f,
     };
 
-    public WanderingEntity? FindTargetInCone(Vector3 origin, Vector3 forward, float maxDist, float minDot)
+    public WanderingEntity? FindTargetInCone(Vector3 origin, Vector3 forward, float maxDist, float minDot, WorldService? world = null)
     {
         WanderingEntity? best = null;
         float bestDist = float.PositiveInfinity;
@@ -637,6 +637,12 @@ public class EntityService
             var dirN = delta / d;
             float dot = Vector3.Dot(fwdN, dirN);
             if (dot < minDot) continue;
+            // Nothing is aimed at through a wall or a hill: solid ground between the eye and the animal hides it
+            if (world != null)
+            {
+                var block = world.Raycast(origin, dirN, d);
+                if (block.DidHit && Vector3.Distance(origin, block.HitPosition) < d - 0.4f) continue;
+            }
 
             if (d < bestDist)
             {
