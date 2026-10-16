@@ -13,6 +13,7 @@ public enum PartLook
     Body, Head, Snout, Ear, Leg, Tail, Scut, Beak, Wing, Antler, Tusk,
     // What is not fur
     Wood, Steel, SteelEdge, Rock, Skin, Sleeve, Leather, Cloth, Coals, MushroomCap, MushroomStalk, Leaf, Berry, MeatRaw, MeatCooked, Bone,
+    Pallid,
 }
 
 /// <summary>
@@ -71,10 +72,11 @@ public static class CreatureModels
         EntityKind.Boar => Boar,
         EntityKind.Bear => Bear,
         EntityKind.Rabbit => Rabbit,
+        EntityKind.Infected => Infected,
         _ => Crow,
     };
 
-    public static IEnumerable<CreatureModel> Creatures => new[] { Wolf, Deer, Boar, Bear, Rabbit, Crow };
+    public static IEnumerable<CreatureModel> Creatures => new[] { Wolf, Deer, Boar, Bear, Rabbit, Crow, Infected };
 
     /// <summary>Every model that is painted into the atlas: the creatures, the props and the held tools.</summary>
     public static IEnumerable<CreatureModel> All => Creatures.Concat(PropModels.All).Concat(HeldModels.All);
@@ -145,6 +147,25 @@ public static class CreatureModels
             P("legFR", PartLook.Leg, PartGait.FrontLegB, -4, 18, -5, 3, 6, 3),
             P("legHL", PartLook.Leg, PartGait.HindLegB, 1, 18, 3, 3, 6, 3),
             P("legHR", PartLook.Leg, PartGait.HindLegA, -4, 18, 3, 3, 6, 3),
+        },
+    };
+
+    // Infected: a person gone wrong. Grey skin, filthy clothes, arms held out in front, a dragging walk
+    public static readonly CreatureModel Infected = new()
+    {
+        Name = "infected",
+        Palette = new FurPalette(new Vector3(0.52f, 0.47f, 0.37f), new Vector3(0.30f, 0.27f, 0.22f), new Vector3(0.66f, 0.61f, 0.50f), new Vector3(0.30f, 0.12f, 0.10f), Coarse: 0.1f),
+        Scale = 0.9f, Swing = 0.45f, StrideRate = 3.4f,
+        Parts = new[]
+        {
+            P("body", PartLook.Body, PartGait.None, -4, 0, -2, 8, 12, 4),
+            P("head", PartLook.Pallid, PartGait.Head, -4, -8, -4, 8, 8, 8, pivot: new Vector3(0, 0, 0), baseRot: new Vector3(0.18f, 0, 0)),
+            P("armL", PartLook.Body, PartGait.FrontLegB, 4, 0, -2, 4, 10, 4, baseRot: new Vector3(-1.45f, 0, 0)),
+            P("handL", PartLook.Pallid, PartGait.None, 4.2f, 10, -1.8f, 3.6f, 2.5f, 3.6f, parent: 2),
+            P("armR", PartLook.Body, PartGait.FrontLegA, -8, 0, -2, 4, 10, 4, baseRot: new Vector3(-1.45f, 0, 0)),
+            P("handR", PartLook.Pallid, PartGait.None, -7.8f, 10, -1.8f, 3.6f, 2.5f, 3.6f, parent: 4),
+            P("legL", PartLook.Leg, PartGait.FrontLegA, 0, 12, -2, 4, 12, 4),
+            P("legR", PartLook.Leg, PartGait.FrontLegB, -4, 12, -2, 4, 12, 4),
         },
     };
 
@@ -352,6 +373,21 @@ public static class CreatureTextures
             case PartLook.Skin:
                 color = new Vector3(0.82f, 0.64f, 0.52f) * (0.92f + 0.12f * Value(u, v, 4, 4, seed));
                 break;
+            case PartLook.Pallid:
+            {
+                // Grey-green skin, mottled, with a dark sore or two
+                float mott = Value(u, v, 4, 4, seed) * 0.6f + Value(u, v, 9, 9, seed + 7) * 0.4f;
+                color = Mix(new Vector3(0.50f, 0.56f, 0.48f), new Vector3(0.36f, 0.42f, 0.36f), mott);
+                if (Rand(px, py, seed + 3) > 0.93f) color = new Vector3(0.30f, 0.10f, 0.09f);
+                if (face == Face.Front && part.Size.Y >= 8f)
+                {
+                    // A face: two sunken eyes and a dark mouth
+                    int ey = Math.Max(1, (int)(fh * 0.38f));
+                    if ((py == ey || py == ey + 1) && ((px >= 1 && px <= 2) || (px >= fw - 3 && px <= fw - 2))) color = new Vector3(0.05f, 0.04f, 0.04f);
+                    if (py == (int)(fh * 0.74f) && px >= 2 && px <= fw - 3) color = new Vector3(0.18f, 0.07f, 0.06f);
+                }
+                break;
+            }
             case PartLook.Sleeve:
                 color = new Vector3(0.25f, 0.30f, 0.22f) * (0.8f + 0.4f * Value(u, v, 6, 8, seed));
                 if (v > 0.92f) color = new Vector3(0.18f, 0.22f, 0.16f);   // the cuff

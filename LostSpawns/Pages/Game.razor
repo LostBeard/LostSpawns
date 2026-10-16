@@ -271,7 +271,7 @@
         Renderer.OcclusionOverride = view.Occlusion;
         if (view.VrDrawRadius is { } vrRadius) Vr.DrawRadius = vrRadius;
         if (view.Dig > 0) _ = DigForDebugAsync(view.Dig);
-        if (view.Spawn.Count > 0) SpawnForDebug(view.Spawn);
+        if (view.Spawn.Count > 0) SpawnForDebug(view.Spawn, view.SpawnDistance);
     }
 
     /// <summary>?poi=N: stand 14 blocks from the Nth nearest building to the player, looking at it, so it can be looked at.</summary>
@@ -308,7 +308,7 @@
     }
 
     /// <summary>?spawn=wolf,deer: place these creatures in a row, about 7 blocks ahead of the camera, so they can be looked at.</summary>
-    private void SpawnForDebug(List<LostSpawns.Services.EntityKind> kinds)
+    private void SpawnForDebug(List<LostSpawns.Services.EntityKind> kinds, float distance)
     {
         var cam = Renderer.Camera;
         var forward = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(cam.Front.X, 0f, cam.Front.Z));
@@ -316,7 +316,7 @@
         for (int i = 0; i < kinds.Count; i++)
         {
             float offset = (i - (kinds.Count - 1) / 2f) * 3.2f;
-            var pos = cam.Position + forward * 7f + right * offset;
+            var pos = cam.Position + forward * distance + right * offset;
             var e = Wildlife.Spawn(kinds[i], pos, World);
             // A heading shows the creature side on, the way a screenshot wants it (frozen wildlife does not move, so it only sets the yaw)
             e.Velocity = right * 0.06f;
@@ -1195,6 +1195,7 @@
         LostSpawns.Services.EntityKind.Wolf   => new("material.pelt",    "Wolf Pelt",   1, LostSpawns.Services.ItemCategory.Material),
         LostSpawns.Services.EntityKind.Deer   => new("food.deer_meat",   "Deer Meat",   3, LostSpawns.Services.ItemCategory.Food),
         LostSpawns.Services.EntityKind.Bear   => new("material.pelt",    "Bear Pelt",   3, LostSpawns.Services.ItemCategory.Material),
+        LostSpawns.Services.EntityKind.Infected => new("material.cloth", "Cloth",       2, LostSpawns.Services.ItemCategory.Material),
         _ => null,
     };
 
@@ -1210,6 +1211,7 @@
             LostSpawns.Services.EntityKind.Rabbit => 5,
             LostSpawns.Services.EntityKind.Crow   => 3,
             LostSpawns.Services.EntityKind.Deer   => 12,
+            LostSpawns.Services.EntityKind.Infected => 20,
             _ => 1,
         };
 
@@ -1376,6 +1378,7 @@
             LostSpawns.Services.EntityKind.Bear => LostSpawns.Services.DamageCause.Bear,
             LostSpawns.Services.EntityKind.Wolf => LostSpawns.Services.DamageCause.Wolf,
             LostSpawns.Services.EntityKind.Boar => LostSpawns.Services.DamageCause.Boar,
+            LostSpawns.Services.EntityKind.Infected => LostSpawns.Services.DamageCause.Infected,
             _                                   => LostSpawns.Services.DamageCause.Unknown,
         };
         Stats.TakeDamage(damage, cause);
@@ -1415,6 +1418,7 @@
         bool wasBleeding = Stats.BleedSecondsRemaining > 0;
         if (e.Kind == LostSpawns.Services.EntityKind.Wolf) Stats.ApplyBleed(6f);
         else if (e.Kind == LostSpawns.Services.EntityKind.Boar) Stats.ApplyBleed(3f);
+        else if (e.Kind == LostSpawns.Services.EntityKind.Infected) Stats.ApplyBleed(2f);
         if (!wasBleeding && Stats.BleedSecondsRemaining > 0)
             Hud.NotifyWarning("Bleeding! Press H to bandage");
     }
@@ -2719,6 +2723,7 @@
         // at ~7.5 blocks. Campfire warmth has no bearing on bear sense -
         // bears don't care about the fire the way wolves do.
         Wildlife.BearAggroRange = sneaking ? 7.5f : 15f;
+        Wildlife.InfectedAggroRange = sneaking ? 9f : 18f;
         Hud.IsSneaking = sneaking;
 
         // Terraform brush preview + paint-stroke continuous fire. While

@@ -15,6 +15,8 @@ public enum EntityKind
     Deer,
     /// <summary>Heavy-hitting alpha that spawns rarely past Day 4. Tough, slow, charges hard. Drops triple meat + double pelt.</summary>
     Bear,
+    /// <summary>One of the sick: shambles about the ruined buildings and the dark, and once it has seen you it follows until you are far away. Slower than a sprint, tougher than a wolf.</summary>
+    Infected,
 }
 
 /// <summary>
@@ -50,6 +52,8 @@ public sealed class WanderingEntity
     public float HitFlashTimer;    // seconds remaining on the "just got hit" white flash
     /// <summary>Per-instance random color jitter [0, 1) so a herd doesn't look identical.</summary>
     public float ColorJitter;
+    /// <summary>Seconds before this entity may strike again (the infected hit once a second, not once a frame).</summary>
+    public float AttackCooldown;
 }
 
 /// <summary>
@@ -167,6 +171,7 @@ public class EntityService
         EntityKind.Wolf   => 1.8f,
         EntityKind.Deer   => 1.4f,
         EntityKind.Bear   => 4.0f, // tank: 7+ axe swings to drop, 4+ bow shots
+        EntityKind.Infected => 2.4f, // five axe swings
         _                 => 1.0f,
     };
 
@@ -183,6 +188,15 @@ public class EntityService
     /// <summary>How close a bear has to be to the player before it auto-aggros. Wider than wolves baseline.</summary>
     public float BearAggroRange { get; set; } = 15f;
 
+    /// <summary>How close an infected has to be to notice the player (blocks); Game.razor halves it while sneaking.</summary>
+    public float InfectedAggroRange { get; set; } = 18f;
+
+    /// <summary>The infected further than this from the player are forgotten (blocks), so the island does not fill up with them.</summary>
+    public const float InfectedForgetRange = 150f;
+
+    /// <summary>The infected alive now.</summary>
+    public int InfectedCount { get { int n = 0; foreach (var e in Entities) if (e.Kind == EntityKind.Infected) n++; return n; } }
+
     /// <summary>Advance every entity. Call from the active-play branch only.</summary>
     /// <summary>The wildlife stands where it is (a developer view, <c>?still=1</c>: to look at a creature without it walking off or charging).</summary>
     public bool Frozen { get; set; }
@@ -190,9 +204,35 @@ public class EntityService
     public void Tick(float dt, WorldService world, Vector3 playerPos, bool isNight = false)
     {
         if (Frozen) return;
+        // The infected far from the player are let go
+        for (int i = Entities.Count - 1; i >= 0; i--)
+        {
+            var far = Entities[i];
+            if (far.Kind != EntityKind.Infected) continue;
+            float fx = far.Position.X - playerPos.X, fz = far.Position.Z - playerPos.Z;
+            if (fx * fx + fz * fz > InfectedForgetRange * InfectedForgetRange) Entities.RemoveAt(i);
+        }
         foreach (var e in Entities)
         {
             if (e.HitFlashTimer > 0) e.HitFlashTimer = MathF.Max(0, e.HitFlashTimer - dt);
+            if (e.AttackCooldown > 0) e.AttackCooldown -= dt;
+
+            // The infected notice the player at any hour, within their range, and keep following while the player stays within half as far again
+            if (e.Kind == EntityKind.Infected)
+            {
+                float idx = playerPos.X - e.Position.X, idz = playerPos.Z - e.Position.Z;
+                float d2 = idx * idx + idz * idz;
+                if (e.Alert == AlertMode.Idle && d2 <= InfectedAggroRange * InfectedAggroRange)
+                {
+                    e.Alert = AlertMode.Charge;
+                    e.AlertTimer = 8f;
+                    e.LastAlertSource = playerPos;
+                }
+                else if (e.Alert == AlertMode.Charge && d2 <= InfectedAggroRange * InfectedAggroRange * 2.25f)
+                {
+                    e.AlertTimer = MathF.Max(e.AlertTimer, 4f);
+                }
+            }
 
             // Daylight retreat: wolves break off when the night ends. Any
             // wolf currently charging flips to Flee + abandons contact, and
@@ -280,7 +320,17 @@ public class EntityService
                     // After a hit the entity drops back to Idle so we don't
                     // loop-damage every frame - a second strike requires
                     // player or AI re-engagement.
-                    if (e.Alert == AlertMode.Charge && len < 1.5f)
+                    if (e.Kind == EntityKind.Infected)
+                    {
+                        // A swipe each second for as long as it stays in reach; it does not wander off between swipes
+                        if (e.Alert == AlertMode.Charge && len < 1.6f && e.AttackCooldown <= 0f)
+                        {
+                            e.AttackCooldown = 1.1f;
+                            OnContactAttack?.Invoke(e, ContactDamageForKind(e.Kind));
+                        }
+                        if (len < 1.2f) e.Velocity = Vector3.Zero;   // close enough: stand and swing, do not walk through the player
+                    }
+                    else if (e.Alert == AlertMode.Charge && len < 1.5f)
                     {
                         OnContactAttack?.Invoke(e, ContactDamageForKind(e.Kind));
                         e.Alert = AlertMode.Idle;
@@ -298,6 +348,13 @@ public class EntityService
                     PickRandomDirection(e);
                     e.WanderRetargetIn = WanderRetargetSeconds * (0.6f + (float)_rng.NextDouble() * 0.8f);
                 }
+            }
+
+            // The infected walk the real world: walls and trunks stop them, steps of one block carry them up
+            if (e.Kind == EntityKind.Infected)
+            {
+                MoveInfected(e, dt, world);
+                continue;
             }
 
             // Advance position along the (flat) wander vector.
@@ -329,7 +386,8 @@ public class EntityService
         // Respawn tick - only advances while population is below cap so a
         // fully-stocked world doesn't accumulate progress and dump a wave
         // of new entities the instant the player kills one.
-        if (Entities.Count < EffectiveCap)
+        // (the infected come from the buildings and the dark, not from the respawn, and do not use up its room)
+        if (Entities.Count - InfectedCount < EffectiveCap)
         {
             _respawnTimer += dt;
             if (_respawnTimer >= RespawnIntervalSeconds)
@@ -358,7 +416,11 @@ public class EntityService
         // Past day 7, wolf night bias grows so nights get actively worse.
         double roll = _rng.NextDouble();
         EntityKind kind;
-        if (isNight)
+        if (isNight && DayNumber >= 1 && InfectedCount < 6 && _rng.NextDouble() < 0.25)
+        {
+            kind = EntityKind.Infected;
+        }
+        else if (isNight)
         {
             // Wolf floor grows with day number: 0.45 base, 0.30 by day 4,
             // 0.15 by day 7+. Lower threshold = higher wolf probability.
@@ -437,6 +499,7 @@ public class EntityService
         EntityKind.Wolf   => 3.5f, // wolves are the fastest chasers
         EntityKind.Deer   => 3.8f, // deer are skittish and FAST when alarmed
         EntityKind.Bear   => 2.6f, // slow but inevitable
+        EntityKind.Infected => 2.5f, // a sprint (about 6) leaves them behind; walking does not
         _                 => 2.0f,
     };
 
@@ -453,15 +516,53 @@ public class EntityService
         EntityKind.Wolf   => 0.25f, // wolves bite harder than boars
         EntityKind.Deer   => 0.0f,  // deer never charge - pure prey
         EntityKind.Bear   => 0.40f, // bears hit hardest - one swipe is half HP
+        EntityKind.Infected => 0.12f,
         _                 => 0.05f,
     };
+
+    /// <summary>
+    /// Walk an infected along its velocity over the real blocks: it stands on whatever is under it (a floor, not just the ground), is stopped by a wall or a
+    /// trunk (and slides along it), and climbs a step of one block. A column that is not loaded stops it too.
+    /// </summary>
+    private static void MoveInfected(WanderingEntity e, float dt, WorldService world)
+    {
+        float x = e.Position.X, z = e.Position.Z;
+        int cy = (int)MathF.Floor(e.Position.Y + 0.02f);    // the cell the feet are in
+        float stepX = e.Velocity.X * dt, stepZ = e.Velocity.Z * dt;
+        int ny;
+        if (TryStand(world, x + stepX, z + stepZ, cy, out ny)) { x += stepX; z += stepZ; }
+        else if (TryStand(world, x + stepX, z, cy, out ny)) x += stepX;
+        else if (TryStand(world, x, z + stepZ, cy, out ny)) z += stepZ;
+        else ny = cy;
+        // Ease to the new height so a step is walked up, not jumped
+        float targetY = ny;
+        float y = e.Position.Y + (targetY - e.Position.Y) * MathF.Min(1f, dt * 10f);
+        e.Position = new Vector3(x, y, z);
+    }
+
+    /// <summary>The cell a body standing at x,z would have its feet in (within one block up or three down of <paramref name="cy"/>), or false when it cannot stand there.</summary>
+    private static bool TryStand(WorldService world, float x, float z, int cy, out int feetCell)
+    {
+        int bx = (int)MathF.Floor(x), bz = (int)MathF.Floor(z);
+        for (int y = cy + 1; y >= cy - 3; y--)
+        {
+            if (world.IsSolidAt(bx, y - 1, bz) && !world.IsSolidAt(bx, y, bz) && !world.IsSolidAt(bx, y + 1, bz))
+            {
+                feetCell = y;
+                return true;
+            }
+        }
+        feetCell = cy;
+        return false;
+    }
 
     private void PickRandomDirection(WanderingEntity e)
     {
         // Random horizontal direction, no Y component (gravity handled by ground snap).
         double angle = _rng.NextDouble() * Math.PI * 2;
-        float vx = (float)Math.Cos(angle) * WanderSpeed;
-        float vz = (float)Math.Sin(angle) * WanderSpeed;
+        float speed = e.Kind == EntityKind.Infected ? WanderSpeed * 0.45f : WanderSpeed;   // a shamble
+        float vx = (float)Math.Cos(angle) * speed;
+        float vz = (float)Math.Sin(angle) * speed;
         e.Velocity = new Vector3(vx, 0, vz);
     }
 
@@ -500,6 +601,7 @@ public class EntityService
         EntityKind.Wolf => 0.55f,
         EntityKind.Deer => 0.85f,
         EntityKind.Bear => 0.85f,
+        EntityKind.Infected => 1.1f,
         _ => 0.6f,
     };
 
@@ -563,7 +665,7 @@ public class EntityService
         // Boars hold the charge to the death; they're stubborn by design.
         // Bears stay aggressive too - apex predators don't run.
         bool woundedWolf = e.Kind == EntityKind.Wolf && e.Health < e.MaxHealth * 0.3f;
-        e.Alert = (e.Kind == EntityKind.Boar || e.Kind == EntityKind.Bear
+        e.Alert = (e.Kind == EntityKind.Boar || e.Kind == EntityKind.Bear || e.Kind == EntityKind.Infected
                    || (e.Kind == EntityKind.Wolf && !woundedWolf))
             ? AlertMode.Charge
             : AlertMode.Flee;

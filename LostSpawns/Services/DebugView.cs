@@ -23,6 +23,8 @@ public sealed class DebugView
     public int? VrDrawRadius { get; private set; }
     /// <summary>Creatures to place in a row a few blocks ahead of the camera, standing still (<c>?spawn=wolf,deer,rabbit</c>).</summary>
     public List<EntityKind> Spawn { get; } = new();
+    /// <summary>How far ahead of the camera the <c>?spawn</c> row is placed (<c>?spawndist=3</c>), default 7.</summary>
+    public float SpawnDistance { get; private set; } = 7f;
     /// <summary>Stand 14 blocks from the Nth nearest building, looking at it (<c>?poi=1</c>); <c>?poiyaw=</c> turns the view round it.</summary>
     public int Poi { get; private set; }
     public float PoiYaw { get; private set; }
@@ -47,6 +49,7 @@ public sealed class DebugView
                 case "still": view.Still = value != "0"; break;
                 case "poi" when int.TryParse(value, out var pn): view.Poi = pn; break;
                 case "poiyaw" when TryFloat(value, out var py): view.PoiYaw = py; break;
+                case "spawndist" when TryFloat(value, out var sd): view.SpawnDistance = sd; break;
                 case "ao": view.Occlusion = value != "0"; break;
                 case "vrdd" when int.TryParse(value, out var vd): view.VrDrawRadius = Math.Clamp(vd, 2, 16); break;
                 case "spawn":

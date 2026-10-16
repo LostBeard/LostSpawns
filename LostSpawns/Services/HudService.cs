@@ -1045,6 +1045,7 @@ public class HudService : IDisposable
                 LostSpawns.Services.DamageCause.Wolf        => "Killed by a Wolf.",
                 LostSpawns.Services.DamageCause.Bear        => "Killed by a Bear.",
                 LostSpawns.Services.DamageCause.Boar        => "Gored by a Boar.",
+                LostSpawns.Services.DamageCause.Infected    => "Taken by the infected.",
                 LostSpawns.Services.DamageCause.Fall        => "Fell to your death.",
                 LostSpawns.Services.DamageCause.Starvation  => "Starved to death.",
                 LostSpawns.Services.DamageCause.Thirst      => "Died of thirst.",
@@ -1916,6 +1917,7 @@ public class HudService : IDisposable
                 EntityKind.Wolf => 1.2f,
                 EntityKind.Deer => 1.9f,
                 EntityKind.Bear => 2.0f,
+                EntityKind.Infected => 1.9f,
                 _ => 1f,
             };
             float baseY = e.Position.Y;
@@ -2528,6 +2530,7 @@ public class HudService : IDisposable
                 EntityKind.Boar => MapMarkerType.Enemy,       // red-ish, threat-coded
                 EntityKind.Wolf => MapMarkerType.Enemy,       // also threat - night predator
                 EntityKind.Bear => MapMarkerType.Enemy,       // apex - rare daytime threat
+                EntityKind.Infected => MapMarkerType.Enemy,   // the sick
                 EntityKind.Crow => MapMarkerType.POI,         // neutral, passes through
                 EntityKind.Deer => MapMarkerType.OtherPlayer, // peaceful prey
                 _ => MapMarkerType.OtherPlayer,               // Rabbit: friendly-coded

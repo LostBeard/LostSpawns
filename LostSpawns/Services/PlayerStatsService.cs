@@ -12,6 +12,7 @@ public enum DamageCause
     Wolf,
     Bear,
     Boar,
+    Infected,
     Fall,
     Starvation,
     Thirst,
@@ -429,7 +430,7 @@ public class PlayerStatsService
         // still finish a downed player; only carnivore + fall hits clamp.
         bool clamp = before <= 0.10f
             && (cause == DamageCause.Wolf || cause == DamageCause.Bear
-                || cause == DamageCause.Boar || cause == DamageCause.Fall);
+                || cause == DamageCause.Boar || cause == DamageCause.Infected || cause == DamageCause.Fall);
         if (clamp && amount >= before)
         {
             Health = 0.01f;
