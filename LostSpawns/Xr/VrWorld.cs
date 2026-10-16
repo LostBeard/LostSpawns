@@ -284,7 +284,7 @@ public sealed class VrWorld : IDisposable
         return _world.GetHeightAt(x, z) + 1f;
     }
 
-    /// <summary>Something solid at waist or head height round the player's centre (a body 0.5 m across), with the feet on <paramref name="floor"/>.</summary>
+    /// <summary>Something solid, or deep water, at waist or head height round the player's centre (a body 0.5 m across), with the feet on <paramref name="floor"/>.</summary>
     private bool WalkBlocked(float x, float z, float floor)
     {
         const float r = 0.25f;
@@ -293,6 +293,8 @@ public sealed class VrWorld : IDisposable
         {
             int bx = (int)MathF.Floor(x + ((i & 1) == 0 ? -r : r)), bz = (int)MathF.Floor(z + ((i & 2) == 0 ? -r : r));
             if (_world.IsSolidAt(bx, waist, bz) || _world.IsSolidAt(bx, head, bz)) return true;
+            // Water over the waist is too deep to wade (the player does not swim in the headset)
+            if (_world.GetBlockAt(bx, waist, bz) == LostSpawns.Models.BlockType.Water) return true;
         }
         return false;
     }
