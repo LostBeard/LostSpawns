@@ -6,6 +6,7 @@
 @inject InputService Input
 @inject RenderService Renderer
 @inject WorldService World
+@inject VrService Vr
 @inject SettingsService Settings
 @inject HudService Hud
 @inject PlayerStatsService Stats
@@ -37,13 +38,6 @@
 <div class="game-container">
     <canvas id="gameCanvas" @ref="_canvasRef" width="1280" height="720"
             tabindex="0" @onclick="OnCanvasClick"></canvas>
-    @if (_ready && _vrSupported && !_inVr)
-    {
-        <button type="button" class="vr-enter" @onclick="EnterVrAsync" title="Continue in your headset, from where you stand"
-                style="position:fixed;right:16px;top:200px;z-index:20;padding:8px 16px;border:1px solid #5b6a74;border-radius:4px;background:rgba(20,26,30,0.85);color:#e3e8e2;font:600 14px system-ui,sans-serif;cursor:pointer;">
-            Enter VR
-        </button>
-    }
 </div>
 
 @code {
@@ -88,6 +82,8 @@
         // Initialize GPU-rendered HUD overlay FIRST so the loading screen can render
         // on top of the canvas while GenerateChunksAsync chews through the initial radius.
         // Previously the player saw a black canvas for ~15s with no feedback.
+        // A headset on this device? Then the pause menu offers Enter VR (the home page has its own button)
+        Hud.VrAvailable = await Vr.IsSupportedAsync();
         Hud.Init(Renderer, _canvasRef);
 
         Input.Attach();
@@ -120,6 +116,7 @@
         Input.OnDebugDamagePressed += HandleDebugDamage;
         Input.OnDebugHealPressed += HandleDebugHeal;
         Hud.OnResumeClicked += HandleResumeClicked;
+        Hud.OnEnterVrClicked += HandleEnterVrClicked;
         Hud.OnQuitToMenuClicked += HandleQuitToMenuClicked;
         Hud.OnRespawnClicked += HandleRespawnClicked;
         Stats.OnDied += HandleDied;
@@ -144,9 +141,6 @@
         Weather.OnLightningStrike += HandleLightningSound;
 
         Renderer.OnUpdate = OnGameUpdate;
-        // A headset on this device? The button to continue in it shows when it is
-        _xr = new LostSpawns.Xr.XrSession(JS);
-        _vrSupported = await _xr.IsVrSupportedAsync();
         // The tool in the player's hand is drawn in 3D: tell the renderer what it is and how it swings
         Renderer.HeldProvider = () => new LostSpawns.Rendering.HeldView(Inventory.ActiveItem?.Id, Hud.SwingArc, Hud.SwingStrength, Hud.BobX, Hud.BobY);
 
@@ -247,6 +241,8 @@
 
         ApplyDebugView();
         Hud.HideLoadingScreen();
+        // Started from the home page's VR button: the session is already running and waits for the world
+        if (Vr.IsActive) StartVrView();
     }
 
     /// <summary>Developer URL parameters (see <see cref="DebugView"/>): a pinned time, weather and camera, applied after any save so they win.</summary>
@@ -307,48 +303,52 @@
     }
 
     // --- VR on this page: the desktop view pauses, the headset takes over the same world and player, and the desktop camera is put where the head was on the way out ---
-    private LostSpawns.Xr.XrSession? _xr;
     private LostSpawns.Xr.WebGlXrBlit? _blit;
     private LostSpawns.Xr.VrWorld? _vr;
-    private bool _vrSupported, _inVr;
+    private bool _inVr;
     private int _vrFrameErrors;
 
-    private async Task EnterVrAsync()
+    // Enter VR in the pause menu: the session is requested straight from the click, then the headset takes the game over
+    private async void HandleEnterVrClicked()
     {
-        if (_inVr || _xr == null) return;
-        // The session is requested first thing: an await before it can spend the click's user activation
-        try { await _xr.EnterAsync("immersive-vr"); }
-        catch (Exception ex)
+        if (_inVr) return;
+        if (!await Vr.BeginAsync())
         {
-            Console.WriteLine($"[Vr] could not enter: {ex.Message}");
-            Hud.NotifyWarning("VR could not start: " + ex.Message);
+            Hud.NotifyWarning("VR could not start: " + Vr.LastError);
             return;
         }
+        StartVrView();
+    }
+
+    // A session is running and the world is ready: draw the world for the headset
+    private void StartVrView()
+    {
+        if (_inVr || !Vr.IsActive) return;
         _inVr = true;
         Renderer.StopRenderLoop();
+        var session = Vr.Session;
         try
         {
             _blit = new LostSpawns.Xr.WebGlXrBlit();
-            _blit.Initialize(_xr.GL!);
+            _blit.Initialize(session.GL!);
             _vr ??= new LostSpawns.Xr.VrWorld(JS, Engine, World, Time, Weather, Wildlife);
             _vr.Start(Renderer.Camera.Position, Renderer.Camera.Yaw);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[Vr] could not start the headset view: {ex}");
-            await _xr.ExitAsync();
+            _ = session.ExitAsync();
             LeaveVr();
             return;
         }
         _vrFrameErrors = 0;
-        _xr.OnFrame += OnXrFrame;
-        _xr.OnEnded += LeaveVr;
-        StateHasChanged();
+        session.OnFrame += OnXrFrame;
+        session.OnEnded += LeaveVr;
     }
 
     private void OnXrFrame(LostSpawns.Xr.XrFrameData frame)
     {
-        try { _vr!.OnFrame(frame, _xr!, _blit!); }
+        try { _vr!.OnFrame(frame, Vr.Session, _blit!); }
         catch (Exception ex)
         {
             if (_vrFrameErrors++ < 3) Console.WriteLine($"[Vr] frame failed: {ex}");
@@ -359,7 +359,8 @@
     private void LeaveVr()
     {
         if (!_inVr) return;
-        if (_xr != null) { _xr.OnFrame -= OnXrFrame; _xr.OnEnded -= LeaveVr; }
+        Vr.Session.OnFrame -= OnXrFrame;
+        Vr.Session.OnEnded -= LeaveVr;
         if (_vr != null)
         {
             var (head, yaw, pitch) = _vr.Pose;
@@ -3024,7 +3025,6 @@
 
     public ValueTask DisposeAsync()
     {
-        _xr?.Dispose();
         _vr?.Dispose();
         Input.OnEscapePressed -= HandleEscape;
         Input.OnPointerLockChanged -= HandlePointerLockChanged;
@@ -3050,6 +3050,7 @@
         Input.OnDebugDamagePressed -= HandleDebugDamage;
         Input.OnDebugHealPressed -= HandleDebugHeal;
         Hud.OnResumeClicked -= HandleResumeClicked;
+        Hud.OnEnterVrClicked -= HandleEnterVrClicked;
         Hud.OnQuitToMenuClicked -= HandleQuitToMenuClicked;
         Hud.OnRespawnClicked -= HandleRespawnClicked;
         Stats.OnDied -= HandleDied;

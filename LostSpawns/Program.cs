@@ -34,6 +34,7 @@ builder.Services.AddSingleton<CampfireService>();
 builder.Services.AddSingleton<GroundItemService>();
 builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<SaveService>();
+builder.Services.AddSingleton<VrService>();
 builder.Services.AddSingleton<HudService>();
 
 // GPU-rendered game UI overlay (SDF fonts, HUD elements, inventory, chat)

@@ -335,6 +335,11 @@ public class HudService : IDisposable
     /// <summary>Fired when the player clicks Resume in the pause menu.</summary>
     public event Action? OnResumeClicked;
 
+    /// <summary>The browser has a headset to offer: the pause menu gets an "Enter VR" button. Set before <see cref="Init"/>.</summary>
+    public bool VrAvailable { get; set; }
+    /// <summary>Fired when the player clicks Enter VR in the pause menu.</summary>
+    public event Action? OnEnterVrClicked;
+
     /// <summary>Fired when the player clicks Quit to Menu in the pause menu.</summary>
     public event Action? OnQuitToMenuClicked;
 
@@ -724,7 +729,7 @@ public class HudService : IDisposable
         var panel = new UIPanel
         {
             Width = 280,
-            Height = 330,
+            Height = VrAvailable ? 386 : 330,
             CornerRadius = 8,
         };
 
@@ -765,13 +770,30 @@ public class HudService : IDisposable
         settings.OnClick = () => ShowSettings();
         panel.AddChild(settings);
 
+        // Continue in the headset, from where you stand (only where the browser has WebXR)
+        float below = 0f;
+        if (VrAvailable)
+        {
+            var enterVr = new UIButton
+            {
+                Text = "Enter VR",
+                Width = 220,
+                Height = 44,
+                X = 30,
+                Y = 192,
+            };
+            enterVr.OnClick = () => OnEnterVrClicked?.Invoke();
+            panel.AddChild(enterVr);
+            below = 56f;
+        }
+
         var quit = new UIButton
         {
             Text = "Quit to Menu",
             Width = 220,
             Height = 44,
             X = 30,
-            Y = 192,
+            Y = 192 + below,
         };
         quit.OnClick = () => OnQuitToMenuClicked?.Invoke();
         panel.AddChild(quit);
@@ -786,7 +808,7 @@ public class HudService : IDisposable
             Width = 260,
             Height = 60,
             X = 10,
-            Y = 250,
+            Y = 250 + below,
             Align = TextAlign.Center,
             Color = System.Drawing.Color.FromArgb(220, 210, 220, 230),
         };

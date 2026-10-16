@@ -1,6 +1,8 @@
 @page "/"
 @inject IdentityService Identity
 @inject VoxelEngineService Engine
+@inject VrService Vr
+@inject NavigationManager Nav
 
 <PageTitle>Lost Spawns</PageTitle>
 
@@ -24,16 +26,29 @@
 
         <div class="hero-actions">
             <a href="game" class="btn btn-primary btn-lg">▶ ENTER WORLD</a>
+            @if (_vrSupported)
+            {
+                <button type="button" class="btn btn-primary btn-lg" @onclick="EnterWorldInVrAsync" title="Start in your headset">🥽 IN VR</button>
+            }
             <a href="settings" class="btn btn-outline btn-lg">⚙ SETTINGS</a>
         </div>
     </div>
 </div>
 
 @code {
+    private bool _vrSupported;
+
     protected override async Task OnInitializedAsync()
     {
         await Identity.InitAsync();
         await Engine.InitAsync();
+        _vrSupported = await Vr.IsSupportedAsync();
+    }
+
+    // The session is requested here, from the click; the game page picks it up when the world is ready
+    private async Task EnterWorldInVrAsync()
+    {
+        if (await Vr.BeginAsync()) Nav.NavigateTo("game");
     }
 }
 
