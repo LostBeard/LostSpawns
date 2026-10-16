@@ -27,16 +27,16 @@ public static class BiomeColours
             float fine = Fbm(u, v, 12, 12, 3, 502);          // down to a few cells
             float wet = Fbm(u, v, 4, 4, 3, 503);
 
-            var dark = new Vector3(0.30f, 0.47f, 0.22f);     // under the spruce
-            var lush = new Vector3(0.38f, 0.60f, 0.23f);     // meadow
-            var dry = new Vector3(0.56f, 0.64f, 0.29f);      // dry olive grass
+            var dark = new Vector3(0.26f, 0.37f, 0.20f);     // under the spruce
+            var lush = new Vector3(0.33f, 0.46f, 0.22f);     // meadow
+            var dry = new Vector3(0.50f, 0.52f, 0.29f);      // dry olive grass
             var g = region < 0.45f ? Vector3.Lerp(dark, lush, SmoothStep(0.30f, 0.45f, region))
                                    : Vector3.Lerp(lush, dry, SmoothStep(0.52f, 0.68f, region));
             g *= 0.92f + 0.16f * fine;
 
-            var spruce = new Vector3(0.27f, 0.50f, 0.22f);
-            var fresh = new Vector3(0.40f, 0.62f, 0.22f);
-            var rust = new Vector3(0.66f, 0.46f, 0.15f);
+            var spruce = new Vector3(0.21f, 0.35f, 0.19f);
+            var fresh = new Vector3(0.33f, 0.46f, 0.20f);
+            var rust = new Vector3(0.54f, 0.40f, 0.17f);
             var f = Vector3.Lerp(spruce, fresh, SmoothStep(0.35f, 0.65f, region));
             f = Vector3.Lerp(f, rust, 0.55f * SmoothStep(0.66f, 0.80f, fine));
 

@@ -159,7 +159,7 @@ public sealed class PostProcessor : IDisposable
         {
             tanHalf, (float)Width / Height, near, Radius,
             0.03f, Intensity, Width, Height,
-            Vignette, 1.06f /* saturation */, 0f, 0f,
+            Vignette, 0.88f /* saturation */, 0f, 0f,
             0f, 0f, 0f, 0f,
         };
         var bytes = new byte[f.Length * 4];
@@ -306,7 +306,7 @@ fn fs_composite(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         }
         col = col * (sum / max(wsum, 0.0001));
     }
-    // Grade: a little more colour, the corners of the picture a little darker
+    // Grade: colour pulled back a little (grim, not cheerful), the corners of the picture darker
     let luma = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
     col = mix(vec3<f32>(luma, luma, luma), col, p.saturation);
     let uv = frag.xy / vec2<f32>(p.width, p.height) - vec2<f32>(0.5, 0.5);

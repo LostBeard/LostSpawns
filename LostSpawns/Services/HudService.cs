@@ -1963,6 +1963,8 @@ public class HudService : IDisposable
             float y = screenY - size / 2f;
 
             // The creature itself is drawn in 3D by CreatureRenderer; what stays here is the label over its head: its health, its name and the alert.
+            // A survival game does not name everything in sight: the label and the health bar show only for what the crosshair is on (near the middle of the picture, and close)
+            if (MathF.Abs(screenX - viewportWidth * 0.5f) > viewportWidth * 0.06f || MathF.Abs(screenY - viewportHeight * 0.5f) > viewportHeight * 0.14f || clip.W > 30f) continue;
 
 
             // HP bar above the body when damaged. Bar fill normalizes to the
