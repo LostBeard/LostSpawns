@@ -121,6 +121,7 @@
         Hud.OnQuitToMenuClicked += HandleQuitToMenuClicked;
         Hud.OnRespawnClicked += HandleRespawnClicked;
         Stats.OnDied += HandleDied;
+        Wildlife.OnNoticedPlayer += HandleInfectedNoticed;
         Wildlife.OnEntityKilled += HandleEntityKilled;
         Wildlife.OnEntityHit += HandleEntityHitAudio;
         Wildlife.OnContactAttack += HandleEntityContactAttack;
@@ -1339,6 +1340,7 @@
             case LostSpawns.Services.EntityKind.Wolf:   Audio.PlayWolfSnarl(); break;
             case LostSpawns.Services.EntityKind.Crow:   Audio.PlayCrowCaw();   break;
             case LostSpawns.Services.EntityKind.Bear:   Audio.PlayBearRoar();  break;
+            case LostSpawns.Services.EntityKind.Infected: Audio.PlayInfectedGroan(); break;
             case LostSpawns.Services.EntityKind.Rabbit:
             case LostSpawns.Services.EntityKind.Deer:   Audio.PlayPreyThump(); break;
         }
@@ -2273,6 +2275,12 @@
         Nav.NavigateTo("/");
     }
 
+    private void HandleInfectedNoticed(LostSpawns.Services.WanderingEntity e)
+    {
+        float dx = e.Position.X - Renderer.Camera.Position.X, dz = e.Position.Z - Renderer.Camera.Position.Z;
+        if (dx * dx + dz * dz < 25f * 25f) Audio.PlayInfectedGroan();
+    }
+
     private void HandleDied()
     {
         // Dramatic red splash + push the death screen. Pointer lock exit is the
@@ -2365,6 +2373,13 @@
     /// The air temperature the player's body is heading for (the time of day, the rain, a fire's warmth, a coat, a torch in hand), and the
     /// healing speed that comes with the warmth and a fresh resurrection. Used by both the desktop frame and the headset's.
     /// </summary>
+    /// <summary>Something solid over the player's head (a roof, a tree crown): the rain does not reach.</summary>
+    private bool IsUnderCover()
+    {
+        var p = Renderer.Camera.Position;
+        return World.RainHeightAt((int)MathF.Floor(p.X), (int)MathF.Floor(p.Z)) > p.Y + 0.4f;
+    }
+
     private float ComputeAmbientTemperature(float deltaTime)
     {
         // Rain shifts temperature target colder (wet + wind = chill). Clothing
@@ -2386,7 +2401,7 @@
         // can't collapse the ambient below the bottom of the temp track.
         float ambient = Math.Clamp(
             Time.TargetTemperature
-                - Weather.RainIntensity * 0.1f
+                - (IsUnderCover() ? 0f : Weather.RainIntensity * 0.1f)
                 + warmthBonus
                 + coatBonus
                 + torchBonus,
@@ -2528,7 +2543,7 @@
         // Rainwater collection: while it's actively raining hard, fill a
         // bottle every 90s and slot it into inventory. The body catches
         // what falls. No-op when rain is light / dry or inventory is full.
-        if (Weather.RainIntensity > 0.5f)
+        if (Weather.RainIntensity > 0.5f && !IsUnderCover())
         {
             _rainCollectTimer += deltaTime;
             if (_rainCollectTimer >= 90f)
@@ -3120,6 +3135,7 @@
         Hud.OnQuitToMenuClicked -= HandleQuitToMenuClicked;
         Hud.OnRespawnClicked -= HandleRespawnClicked;
         Stats.OnDied -= HandleDied;
+        Wildlife.OnNoticedPlayer -= HandleInfectedNoticed;
         Wildlife.OnEntityKilled -= HandleEntityKilled;
         Wildlife.OnEntityHit -= HandleEntityHitAudio;
         Wildlife.OnContactAttack -= HandleEntityContactAttack;

@@ -194,6 +194,9 @@ public class EntityService
     /// <summary>The infected further than this from the player are forgotten (blocks), so the island does not fill up with them.</summary>
     public const float InfectedForgetRange = 150f;
 
+    /// <summary>An infected has just seen the player (the game groans).</summary>
+    public event Action<WanderingEntity>? OnNoticedPlayer;
+
     /// <summary>The infected alive now.</summary>
     public int InfectedCount { get { int n = 0; foreach (var e in Entities) if (e.Kind == EntityKind.Infected) n++; return n; } }
 
@@ -227,6 +230,7 @@ public class EntityService
                     e.Alert = AlertMode.Charge;
                     e.AlertTimer = 8f;
                     e.LastAlertSource = playerPos;
+                    OnNoticedPlayer?.Invoke(e);
                 }
                 else if (e.Alert == AlertMode.Charge && d2 <= InfectedAggroRange * InfectedAggroRange * 2.25f)
                 {

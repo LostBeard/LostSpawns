@@ -708,6 +708,35 @@ public class AudioService : IDisposable
         }
     }
 
+    /// <summary>A rattling groan for one of the infected: two detuned saws sinking in pitch, the beat between them the rattle.</summary>
+    public void PlayInfectedGroan()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            double t = _ctx.CurrentTime;
+            foreach (float start in new[] { 96f, 103f })
+            {
+                using var osc = _ctx.CreateOscillator();
+                using var gain = _ctx.CreateGain();
+                osc.Type = "sawtooth";
+                osc.Frequency.SetValueAtTime(start, t);
+                osc.Frequency.ExponentialRampToValueAtTime(start * 0.62f, t + 0.8);
+                gain.Gain.SetValueAtTime(0, t);
+                gain.Gain.LinearRampToValueAtTime(0.07f, t + 0.12);
+                gain.Gain.ExponentialRampToValueAtTime(0.0001f, t + 0.85);
+                osc.Connect(gain);
+                gain.Connect(Destination);
+                osc.Start();
+                osc.Stop(t + 0.85);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Audio] PlayInfectedGroan failed: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Deep low growl-roar for bears - much heavier than a wolf snarl.
     /// Two stacked low oscillators (sawtooth bass + square mid) over 0.5s.
