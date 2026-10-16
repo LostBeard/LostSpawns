@@ -2538,6 +2538,9 @@ public class HudService : IDisposable
             }
         }
 
+        // The map is a thing you carry: the minimap shows only while the Map is the item in the hand (as Rust's hardcore mode, and DayZ, keep the world unmarked)
+        Minimap.Visible = _inventory.ActiveItem?.Id == "tool.map";
+
         // Update minimap player position (XZ plane + altitude)
         Minimap.PlayerPosition = new Vector2(cameraPosition.X, cameraPosition.Z);
         Minimap.PlayerAltitude = cameraPosition.Y;

@@ -27,6 +27,8 @@ Done already (this session): no creature tags (switch kept for an admin view, `?
 
 Done since: positional sound for the infected (groans and dragging steps with stereo pan, distance falloff and a dull sound behind a wall; item 5, wolves and bears still to do), body-anchored draws and loot by hand (items 1 and 2), the bedroll (3: craft it, lay it with the place action, you wake there after dying; saved), line of sight and hearing for the infected (6).
 
+Done too: the minimap shows only while the Map (hotbar slot 9) is the item in the hand (item 7, without the compass item yet).
+
 Next, in rough order:
 1. **Body-anchored quick access in VR** (S&S, Strayed): grip at a shoulder, hip or the chest draws the item in that hotbar slot; the menu stays for crafting and the backpack. No markers on the body: you learn where things are.
 2. **Pick loot up by hand** (Strayed): grip with the hand (or the ray, for the seated) on a pile, not automatic pickup by walking over it; the item snaps to the hand with a buzz.
