@@ -25,6 +25,8 @@ TJ's direction after trying the VR build: "DayZ voxel, less Minecraft" - a survi
 
 Done already (this session): no creature tags (switch kept for an admin view, `?tags=1`), nothing aimed at through walls, minimap no longer marks animals, loot or buildings, duller grade and tints, messages as a line on the wrist display instead of toasts, a small forearm display shown only when looked at, real crouch = sneak, real swings strike with haptics.
 
+Done since: body-anchored draws and loot by hand (items 1 and 2), the bedroll (3: craft it, lay it with the place action, you wake there after dying; saved), line of sight and hearing for the infected (6).
+
 Next, in rough order:
 1. **Body-anchored quick access in VR** (S&S, Strayed): grip at a shoulder, hip or the chest draws the item in that hotbar slot; the menu stays for crafting and the backpack. No markers on the body: you learn where things are.
 2. **Pick loot up by hand** (Strayed): grip with the hand (or the ray, for the seated) on a pile, not automatic pickup by walking over it; the item snaps to the hand with a buzz.

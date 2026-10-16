@@ -227,6 +227,15 @@ public sealed class CreatureRenderer : IDisposable
         }
     }
 
+    /// <summary>The player's bedroll, when it is laid and within range.</summary>
+    public void AddBedroll(Vector3? bedroll, Vector3 camera, float maxDistance)
+    {
+        if (!_pipe.IsReady || bedroll is not { } p) return;
+        float dx = p.X - camera.X, dz = p.Z - camera.Z;
+        if (dx * dx + dz * dz > maxDistance * maxDistance) return;
+        AddStatic(PropModels.Bedroll, p, 17f, 1f, Vector3.One);
+    }
+
     /// <summary>Loot on the ground: a model of the item, turning slowly and bobbing so it catches the eye in the grass.</summary>
     public void AddItems(IReadOnlyList<GroundItem> items, Vector3 camera, double time, float maxDistance)
     {

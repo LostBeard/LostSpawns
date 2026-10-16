@@ -21,6 +21,7 @@ public class RenderService : IDisposable
     private readonly SettingsService _settings;
     private readonly EntityService _entities;
     private readonly CampfireService _fires;
+    private readonly BedrollService _bedroll;
     private readonly GroundItemService _ground;
 
     private GPUDevice? _device;
@@ -86,8 +87,9 @@ public class RenderService : IDisposable
     public int TotalSectionCount => _world?.LoadedSections ?? 0;
     public int TotalColumnCount => _world?.LoadedColumns ?? 0;
 
-    public RenderService(SpawnJSRuntime js, WorldTimeService worldTime, WeatherService weather, SettingsService settings, EntityService entities, CampfireService fires, GroundItemService ground)
+    public RenderService(SpawnJSRuntime js, WorldTimeService worldTime, WeatherService weather, SettingsService settings, EntityService entities, CampfireService fires, GroundItemService ground, BedrollService bedroll)
     {
+        _bedroll = bedroll;
         _js = js;
         _worldTime = worldTime;
         _weather = weather;
@@ -248,6 +250,7 @@ public class RenderService : IDisposable
         _creatures.AddCreatures(_entities.Entities, cameraPos, _animTime, modelRange);
         _creatures.AddFires(_fires.Fires, cameraPos, modelRange);
         _creatures.AddItems(_ground.Items, cameraPos, _animTime, 60f);
+        _creatures.AddBedroll(_bedroll.Position, cameraPos, modelRange);
         _creatures.AddHeld(HeldProvider?.Invoke() ?? default, Camera);
         _creatures.Commit();
 

@@ -16,6 +16,7 @@
 @inject CampfireService Fires
 @inject GroundItemService Ground
 @inject PoiService Pois
+@inject BedrollService Bedroll
 @inject AudioService Audio
 @inject CraftingService Crafter
 @inject InventoryService Inventory
@@ -271,6 +272,12 @@
         if (view.God) Stats.Invulnerable = true;
         if (view.Still) Wildlife.Frozen = true;
         Hud.ShowCreatureTags = view.Tags;
+        if (view.Bedroll)
+        {
+            var c = Renderer.Camera;
+            float bx = c.Position.X + MathF.Cos(c.Yaw * MathF.PI / 180f) * 6f, bz = c.Position.Z + MathF.Sin(c.Yaw * MathF.PI / 180f) * 6f;
+            Bedroll.Position = new System.Numerics.Vector3(bx, World.GetHeightAt(bx, bz) + 1f, bz);
+        }
         if (view.Loot)
         {
             var c = Renderer.Camera;
@@ -380,7 +387,7 @@
         {
             _blit = new LostSpawns.Xr.WebGlXrBlit();
             _blit.Initialize(session.GL!);
-            _vr ??= new LostSpawns.Xr.VrWorld(JS, Engine, World, Time, Weather, Wildlife, Fires, Ground);
+            _vr ??= new LostSpawns.Xr.VrWorld(JS, Engine, World, Time, Weather, Wildlife, Fires, Ground, Bedroll);
             _vr.DrawRadius = Vr.DrawRadius;
             _vr.Adaptive = Vr.AdaptiveDrawRadius;
             _vr.Start(Renderer.Camera.Position, Renderer.Camera.Yaw);
@@ -2060,6 +2067,11 @@
             HandlePlaceBonfire(item);
             return;
         }
+        if (item.Id == "place.bedroll")
+        {
+            HandlePlaceBedroll(item);
+            return;
+        }
         if (item.Id == "craft.torch")
         {
             HandlePlaceTorch(item);
@@ -2213,6 +2225,19 @@
         }
     }
 
+    // A bedroll on the ground ahead: where the player wakes after dying (one at a time)
+    private void HandlePlaceBedroll(LostSpawns.Services.InventoryItem item)
+    {
+        var hit = World.Raycast(Renderer.Camera.Position, Renderer.Camera.Front, 5f);
+        if (!hit.DidHit) { Hud.NotifyWarning("Nowhere to lay it"); return; }
+        Bedroll.Position = new System.Numerics.Vector3(hit.AdjacentX + 0.5f, hit.AdjacentY, hit.AdjacentZ + 0.5f);
+        ConsumeBlockActionCost();
+        int slot = Inventory.ActiveHotbarIndex;
+        if (item.Count > 1) Inventory.SetHotbar(slot, item with { Count = item.Count - 1 });
+        else Inventory.SetHotbar(slot, null);
+        Hud.Notify("Bedroll laid");
+    }
+
     private void HandlePlaceTorch(LostSpawns.Services.InventoryItem item)
     {
         var hit = World.Raycast(Renderer.Camera.Position, Renderer.Camera.Front, 5f);
@@ -2341,8 +2366,10 @@
         // Teleport camera back to the heightmap spawn point and re-arm gravity so
         // it settles cleanly on the terrain. Reset pitch so the death-collapse
         // tilt doesn't leak into the new life.
-        int spawnHeight = World.GetHeightAt(0, 0);
-        Renderer.Camera.Position = new System.Numerics.Vector3(0, spawnHeight + EyeHeight + 2f, 0);
+        // Where the bedroll lies, or the start of the island
+        float wakeX = Bedroll.Position?.X ?? 0f, wakeZ = Bedroll.Position?.Z ?? 0f;
+        int spawnHeight = World.GetHeightAt(wakeX, wakeZ);
+        Renderer.Camera.Position = new System.Numerics.Vector3(wakeX, spawnHeight + EyeHeight + 2f, wakeZ);
         Renderer.Camera.Pitch = -15f;
         _verticalVelocity = 0;
         _peakFallSpeed = 0;

@@ -90,6 +90,10 @@ public class CraftingService
                 RequiredLevel: 3),
             // Building blocks: boards from wood, laid stone from stone. Both place like any block (right click).
             new CraftingRecipe(
+                "Bedroll",
+                new[] { ("material.cloth", 6), ("material.rope", 2) },
+                new InventoryItem("place.bedroll", "Bedroll", 1, ItemCategory.Marker)),
+            new CraftingRecipe(
                 "Planks",
                 new[] { ("material.wood", 1) },
                 new InventoryItem("material.planks", "Planks", 2, ItemCategory.Material)),

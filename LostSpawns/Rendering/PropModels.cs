@@ -144,6 +144,18 @@ public static class PropModels
         },
     };
 
+    /// <summary>A bedroll laid out on the ground: a dull olive mat, a pillow, a strap.</summary>
+    public static readonly CreatureModel Bedroll = new()
+    {
+        Name = "bedroll", Palette = None,
+        Parts = new[]
+        {
+            P("mat", PartLook.Sleeve, -6, 22, -9, 12, 2, 18),
+            P("pillow", PartLook.Cloth, -5, 20.6f, -8.5f, 10, 1.4f, 4),
+            P("strap", PartLook.Leather, -6.2f, 20.9f, 2, 12.4f, 1.4f, 2),
+        },
+    };
+
     public static readonly CreatureModel Bandage = new()
     {
         Name = "bandage", Palette = None,
@@ -176,7 +188,7 @@ public static class PropModels
 
     public static IEnumerable<CreatureModel> All => new[]
     {
-        Campfire, Torch, Mushroom, Berries, RawMeat, CookedMeat, Pelt, Log, Pebbles, Pile, Bundle, Bandage, Can,
+        Campfire, Torch, Mushroom, Berries, RawMeat, CookedMeat, Pelt, Log, Pebbles, Pile, Bundle, Bandage, Can, Bedroll,
     };
 }
 

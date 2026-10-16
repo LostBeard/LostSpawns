@@ -34,6 +34,7 @@ public sealed class VrWorld : IDisposable
     private readonly EntityService _wildlife;
     private readonly CampfireService _fires;
     private readonly GroundItemService _ground;
+    private readonly BedrollService _bedroll;
     private readonly XrLocomotion _loco = new();
 
     private GPUDevice? _device;
@@ -113,8 +114,9 @@ public sealed class VrWorld : IDisposable
         }
     }
 
-    public VrWorld(SpawnJSRuntime js, VoxelEngineService engine, WorldService world, WorldTimeService time, WeatherService weather, EntityService wildlife, CampfireService fires, GroundItemService ground)
+    public VrWorld(SpawnJSRuntime js, VoxelEngineService engine, WorldService world, WorldTimeService time, WeatherService weather, EntityService wildlife, CampfireService fires, GroundItemService ground, BedrollService bedroll)
     {
+        _bedroll = bedroll;
         _fires = fires;
         _ground = ground;
         _js = js;
@@ -238,6 +240,7 @@ public sealed class VrWorld : IDisposable
         _creatures.AddCreatures(_wildlife.Entities, head, seconds, 100f);
         _creatures.AddFires(_fires.Fires, head, 100f);
         _creatures.AddItems(_ground.Items, head, seconds, 40f);
+        _creatures.AddBedroll(_bedroll.Position, head, 100f);
         if (RightHand is { } hand) _creatures.AddHeldAt(HeldProvider?.Invoke() ?? default, hand.Position, hand.Direction);
         if (f.LeftHasRay) _creatures.AddHandAt(Vector3.Transform(f.LeftRayOrigin, m), Vector3.Normalize(Vector3.TransformNormal(f.LeftRayDirection, m)));
         _creatures.Commit();

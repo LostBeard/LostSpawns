@@ -31,6 +31,7 @@ builder.Services.AddSingleton<InventoryService>();
 builder.Services.AddSingleton<CraftingService>();
 builder.Services.AddSingleton<WeatherService>();
 builder.Services.AddSingleton<CampfireService>();
+builder.Services.AddSingleton<BedrollService>();
 builder.Services.AddSingleton<GroundItemService>();
 builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<PoiService>();
