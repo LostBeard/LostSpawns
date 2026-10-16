@@ -365,6 +365,7 @@
         _inVr = true;
         // Started from the pause menu: its screen would stay on top of the stack and count as a menu open, so no swing or placing would work
         Hud.HidePauseMenu();
+        _terraformMode = false;   // the desktop's carving brush has no controls in the headset: it would turn every swing into a carve
         Renderer.StopRenderLoop();
         var session = Vr.Session;
         try

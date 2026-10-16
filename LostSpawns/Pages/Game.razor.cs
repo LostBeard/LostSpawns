@@ -26,7 +26,7 @@ public partial class Game
     private readonly UIButton[] _vrHotbarButtons = new UIButton[9];
     private readonly UIButton[] _vrPackButtons = new UIButton[InventoryService.BackpackSize];
     private readonly List<(UIButton Button, LostSpawns.Services.CraftingRecipe Recipe)> _vrCraftButtons = new();
-    private UIButton? _vrRespawn;
+    private UIButton? _vrRespawn, _vrTerraform;
     private double _vrLastTime = -1;
     private bool _vrRtWas, _vrLtWas, _vrAWas, _vrBWas, _vrXWas, _vrYWas;
     private float _vrRepeat;
@@ -186,6 +186,11 @@ public partial class Game
         Button(p, "Settings", 152, 474, () => { _vrSettings!.Model = _vrMenu!.Model; _vrMenu.IsOpen = false; _vrSettings.IsOpen = true; RefreshVrSettingsText(); });
         Button(p, "Controls", 280, 474, () => { _vrHelp!.Model = _vrMenu!.Model; _vrMenu.IsOpen = false; _vrHelp.IsOpen = true; });
 
+        // The carving brush of the desktop game (B): the right trigger carves a sphere where it points, the left builds one
+        _vrTerraform = new UIButton { Text = "Terraform: off", X = 24, Y = 532, Width = 248, Height = 50 };
+        _vrTerraform.OnClick = () => { _terraformMode = !_terraformMode; _vrTerraform.Text = "Terraform: " + (_terraformMode ? "on" : "off"); };
+        p.AddChild(_vrTerraform);
+
         _vrRespawn = new UIButton { Text = "Respawn", X = 24, Y = 540, Width = 376, Height = 60, Visible = false };
         _vrRespawn.OnClick = VrRespawn;
         p.AddChild(_vrRespawn);
@@ -306,7 +311,7 @@ public partial class Game
             "Right trigger: swing the tool - chop, mine, hit (hold to keep going); or just swing it",
             "Left trigger: eat or drink what is in your hand, or place a block",
             "A / B: next / previous hotbar slot",
-            "Y: feed a campfire, or drink from water you point at",
+            "Y: feed a campfire, or drink from water you point at (menu: Terraform carves and builds ground)",
             "Crouch for real to sneak: animals and the infected notice you from half as far",
             "X: this menu (hotbar, eat, drink, heal, sleep, backpack, crafting)",
             "Point the right controller at a button and pull its trigger.",
@@ -359,6 +364,7 @@ public partial class Game
         bool dead = Hud.IsDead;
         if (dead && !_vrMenu!.IsOpen) { _vrPack!.IsOpen = false; _vrHelp!.IsOpen = false; _vrSettings!.IsOpen = false; OpenVrMenu(f); }
         _vrRespawn!.Visible = dead;
+        _vrTerraform!.Visible = !dead;
 
         // The menu: X opens and closes it; the right ray points at it and the trigger clicks
         if (f.LeftPrimary && !_vrXWas && !dead)

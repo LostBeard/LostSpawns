@@ -193,7 +193,7 @@ Navigate to `https://localhost:7272/game` and click the canvas to capture mouse 
 | **Y** | Feed a campfire, or drink from water you point at |
 | **X** | The menu: hotbar, eat, drink, heal, sleep, backpack, crafting, controls, leave VR (point the right controller at a button, trigger to press) |
 
-The menu's Settings page has the turning (smooth or in steps, speed, step size), a comfort vignette that darkens the edges while you move, and the draw distance, kept between visits; crouching for real is sneaking. The right controller is the player's arm: its ray is where the tool hits and the block goes. Stats float over the left wrist; messages show low in the view; a hit reddens it.
+The menu's Settings page has the turning (smooth or in steps, speed, step size), a comfort vignette that darkens the edges while you move, and the draw distance, kept between visits; crouching for real is sneaking. The menu also has Terraform (the desktop's carving brush: right trigger carves a sphere where you point, left builds one). The right controller is the player's arm: its ray is where the tool hits and the block goes. Stats float over the left wrist; messages show low in the view; a hit reddens it.
 
 ## 🔍 Looking at the game from a known place
 

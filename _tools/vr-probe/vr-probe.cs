@@ -110,6 +110,18 @@ try
         await page.EvaluateAsync("clearInterval(window.__swing)");
         return;
     }
+    // "dig": hold the right trigger at the ground ahead for a few seconds: do the holes show?
+    if ((args.ElementAtOrDefault(3) ?? "") == "dig")
+    {
+        await page.EvaluateAsync("window.__xr.aimAt(0.0, 0.0, -1.6)");
+        await Task.Delay(400);
+        await page.EvaluateAsync("window.__xr.trigger = true");
+        await Task.Delay(4500);
+        await page.EvaluateAsync("window.__xr.trigger = false");
+        await Task.Delay(1500);
+        await Shot("2-dug");
+        return;
+    }
     // "walk": push the left stick forward for a few seconds, a picture every 1.5 s (with ?poi=1 the player starts at a building: does the door let it in, the wall stop it?)
     if ((args.ElementAtOrDefault(3) ?? "") == "walk")
     {
