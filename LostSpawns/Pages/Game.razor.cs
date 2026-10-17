@@ -18,7 +18,7 @@ public partial class Game
 {
     private VrUi? _vrUi;
     private VrPanel? _vrWrist, _vrMenu, _vrFlash, _vrPack, _vrHelp, _vrSettings, _vrVignette;
-    private UIButton? _vrTurnMode, _vrTurnSpeed, _vrSnapStep, _vrVignetteButton, _vrDrawRadius;
+    private UIButton? _vrTurnMode, _vrTurnSpeed, _vrSnapStep, _vrVignetteButton, _vrDrawRadius, _vrRenderScale;
     private float _vrVignetteLevel;
     private UIPanel? _vrVigOuter, _vrVigInner;
     private UILabel? _vrWristHeader, _vrWristHeld, _vrWristLog, _vrMenuStatus;
@@ -239,7 +239,7 @@ public partial class Game
     // The headset's own settings: how to turn, how far to draw, whether the edges darken while moving; kept between visits
     private void BuildVrSettings()
     {
-        _vrSettings = new VrPanel(800, 470, 0.0009f);
+        _vrSettings = new VrPanel(800, 520, 0.0009f);
         var p = _vrSettings.Panel;
         var o = Vr.Options;
         p.AddChild(new UILabel { X = 24, Y = 16, Text = "VR settings", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
@@ -268,7 +268,10 @@ public partial class Game
         Small("-", 416, 316, () => Vr.DrawRadius = o.DrawRadius = Math.Max(VrWorld.MinDrawRadius, o.DrawRadius - 1));
         Small("+", 484, 316, () => Vr.DrawRadius = o.DrawRadius = Math.Min(10, o.DrawRadius + 1));
         p.AddChild(new UILabel { X = 560, Y = 330, Width = 230, Text = "(next time you enter VR)", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 170, 190, 210) });
-        Button(p, "Back", 24, 400, () => { _vrMenu!.Model = _vrSettings!.Model; _vrSettings.IsOpen = false; _vrMenu.IsOpen = true; });
+        _vrRenderScale = Row("", 376, () => { }, 380);
+        Small("-", 416, 376, () => { o.RenderScale = MathF.Max(0.5f, MathF.Round((o.RenderScale - 0.05f) * 100f) / 100f); ApplyVrOptions(); });
+        Small("+", 484, 376, () => { o.RenderScale = MathF.Min(1f, MathF.Round((o.RenderScale + 0.05f) * 100f) / 100f); ApplyVrOptions(); });
+        Button(p, "Back", 24, 444, () => { _vrMenu!.Model = _vrSettings!.Model; _vrSettings.IsOpen = false; _vrMenu.IsOpen = true; });
     }
 
     private void ApplyVrOptions()
@@ -278,6 +281,7 @@ public partial class Game
         _vr.SmoothTurn = o.SmoothTurn;
         _vr.TurnDegreesPerSecond = o.TurnDegreesPerSecond;
         _vr.SnapTurnDegrees = o.SnapDegrees;
+        _vr.RenderScale = Math.Clamp(o.RenderScale, 0.5f, 1f);
     }
 
     private void RefreshVrSettingsText()
@@ -288,6 +292,7 @@ public partial class Game
         _vrSnapStep!.Text = $"Step turn size: {o.SnapDegrees:F0} deg";
         _vrVignetteButton!.Text = "Comfort vignette: " + (o.ComfortVignette ? "on" : "off");
         _vrDrawRadius!.Text = $"Draw distance: {o.DrawRadius} columns";
+        _vrRenderScale!.Text = $"Sharpness: {o.RenderScale * 100:F0}% of the eye";
     }
 
     // The edges of the view go dark while the sticks move the player: a ring close in front of the eyes, wider the harder the push

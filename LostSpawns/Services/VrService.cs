@@ -28,6 +28,8 @@ public sealed class VrService : IDisposable
         /// <summary>Darken the edges of the view while moving or turning.</summary>
         public bool ComfortVignette { get; set; }
         public int DrawRadius { get; set; } = VrWorld.DefaultDrawRadius;
+        /// <summary>The share of the eye resolution the world is drawn at.</summary>
+        public float RenderScale { get; set; } = 0.75f;
     }
 
     public VrOptions Options { get; private set; } = new();

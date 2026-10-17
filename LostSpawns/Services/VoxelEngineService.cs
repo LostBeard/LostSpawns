@@ -95,7 +95,9 @@ public class VoxelEngineService : IAsyncDisposable
         {
             MissingNeighborsAreSolid = false,
             EmbedSectionIndex = true,
-            AmbientOcclusion = true,   // each face corner is shaded by what stands beside it, baked into the quad by the mesher
+            // Off: the corner shading stops the greedy merge, which tripled the quads of the terrain (35k to 110-150k an eye) and the Quest fell to 25 frames a second.
+            // The desktop has its screen-space pass; the headset waits for a cheaper way (see the Research notes).
+            AmbientOcclusion = false,
             Arena = _arena,
         };
         _mesher.SetBlockClasses(BlockStyle.Classes());

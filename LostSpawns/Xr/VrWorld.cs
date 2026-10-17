@@ -73,6 +73,9 @@ public sealed class VrWorld : IDisposable
     /// reports gives one back (up to the radius it started with). Off when the radius was chosen by hand (<c>?vrdd</c>).
     /// </summary>
     public bool Adaptive { get; set; } = true;
+
+    /// <summary>How much of the headset's eye resolution the world is drawn at (the picture is stretched to the eye when copied): the GPU of a headset is the limit, and pixels are what it has most of.</summary>
+    public float RenderScale { get; set; } = 0.75f;
     public const int MinDrawRadius = 3;
     private int _startRadius = DefaultDrawRadius;
     private double _bestGap = double.MaxValue;
@@ -245,7 +248,7 @@ public sealed class VrWorld : IDisposable
         _particles.Commit();
 
         var first = f.Views[0].Viewport;
-        EnsureTargets((int)first.Width, (int)first.Height);
+        EnsureTargets(Math.Max(64, (int)(first.Width * RenderScale)), Math.Max(64, (int)(first.Height * RenderScale)));
 
         double eyeStart = _frameClock.Elapsed.TotalMilliseconds;
         foreach (var view in f.Views)
