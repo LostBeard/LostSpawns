@@ -31,7 +31,7 @@ public sealed class VrService : IDisposable
     }
 
     public VrOptions Options { get; private set; } = new();
-    private const string OptionsKey = "lost.vr";
+    private const string OptionsKey = "lost.vr2";   // (lost.vr could hold the step turning an accidental stick click had switched on)
 
     private void LoadOptions()
     {

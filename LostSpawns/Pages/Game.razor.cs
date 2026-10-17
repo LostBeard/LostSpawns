@@ -313,7 +313,7 @@ public partial class Game
         string[] lines =
         {
             "Left stick: walk (click it, or squeeze the left grip, to run)",
-            "Right stick: turn (click it to switch smooth / snap turning)",
+            "Right stick: turn (smooth or in steps: menu, Settings)",
             "Right grip: at a shoulder, hip or the chest draws the hotbar slot carried there (1-5); at loot, picks it up",
             "Right trigger: swing the tool - chop, mine, hit (hold to keep going); or just swing it",
             "Left trigger: eat or drink what is in your hand, or place a block",

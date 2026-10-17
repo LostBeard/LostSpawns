@@ -183,14 +183,7 @@ public sealed class VrWorld : IDisposable
         float dt = _lastTime < 0 ? 0f : (float)Math.Clamp((f.Time - _lastTime) / 1000.0, 0.0, 0.1);
         _lastTime = f.Time;
 
-        // A click of the right stick switches between smooth and snap turning (smooth is the default)
-        if (f.RightThumb && !_thumbWasDown)
-        {
-            _loco.SmoothTurn = !_loco.SmoothTurn;
-            OnTurnModeToggled?.Invoke(_loco.SmoothTurn);
-            Console.WriteLine($"[Vr] turning {(_loco.SmoothTurn ? "smoothly" : "in steps")}");
-        }
-        _thumbWasDown = f.RightThumb;
+        // (The turning mode is changed in the menu's Settings only: a click of the stick is too easy to make by accident while turning, and it kept switching to steps.)
 
         // The sticks: left walks (a click or a grip runs), right turns
         float speed = f.LeftThumb || f.LeftGrip ? RunSpeed : WalkSpeed;
