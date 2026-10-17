@@ -9,9 +9,15 @@
 		<ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
 		<!-- Not compression needed -->
 		<CompressionEnabled>false</CompressionEnabled>
-		<!-- Required: ILGPU uses IL reflection for kernel compilation -->
-		<PublishTrimmed>false</PublishTrimmed>
-		<RunAOTCompilation>false</RunAOTCompilation>
+		<!-- AOT BY DEFAULT (found on TJ's Quest 2026-10-16): interpreted, the game's own code (world, entities, light, the headset frame) kept the main thread 95% busy and
+		     frames came every 24-28 ms with the GPU idle half the time. Compiled it is several times faster. WasmStripILAfterAOT=false keeps the IL that ILGPU compiles
+		     kernels from; WasmDedup=false makes the build parallel (minutes, not an hour; same speed, a bigger dotnet.native.wasm). WASM AOT needs trimming; the app and the
+		     libraries that reach their code by reflection are rooted below. For a fast build use -p:LostSpawnsAot=false. -->
+		<LostSpawnsAot Condition="'$(LostSpawnsAot)' == ''">true</LostSpawnsAot>
+		<RunAOTCompilation>$(LostSpawnsAot)</RunAOTCompilation>
+		<WasmStripILAfterAOT>false</WasmStripILAfterAOT>
+		<WasmDedup>false</WasmDedup>
+		<PublishTrimmed>$(LostSpawnsAot)</PublishTrimmed>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -27,6 +33,16 @@
 		<PackageReference Include="SpawnDev.SpawnJS.Cryptography" Version="2.1.1" />
 		<PackageReference Include="SpawnDev.GameUI" Version="1.1.1-local.5" />
 		<PackageReference Include="SpawnDev.VoxelEngine" Version="0.2.0-rc.5-local.19" />
+	</ItemGroup>
+
+	<!-- Kept whole by the trimmer: ILGPU reads IL and reflects in its static constructors; the app serialises its own types with System.Text.Json; the engine and the UI are reached through delegates and kernels -->
+	<ItemGroup>
+		<TrimmerRootAssembly Include="ILGPU" />
+		<TrimmerRootAssembly Include="ILGPU.Algorithms" />
+		<TrimmerRootAssembly Include="SpawnDev.ILGPU" />
+		<TrimmerRootAssembly Include="SpawnDev.VoxelEngine" />
+		<TrimmerRootAssembly Include="SpawnDev.GameUI" />
+		<TrimmerRootAssembly Include="LostSpawns" />
 	</ItemGroup>
 
 	<ItemGroup>
