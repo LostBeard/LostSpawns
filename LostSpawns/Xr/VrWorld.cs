@@ -253,6 +253,11 @@ public sealed class VrWorld : IDisposable
         var first = f.Views[0].Viewport;
         EnsureTargets(Math.Max(64, (int)(first.Width * RenderScale)), Math.Max(64, (int)(first.Height * RenderScale)));
 
+        // One set of columns for both eyes (either eye's frustum, round the head), so the draws can be recorded once and run twice
+        var leftFrustum = EyeFrustum(f.Views[0], m);
+        var rightFrustum = f.Views.Length > 1 ? EyeFrustum(f.Views[1], m) : leftFrustum;
+        LastVisibleColumns = _terrain.PrepareVisibleStereo(_world, in leftFrustum, in rightFrustum, head, fogEnd + 24f);
+
         double eyeStart = _frameClock.Elapsed.TotalMilliseconds;
         foreach (var view in f.Views)
         {
@@ -271,7 +276,7 @@ public sealed class VrWorld : IDisposable
             var st = _terrain.Stats;
             Console.WriteLine($"[Vr] frame {FramesDrawn}: head {head:F1}, ground {_groundY:F1} | every {_gapMsSum / _framesInReport:F1} ms, cpu {_frameMsSum / _framesInReport:F1} ms "
                 + $"(max {_frameMsMax:F1}; the two eyes {_eyeMsSum / _framesInReport:F1}) | per eye {st.VisibleColumns} columns, {st.DrawCalls} draws, {st.VisibleQuads} quads, "
-                + $"{_creatures.PartCount} creature parts, {_particles.EmitterCount} emitters | {_world.LoadedColumns} columns loaded, eye {_eyeWidth} x {_eyeHeight}");
+                + $"{_creatures.PartCount} creature parts, {_particles.EmitterCount} emitters | {_world.LoadedColumns} columns loaded, eye {_eyeWidth} x {_eyeHeight}, {_terrain.BundlesRecorded} bundles recorded");
             Adapt(_gapMsSum / _framesInReport);
             _frameMsSum = _frameMsMax = _eyeMsSum = _gapMsSum = 0;
             _framesInReport = 0;
@@ -359,6 +364,9 @@ public sealed class VrWorld : IDisposable
         Console.WriteLine($"[Vr] eye target {width} x {height}");
     }
 
+    private static FrustumCuller.Frustum EyeFrustum(XrViewData view, Matrix4x4 worldFromRoom)
+        => FrustumCuller.ExtractPlanes(XrMath.EyeView(view.RoomView, worldFromRoom) * view.Projection * GlToStandardZ);
+
     private void DrawEye(XrViewData view, Matrix4x4 worldFromRoom, in Atmosphere sky, float rain, float fogEnd, double seconds)
     {
         var worldToEye = XrMath.EyeView(view.RoomView, worldFromRoom);
@@ -379,17 +387,16 @@ public sealed class VrWorld : IDisposable
             FogRange = new Vector4(fogEnd * 0.42f, fogEnd, 0f, 0f),
             Time = (float)seconds,
         });
-        LastVisibleColumns = _terrain.PrepareVisible(_world, in frustum, eyeInWorld, fogEnd + 24f);
 
         using var encoder = _device!.CreateCommandEncoder();
         using var colorTexture = _bridgeContext!.GetCurrentTexture();
         using var colorView = colorTexture.CreateView();
         using var pass = _terrain.BeginRenderPass(encoder, colorView, _depthView!, sky.Fog);
         _sky!.Draw(pass, in vpReversed, eyeInWorld, in sky, rain, _time.DayNumber % 8, _time.DayFraction);
-        _terrain.DrawSolid(pass);
+        _terrain.DrawSolidBundled(pass);
         _creatures!.Draw(pass);
         _particles!.Draw(pass);
-        _terrain.DrawWater(pass);
+        _terrain.DrawWaterBundled(pass);
         _rain!.Draw(pass, _world, in vpReversed, eyeInWorld, rain, sky.Daylight);
         pass.End();
         using var commands = encoder.Finish();
