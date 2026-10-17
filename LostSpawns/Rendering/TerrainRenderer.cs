@@ -36,7 +36,7 @@ public sealed class TerrainRenderer : IDisposable
     public GPUBuffer FrameBuffer => _pipe.FrameBuffer;
     public BiomeTintMap? Biomes => _biomes;
 
-    public void Init(GPUDevice device, GPUQueue queue, string colorFormat)
+    public void Init(GPUDevice device, GPUQueue queue, string colorFormat, LightVolume? light = null)
     {
         _pipe.Init(device, queue, colorFormat, WorldService.MaxColumnSlots);
 
@@ -48,6 +48,7 @@ public sealed class TerrainRenderer : IDisposable
         _pipe.SetTextures(_atlas);
         _pipe.SetAnimations(BlockStyle.Animations());
         _pipe.SetMaterials(BlockStyle.Materials());
+        if (light != null) _pipe.SetLight(light);
     }
 
     /// <summary>Upload this frame's camera, light and fog.</summary>

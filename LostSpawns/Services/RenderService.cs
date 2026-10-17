@@ -134,7 +134,7 @@ public class RenderService : IDisposable
         canvas.Height = _canvasHeight;
 
         _terrain = new TerrainRenderer();
-        _terrain.Init(_device, _queue, _canvasFormat);
+        _terrain.Init(_device, _queue, _canvasFormat, world.Light);
         _sky = new SkyRenderer();
         _sky.Init(_device, _queue, _canvasFormat);
         _weatherView = new WeatherRenderer();

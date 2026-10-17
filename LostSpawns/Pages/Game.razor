@@ -272,6 +272,7 @@
         if (view.God) Stats.Invulnerable = true;
         if (view.Still) Wildlife.Frozen = true;
         Hud.ShowCreatureTags = view.Tags;
+        if (view.Light is { } lightOn && World.Light != null) World.Light.Enabled = lightOn;
         if (view.Bedroll)
         {
             var c = Renderer.Camera;

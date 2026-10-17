@@ -6,6 +6,8 @@ using SpawnDev.ILGPU.WebGPU;
 using SpawnDev.VoxelEngine;
 using SpawnDev.VoxelEngine.Destruction;
 using SpawnDev.VoxelEngine.Meshing;
+using SpawnDev.VoxelEngine.Lighting;
+using SpawnDev.VoxelEngine.Rendering;
 using LostSpawns.Rendering;
 
 namespace LostSpawns.Services;
@@ -33,6 +35,14 @@ public class VoxelEngineService : IAsyncDisposable
     private ColumnMesher? _mesher;
     private QuadArena? _arena;
     private BlockColumnCarveService? _carve;
+
+    // Sky light and block light of the world, worked out on the GPU (LightPropagator) into slots of a LightVolume the block shader reads
+    private LightPropagator? _lightPropagator;
+    private readonly SemaphoreSlim _lightLock = new(1, 1);
+    /// <summary>The light of the columns round the camera (null where the backend is not WebGPU: the world is lit as before).</summary>
+    public LightVolume? Light { get; private set; }
+    /// <summary>The window of columns the light covers, in columns on a side.</summary>
+    public const int LightSide = 25;
 
     // Serialize mesh dispatches - ColumnMesher shares intermediate GPU buffers
     private readonly SemaphoreSlim _meshLock = new(1, 1);
@@ -89,9 +99,51 @@ public class VoxelEngineService : IAsyncDisposable
         };
         _mesher.SetBlockClasses(BlockStyle.Classes());
         _carve = new BlockColumnCarveService(_accelerator);
+        InitLight();
 
         Console.WriteLine($"[VoxelEngine] {BackendName}");
         IsInitialized = true;
+    }
+
+    private void InitLight()
+    {
+        if (_accelerator is not WebGPUAccelerator webGpu) return;
+        var device = webGpu.NativeAccelerator.NativeDevice;
+        var queue = webGpu.NativeAccelerator.Queue;
+        if (device == null || queue == null) return;
+        Light = new LightVolume();
+        Light.Init(device, queue, LightSide * LightSide, LightSide, Models.ChunkData.Height, 0);
+        // Where no sky reaches it is dim, not black; the blocks' own glow is not used yet (a campfire is not a block)
+        Light.DarkFloor = 0.10f;
+        _lightPropagator = new LightPropagator(_accelerator, Models.ChunkData.Height / 16);
+        var classes = BlockStyle.Classes();
+        var passes = new byte[classes.Length];
+        for (int i = 0; i < classes.Length; i++)
+        {
+            // Light goes through air, water and the crossed planes of plants; leaves keep it out (a forest is dim underneath), everything else too
+            int c = classes[i];
+            passes[i] = (c == BlockClass.None || c == BlockClass.Water || c == BlockClass.Cross) ? (byte)1 : (byte)0;
+        }
+        _lightPropagator.SetBlockLight(passes, ReadOnlySpan<byte>.Empty);
+    }
+
+    /// <summary>Light one column into its slot; says which neighbours must be lit again (see <see cref="LightBorders"/>).</summary>
+    public async Task<LightBorders> PropagateLightAsync(int slot, MemoryBuffer1D<ushort, Stride1D.Dense> column,
+        MemoryBuffer1D<ushort, Stride1D.Dense>? negX, MemoryBuffer1D<ushort, Stride1D.Dense>? posX,
+        MemoryBuffer1D<ushort, Stride1D.Dense>? negZ, MemoryBuffer1D<ushort, Stride1D.Dense>? posZ, bool firstLight)
+    {
+        if (_lightPropagator == null || Light == null) return LightBorders.None;
+        await _lightLock.WaitAsync();
+        try
+        {
+            // A slot taken over from another column starts with no memory of what the last one looked like
+            if (firstLight) _lightPropagator.Forget(Light, slot);
+            return await _lightPropagator.PropagateColumnAsync(Light, slot, column, negX, posX, negZ, posZ);
+        }
+        finally
+        {
+            _lightLock.Release();
+        }
     }
 
     public void SetPermutationTable(int[] permTable)
@@ -161,11 +213,9 @@ public class VoxelEngineService : IAsyncDisposable
     /// </summary>
     public MemoryBuffer1D<ushort, Stride1D.Dense> UploadColumn(byte[] blocks, MemoryBuffer1D<ushort, Stride1D.Dense>? existing = null)
     {
-        var wide = new ushort[blocks.Length];
-        for (int i = 0; i < blocks.Length; i++) wide[i] = blocks[i];
-        var buffer = existing ?? _accelerator!.Allocate1D<ushort>(blocks.Length);
-        buffer.CopyFromCPU(wide);
-        return buffer;
+        if (existing == null) return _mesher!.CreateColumnBuffer(blocks);
+        _mesher!.WriteColumnBuffer(existing, blocks);
+        return existing;
     }
 
     /// <summary>

@@ -141,6 +141,7 @@ public class WorldService
 
     public List<(int cx, int cz)> UpdateDesiredChunks(Vector3 playerPos, int drawDistance)
     {
+        UpdateLightWindow(playerPos);
         int pcx = (int)MathF.Floor(playerPos.X / ChunkData.SizeXZ);
         int pcz = (int)MathF.Floor(playerPos.Z / ChunkData.SizeXZ);
 
@@ -217,6 +218,7 @@ public class WorldService
         foreach (var key in toEvict)
         {
             _blocksCache.Remove(key);
+            _engine.Light?.Release(key.Item1, key.Item2);
             if (_gpuBlocks.Remove(key, out var gpu))
                 gpu.Dispose();
         }
@@ -373,12 +375,90 @@ public class WorldService
             var gpu = EnsureGpuBlocks(cx, cz, blocks);
             column.Mesh = await _engine.MeshColumnAsync(gpu, GpuNeighbour(cx - 1, cz), GpuNeighbour(cx + 1, cz), GpuNeighbour(cx, cz - 1), GpuNeighbour(cx, cz + 1));
             column.UpdateSections();
+            QueueLight(cx, cz);
             return column;
         }
         catch
         {
             ReleaseColumn(column);
             throw;
+        }
+    }
+
+    /// <summary>The light of the columns round the camera (null on a backend that is not WebGPU).</summary>
+    public SpawnDev.VoxelEngine.Rendering.LightVolume? Light => _engine.Light;
+
+    // --- Light: each column's sky light and block light, worked out on the GPU after it is meshed or edited ---
+
+    private readonly Queue<(int cx, int cz)> _lightQueue = new();
+    private readonly HashSet<(int cx, int cz)> _lightQueued = new();
+    private bool _lightPumping;
+    private int _lightPropagations;
+    private int _lightCx = int.MinValue, _lightCz = int.MinValue;
+
+    /// <summary>
+    /// Keep the light's window of columns on the camera, send the light's changes to the GPU, and give light to the loaded columns that have just come
+    /// into the window. Called every frame.
+    /// </summary>
+    private void UpdateLightWindow(Vector3 cameraPos)
+    {
+        var light = _engine.Light;
+        if (light == null) return;
+        int cx = (int)MathF.Floor(cameraPos.X / 16f), cz = (int)MathF.Floor(cameraPos.Z / 16f);
+        if (cx != _lightCx || cz != _lightCz)
+        {
+            _lightCx = cx; _lightCz = cz;
+            light.SetWindow(cx, cz);
+            foreach (var key in _columns.Keys)
+                if (light.InWindow(key.cx, key.cz) && !light.Has(key.cx, key.cz)) QueueLight(key.cx, key.cz);
+        }
+        light.Update();
+    }
+
+    /// <summary>Light this column (again), and then the neighbours its light reaches into.</summary>
+    private void QueueLight(int cx, int cz)
+    {
+        var light = _engine.Light;
+        if (light == null || !light.InWindow(cx, cz) || !_gpuBlocks.ContainsKey((cx, cz))) return;
+        if (!_lightQueued.Add((cx, cz))) return;
+        _lightQueue.Enqueue((cx, cz));
+        if (!_lightPumping) _ = PumpLightAsync();
+    }
+
+    private async Task PumpLightAsync()
+    {
+        _lightPumping = true;
+        try
+        {
+            while (_lightQueue.Count > 0)
+            {
+                var (cx, cz) = _lightQueue.Dequeue();
+                _lightPropagations++;
+                _lightQueued.Remove((cx, cz));
+                var light = _engine.Light;
+                if (light == null || !_gpuBlocks.TryGetValue((cx, cz), out var gpu)) continue;
+                bool first = !light.Has(cx, cz);
+                int slot = light.Assign(cx, cz);
+                if (slot < 0) continue;
+                try
+                {
+                    var borders = await _engine.PropagateLightAsync(slot, gpu, GpuNeighbour(cx - 1, cz), GpuNeighbour(cx + 1, cz), GpuNeighbour(cx, cz - 1), GpuNeighbour(cx, cz + 1), first);
+                    if ((borders & SpawnDev.VoxelEngine.Lighting.LightBorders.NegX) != 0) QueueLight(cx - 1, cz);
+                    if ((borders & SpawnDev.VoxelEngine.Lighting.LightBorders.PosX) != 0) QueueLight(cx + 1, cz);
+                    if ((borders & SpawnDev.VoxelEngine.Lighting.LightBorders.NegZ) != 0) QueueLight(cx, cz - 1);
+                    if ((borders & SpawnDev.VoxelEngine.Lighting.LightBorders.PosZ) != 0) QueueLight(cx, cz + 1);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Light] ({cx},{cz}) failed: {ex.Message}");
+                }
+                await Task.Yield();
+            }
+        }
+        finally
+        {
+            _lightPumping = false;
+            Console.WriteLine($"[Light] {_engine.Light?.Count} columns have light, {_lightPropagations} propagations");
         }
     }
 
@@ -944,6 +1024,7 @@ public class WorldService
             column.Mesh = mesh;
             column.UpdateSections();
             old?.Dispose();
+            QueueLight(cx, cz);
             return true;
         }
         catch (Exception ex)

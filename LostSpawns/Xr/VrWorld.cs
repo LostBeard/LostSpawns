@@ -142,7 +142,7 @@ public sealed class VrWorld : IDisposable
                 if (gpu != null) _format = gpu.GetPreferredCanvasFormat();
 
             _terrain = new TerrainRenderer();
-            _terrain.Init(_device, _queue, _format);
+            _terrain.Init(_device, _queue, _format, _world.Light);
             _sky = new SkyRenderer();
             _sky.Init(_device, _queue, _format);
             _rain = new WeatherRenderer();
