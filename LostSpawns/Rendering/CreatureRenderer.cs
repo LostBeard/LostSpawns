@@ -304,6 +304,27 @@ public sealed class CreatureRenderer : IDisposable
         if (tool != null) EmitHeld(tool, HandMatrix(toolDir, grip, 0.5f));
     }
 
+    /// <summary>
+    /// A controller's arm in the room, rigid with it: the forearm and fist in the controller's own frame (<paramref name="controllerWorld"/>: local to world, the grip at its
+    /// origin), the tool (if any) in the fist pointing forward and a little up, and on the left a device strapped to the forearm. A swing of the tool dips it about the wrist.
+    /// </summary>
+    public void AddArmAt(in Matrix4x4 controllerWorld, bool left, in HeldView held)
+    {
+        if (!_pipe.IsReady) return;
+        const float Cm = 0.16f;   // PixelScale: 16 px of model = 16 cm
+        var flip = Matrix4x4.CreateScale(Cm / 16f) * Matrix4x4.CreateScale(-1f, -1f, 1f);
+        var toWorld = flip * controllerWorld;
+        EmitHeld(HeldModels.Forearm, in toWorld);
+        if (left) EmitHeld(HeldModels.WristDevice, in toWorld);
+        var tool = held.ItemId is null || left ? null : HeldModels.For(held.ItemId);
+        if (tool == null) return;
+        // The tool's working end is +y once flipped; turn it to the controller's -z, tilted 35 degrees up, and a swing dips it up to 80 degrees more
+        float arc = held.SwingArc * held.SwingStrength;
+        float angle = (-55f - 80f * arc) * MathF.PI / 180f;
+        var toolWorld = Matrix4x4.CreateScale(0.5f / 16f) * Matrix4x4.CreateScale(-1f, -1f, 1f) * Matrix4x4.CreateRotationX(angle) * controllerWorld;
+        EmitHeld(tool, in toolWorld);
+    }
+
     /// <summary>The other hand: just the arm, held out the way the controller points.</summary>
     public void AddHandAt(Vector3 handPosition, Vector3 pointing)
     {

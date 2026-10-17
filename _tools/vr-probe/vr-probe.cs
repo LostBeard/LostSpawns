@@ -127,7 +127,7 @@ try
     {
         await Shot("wrist-0-down");
         // the left controller held up and in, pointing across the body and a little up: q = turn about y by -70 degrees
-        await page.EvaluateAsync("window.__xr.rayLeft = { p: [-0.10, 1.48, -0.42], q: [0, 0.5736, 0, 0.8192] }");
+        await page.EvaluateAsync("window.__xr.rayLeft = { p: [-0.14, 1.52, -0.50], q: [0, 0, 0, 1] }; window.__xr.rayRight.p = [0.22, 1.50, -0.45]");
         await Task.Delay(800);
         await Shot("wrist-1-up");
         return;

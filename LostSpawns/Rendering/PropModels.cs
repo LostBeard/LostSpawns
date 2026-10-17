@@ -270,6 +270,33 @@ public static class HeldModels
         },
     };
 
+    /// <summary>
+    /// The player's forearm and fist in the controller's own space (1 px = 1 cm at the scale it is drawn with; y down, as every model; the grip at the origin, the forearm
+    /// running back along +z toward the elbow): rigid with the controller, so the hand and the elbow move as one.
+    /// </summary>
+    public static readonly CreatureModel Forearm = new()
+    {
+        Name = "forearm", Palette = None,
+        Parts = new[]
+        {
+            P("fist", PartLook.Skin, -4f, -3.5f, -5f, 8f, 7f, 9f),
+            P("sleeve", PartLook.Sleeve, -3.8f, -3.6f, 4f, 7.6f, 7.2f, 24f),
+            P("cuff", PartLook.Leather, -4.1f, -3.9f, 4f, 8.2f, 7.8f, 2.5f),
+        },
+    };
+
+    /// <summary>A wrist device strapped on top of the left forearm (the controller's +Y side), its face looking up out of it.</summary>
+    public static readonly CreatureModel WristDevice = new()
+    {
+        Name = "wristdevice", Palette = None,
+        Parts = new[]
+        {
+            P("strap", PartLook.Leather, -4.4f, -4.9f, 8f, 8.8f, 1.6f, 12.5f),
+            P("body", PartLook.Rock, -5.4f, -8.3f, 8.3f, 10.8f, 3.4f, 11.9f),
+            P("bezel", PartLook.Leather, -5.7f, -8.6f, 8.1f, 11.4f, 0.4f, 12.3f),
+        },
+    };
+
     public static CreatureModel? For(string itemId) => itemId switch
     {
         "tool.axe" or "tool.stone_axe" => Axe,

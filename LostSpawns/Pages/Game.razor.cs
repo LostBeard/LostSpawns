@@ -34,6 +34,7 @@ public partial class Game
     private float _vrLogAge = 99f;
     private bool _vrWristShown;
     private bool _vrHandlersAttached;
+    private XrFrameData? _vrFrame;
     private bool _vrGripWas;
     private float _vrStandHeight;
     private Vector3? _vrStepFrom;
@@ -129,14 +130,14 @@ public partial class Game
 
     private void BuildVrWrist()
     {
-        // The size of a wrist display: 13 x 11 cm
-        _vrWrist = new VrPanel(300, 250, 0.00045f) { ReadOnly = true };
+        // The screen of the device on the left forearm: 10.8 x 9 cm, pointed at with the other hand
+        _vrWrist = new VrPanel(300, 250, 0.00036f);
         var p = _vrWrist.Panel;
         _vrWristHeader = new UILabel { X = 12, Y = 8, Text = "", FontSize = FontSize.Body, Color = Color.FromArgb(255, 225, 235, 245) };
         p.AddChild(_vrWristHeader);
         for (int i = 0; i < _vrBars.Length; i++)
         {
-            float y = 40 + i * 30;
+            float y = 34 + i * 26;
             p.AddChild(new UILabel { X = 12, Y = y, Text = BarNames[i], FontSize = FontSize.Caption, Color = Color.FromArgb(255, 200, 210, 222) });
             var back = new UIPanel { X = 92, Y = y + 2, Width = 190, Height = 18, CornerRadius = 4, BorderWidth = 0, BackgroundColor = Color.FromArgb(255, 40, 46, 56) };
             var fill = new UIPanel { X = 92, Y = y + 2, Width = 190, Height = 18, CornerRadius = 4, BorderWidth = 0, BackgroundColor = BarColors[i] };
@@ -144,10 +145,19 @@ public partial class Game
             p.AddChild(fill);
             _vrBars[i] = (fill, back);
         }
-        _vrWristHeld = new UILabel { X = 12, Y = 196, Text = "", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 235, 215, 160) };
+        _vrWristHeld = new UILabel { X = 12, Y = 170, Text = "", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 235, 215, 160) };
         p.AddChild(_vrWristHeld);
-        _vrWristLog = new UILabel { X = 12, Y = 220, Width = 280, Text = "", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 200, 210, 222) };
+        _vrWristLog = new UILabel { X = 12, Y = 190, Width = 280, Text = "", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 200, 210, 222) };
         p.AddChild(_vrWristLog);
+        // Its keys: the quick uses and the big menu
+        string[] keys = { "EAT", "DRINK", "HEAL", "MENU" };
+        Action[] actions = { () => HandleQuickEat(), () => HandleQuickDrink(), () => HandleQuickHeal(), () => { if (_vrFrame != null) OpenVrMenu(_vrFrame); } };
+        for (int i = 0; i < keys.Length; i++)
+        {
+            var b = new UIButton { Text = keys[i], X = 10 + i * 72, Y = 214, Width = 66, Height = 30, FontSize = FontSize.Caption };
+            b.OnClick = actions[i];
+            p.AddChild(b);
+        }
     }
 
     private void BuildVrMenu()
@@ -373,18 +383,22 @@ public partial class Game
         Vector3? rd = f.RightHasRay ? f.RightRayDirection : null;
         var pointed = _vrSettings!.IsOpen ? _vrSettings : _vrHelp!.IsOpen ? _vrHelp : _vrPack!.IsOpen ? _vrPack : _vrMenu!;
         bool menuOpen = _vrMenu!.IsOpen || _vrPack!.IsOpen || _vrHelp!.IsOpen || _vrSettings.IsOpen;
+        _vrFrame = f;
         bool onMenu = menuOpen && pointed.Step(ro, rd, f.RightTrigger, dt);
-        _vrUi!.ShowRay = menuOpen && ro != null;
+        // The right hand pointing at the device on the left forearm presses its keys
+        bool onWrist = !menuOpen && _vrWrist!.IsOpen && _vrWrist.Step(ro, rd, f.RightTrigger, dt);
+        if (onWrist) pointed = _vrWrist!;
+        _vrUi!.ShowRay = (menuOpen || onWrist) && ro != null;
         if (ro is { } rayO && rd is { } rayD)
         {
             _vrUi.RayOrigin = rayO;
             _vrUi.RayDirection = rayD;
-            _vrUi.RayHovering = onMenu;
+            _vrUi.RayHovering = onMenu || onWrist;
             if (pointed.RayToPanelPixel(rayO, rayD, out float hitDistance) != null) _vrUi.RayHit = hitDistance;
         }
 
         // Play: only with the menu shut and the player alive
-        bool playing = !menuOpen && !dead;
+        bool playing = !menuOpen && !dead && !onWrist;
         if (playing)
         {
             if (f.RightTrigger)
@@ -600,20 +614,24 @@ public partial class Game
         _vrWristHeader!.Text = $"Day {Time.DayNumber + 1}   {minutes / 60:D2}:{minutes % 60:D2}   Lv {Stats.Level}";
         var held = Inventory.ActiveItem;
         _vrWristHeld!.Text = held == null ? $"[{Inventory.ActiveHotbarIndex + 1}] empty hands" : $"[{Inventory.ActiveHotbarIndex + 1}] {held.Name}" + (held.Count > 1 ? $" x{held.Count}" : "");
-        // Like a Pip-Boy: on the left forearm, a hand's length back from the grip, turned to the eyes, and shown only while the eyes are on it
-        Vector3 wrist;
-        if (f.LeftHasRay)
+        // The device is strapped to the left forearm: its screen sits on the top face (the controller's +Y side), 14 cm back from the grip, and moves with the arm
+        // exactly; text runs along the arm, the way a watch face is read across the chest. It is lit only while its face is turned toward the eyes.
+        if (f.TryGetController(true, out var gripPos, out var gripQ))
         {
-            var back = -f.LeftRayDirection;
-            var from = f.LeftHasGrip ? f.LeftGripPosition : f.LeftRayOrigin - f.LeftRayDirection * 0.10f;
-            wrist = from + back * 0.09f + Vector3.UnitY * 0.035f;
-            wrist += Vector3.Normalize(headRoom - wrist) * 0.03f;
+            var xg = Vector3.Transform(Vector3.UnitX, gripQ);
+            var yg = Vector3.Transform(Vector3.UnitY, gripQ);
+            var zg = Vector3.Transform(Vector3.UnitZ, gripQ);
+            var screen = gripPos + zg * 0.142f + yg * 0.088f;
+            _vrWrist!.Model = new Matrix4x4(
+                -zg.X, -zg.Y, -zg.Z, 0,
+                -xg.X, -xg.Y, -xg.Z, 0,
+                yg.X, yg.Y, yg.Z, 0,
+                screen.X, screen.Y, screen.Z, 1);
+            var toEyes = Vector3.Normalize(headRoom - screen);
+            _vrWristShown = Vector3.Dot(yg, toEyes) > (_vrWristShown ? 0.0f : 0.15f) && Vector3.Distance(headRoom, screen) < 0.9f;
         }
-        else wrist = headRoom + fwdRoom * 0.45f - rightRoom * 0.30f - upRoom * 0.32f;
-        _vrWrist!.Model = VrPanel.Facing(wrist, headRoom);
-        float looking = Vector3.Dot(Vector3.Normalize(fwdRoom), Vector3.Normalize(wrist - headRoom));
-        _vrWristShown = looking > (_vrWristShown ? 0.68f : 0.78f);
-        _vrWrist.IsOpen = _vrWristShown;
+        else _vrWristShown = false;
+        _vrWrist!.IsOpen = _vrWristShown;
         _vrLogAge += dt;
         if (_vrLogAge > 12f && _vrWristLog!.Text.Length > 0) _vrWristLog.Text = "";
 

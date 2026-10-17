@@ -247,8 +247,9 @@ public sealed class XrSession : IDisposable
             var p = transform.Position; var o = transform.Orientation;
             var origin = new Vector3((float)p.X, (float)p.Y, (float)p.Z);
             var direction = Vector3.Normalize(Vector3.Transform(-Vector3.UnitZ, new Quaternion((float)o.X, (float)o.Y, (float)o.Z, (float)o.W)));
-            if (left) { data.LeftRayOrigin = origin; data.LeftRayDirection = direction; data.LeftHasRay = true; }
-            else { data.RightRayOrigin = origin; data.RightRayDirection = direction; data.RightHasRay = true; }
+            var orientation = new Quaternion((float)o.X, (float)o.Y, (float)o.Z, (float)o.W);
+            if (left) { data.LeftRayOrigin = origin; data.LeftRayDirection = direction; data.LeftRayOrientation = orientation; data.LeftHasRay = true; }
+            else { data.RightRayOrigin = origin; data.RightRayDirection = direction; data.RightRayOrientation = orientation; data.RightHasRay = true; }
         }
         catch (Exception ex)
         {
@@ -263,9 +264,11 @@ public sealed class XrSession : IDisposable
             if (pose == null) return;
             using var transform = pose.Transform;
             var p = transform.Position;
+            var o = transform.Orientation;
             var position = new Vector3((float)p.X, (float)p.Y, (float)p.Z);
-            if (left) { data.LeftGripPosition = position; data.LeftHasGrip = true; }
-            else { data.RightGripPosition = position; data.RightHasGrip = true; }
+            var orientation = new Quaternion((float)o.X, (float)o.Y, (float)o.Z, (float)o.W);
+            if (left) { data.LeftGripPosition = position; data.LeftGripOrientation = orientation; data.LeftHasGrip = true; }
+            else { data.RightGripPosition = position; data.RightGripOrientation = orientation; data.RightHasGrip = true; }
         }
         catch (Exception ex)
         {
@@ -343,6 +346,33 @@ public sealed class XrFrameData
     public Vector3 RightGripPosition { get; set; }
     public bool LeftHasGrip { get; set; }
     public bool RightHasGrip { get; set; }
+    public Quaternion LeftGripOrientation { get; set; } = Quaternion.Identity;
+    public Quaternion RightGripOrientation { get; set; } = Quaternion.Identity;
+    public Quaternion LeftRayOrientation { get; set; } = Quaternion.Identity;
+    public Quaternion RightRayOrientation { get; set; } = Quaternion.Identity;
+
+    /// <summary>
+    /// Where a controller is held and how it is turned, in the room: the headset's grip pose, or (a headset that gives none) the ray's pose pulled back a hand's length.
+    /// Controller axes: +X to its right, +Y out of its top, -Z along the way it points; the forearm runs back along +Z.
+    /// </summary>
+    public bool TryGetController(bool left, out Vector3 position, out Quaternion orientation)
+    {
+        if (left ? LeftHasGrip : RightHasGrip)
+        {
+            position = left ? LeftGripPosition : RightGripPosition;
+            orientation = left ? LeftGripOrientation : RightGripOrientation;
+            return true;
+        }
+        if (left ? LeftHasRay : RightHasRay)
+        {
+            orientation = left ? LeftRayOrientation : RightRayOrientation;
+            var origin = left ? LeftRayOrigin : RightRayOrigin;
+            position = origin + Vector3.Transform(Vector3.UnitZ, orientation) * 0.10f;
+            return true;
+        }
+        position = default; orientation = Quaternion.Identity;
+        return false;
+    }
     public Vector3 RightRayOrigin { get; set; }
     public Vector3 RightRayDirection { get; set; }
 }

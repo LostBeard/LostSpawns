@@ -241,8 +241,10 @@ public sealed class VrWorld : IDisposable
         _creatures.AddFires(_fires.Fires, head, 100f);
         _creatures.AddItems(_ground.Items, head, seconds, 40f);
         _creatures.AddBedroll(_bedroll.Position, head, 100f);
-        if (RightHand is { } hand) _creatures.AddHeldAt(HeldProvider?.Invoke() ?? default, hand.Position, hand.Direction);
-        if (f.LeftHasRay) _creatures.AddHandAt(Vector3.Transform(f.LeftRayOrigin, m), Vector3.Normalize(Vector3.TransformNormal(f.LeftRayDirection, m)));
+        // The arms: rigid with the controllers (the grip pose), so a hand and its elbow move as one; the right holds the tool, the left carries the wrist device
+        var held0 = HeldProvider?.Invoke() ?? default;
+        if (f.TryGetController(false, out var rPos, out var rQ)) _creatures.AddArmAt(ControllerToWorld(rPos, rQ, m), false, in held0);
+        if (f.TryGetController(true, out var lPos, out var lQ)) _creatures.AddArmAt(ControllerToWorld(lPos, lQ, m), true, in held0);
         _creatures.Commit();
         _particles!.Begin(seconds);
         _particles.AddFires(_fires.Fires, head, 100f, sky.Daylight);
@@ -300,6 +302,14 @@ public sealed class VrWorld : IDisposable
             if (_world.GetBlockAt(bx, waist, bz) == LostSpawns.Models.BlockType.Water) return true;
         }
         return false;
+    }
+
+    /// <summary>A controller's pose in the room (where it is held, how it is turned) as a local-to-world matrix, through the room's own transform.</summary>
+    public static Matrix4x4 ControllerToWorld(Vector3 positionRoom, Quaternion orientationRoom, Matrix4x4 worldFromRoom)
+    {
+        var turn = worldFromRoom;
+        turn.M41 = turn.M42 = turn.M43 = 0f;
+        return Matrix4x4.CreateFromQuaternion(orientationRoom) * turn * Matrix4x4.CreateTranslation(Vector3.Transform(positionRoom, worldFromRoom));
     }
 
     // The gap between frames, against the best gap seen (the display's own period): well over it means frames are being dropped
