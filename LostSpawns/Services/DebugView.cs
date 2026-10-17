@@ -19,6 +19,8 @@ public sealed class DebugView
     public bool Still { get; private set; }
     /// <summary>Show the creature name tags and health bars (<c>?tags=1</c>): the admin view; off in the game.</summary>
     public bool Tags { get; private set; }
+    /// <summary>What the <c>?spawn</c> creatures are doing: stand, graze or rest (<c>?act=rest</c>).</summary>
+    public EntityActivity? Act { get; private set; }
     /// <summary>Switch the sky and block light off (<c>?light=0</c>), to compare pictures.</summary>
     public bool? Light { get; private set; }
     /// <summary>Drop a can of beans on the ground 2.5 blocks ahead of the camera (<c>?loot=1</c>), to pick up.</summary>
@@ -61,6 +63,7 @@ public sealed class DebugView
                 case "bedroll": view.Bedroll = value != "0"; break;
                 case "loot": view.Loot = value != "0"; break;
                 case "light": view.Light = value != "0"; break;
+                case "act" when Enum.TryParse<EntityActivity>(value, true, out var act): view.Act = act; break;
                 case "tags": view.Tags = value != "0"; break;
                 case "still": view.Still = value != "0"; break;
                 case "menu": view.CraftingMenu = value == "craft"; break;

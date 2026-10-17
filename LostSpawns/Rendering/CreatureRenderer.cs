@@ -142,6 +142,10 @@ public sealed class CreatureRenderer : IDisposable
         float groundY = e.Kind == EntityKind.Crow ? e.Position.Y + 0.15f * MathF.Sin(time * 2.2f + id) : e.Position.Y;
         // A rabbit hops: it leaves the ground at the top of each stride
         if (e.Kind == EntityKind.Rabbit && amp > 0.05f) groundY += MathF.Abs(MathF.Sin(st.Phase)) * 0.22f * amp;
+        bool grazing = e.Doing == EntityActivity.Graze && e.Alert == AlertMode.Idle && speed < 0.2f;
+        bool resting = e.Doing == EntityActivity.Rest && e.Alert == AlertMode.Idle && speed < 0.2f && e.Kind != EntityKind.Crow;
+        // Lying down: the body sinks onto the ground, the legs folded under it
+        if (resting) groundY -= 0.30f * scale;
         var root = Root(e.Position.X, groundY, e.Position.Z, st.Yaw, scale);
 
         var tint = Vector3.One * (0.92f + 0.16f * e.ColorJitter);
@@ -155,10 +159,15 @@ public sealed class CreatureRenderer : IDisposable
             var rot = part.BaseRotation;
             switch (part.Gait)
             {
-                case PartGait.FrontLegA: case PartGait.HindLegA: rot.X += swing; break;
-                case PartGait.FrontLegB: case PartGait.HindLegB: rot.X -= swing; break;
+                case PartGait.FrontLegA: rot.X += resting ? -1.45f : swing; break;
+                case PartGait.HindLegA: rot.X += resting ? 1.45f : swing; break;
+                case PartGait.FrontLegB: rot.X += resting ? -1.45f : -swing; break;
+                case PartGait.HindLegB: rot.X += resting ? 1.45f : -swing; break;
                 case PartGait.Head:
                     rot.X += MathF.Sin(time * 0.8f + id) * 0.06f + MathF.Sin(st.Phase * 2f) * 0.05f * amp + (charging ? 0.35f : 0f);
+                    // Grazing: the head down at the grass, chewing; resting: the head sunk and still
+                    if (grazing) rot.X += 1.05f + MathF.Sin(time * 5f + id) * 0.04f;
+                    else if (resting) rot.X += 0.35f;
                     rot.Y += MathF.Sin(time * 0.35f + id * 2.3f) * 0.18f * (1f - amp);   // looks about when standing
                     break;
                 case PartGait.Tail:

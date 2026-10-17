@@ -25,6 +25,9 @@ public enum EntityKind
 /// toward it. Both override the random wander vector until AlertTimer runs
 /// out and the entity returns to idle wandering.
 /// </summary>
+/// <summary>What an animal is doing while nothing bothers it: it does not wander all day, it stands about, grazes with its head down, lies down to rest, and then walks on.</summary>
+public enum EntityActivity { Walk, Stand, Graze, Rest }
+
 public enum AlertMode
 {
     Idle,
@@ -54,6 +57,9 @@ public sealed class WanderingEntity
     public float ColorJitter;
     /// <summary>Seconds before this entity may strike again (the infected hit once a second, not once a frame).</summary>
     public float AttackCooldown;
+    public EntityActivity Doing;
+    /// <summary>Seconds left in the present activity.</summary>
+    public float ActivityTimer;
     /// <summary>An infected that runs: quicker and frailer than a shambler.</summary>
     public bool Runner;
     /// <summary>Seconds until this one next looks for the player (sight is a ray cast, so it is not done every frame).</summary>
@@ -321,6 +327,9 @@ public class EntityService
             {
                 // Alert states override the wander vector until their timer
                 // expires. Flee = away from attacker, Charge = toward attacker.
+                // (A lying or grazing animal is up and moving at once.)
+                e.Doing = EntityActivity.Walk;
+                e.ActivityTimer = 2f;
                 e.AlertTimer -= dt;
                 if (e.AlertTimer <= 0)
                 {
@@ -375,11 +384,24 @@ public class EntityService
             }
             else
             {
-                e.WanderRetargetIn -= dt;
-                if (e.WanderRetargetIn <= 0)
+                // Idle: an animal that lives on the ground stands, grazes, rests and walks in turn; a crow keeps wandering
+                if (e.Kind != EntityKind.Crow && e.Kind != EntityKind.Infected)
                 {
-                    PickRandomDirection(e);
-                    e.WanderRetargetIn = WanderRetargetSeconds * (0.6f + (float)_rng.NextDouble() * 0.8f);
+                    e.ActivityTimer -= dt;
+                    if (e.ActivityTimer <= 0f) ChooseActivity(e, isNight);
+                }
+                if (e.Doing != EntityActivity.Walk)
+                {
+                    e.Velocity = Vector3.Zero;
+                }
+                else
+                {
+                    e.WanderRetargetIn -= dt;
+                    if (e.WanderRetargetIn <= 0)
+                    {
+                        PickRandomDirection(e);
+                        e.WanderRetargetIn = WanderRetargetSeconds * (0.6f + (float)_rng.NextDouble() * 0.8f);
+                    }
                 }
             }
 
@@ -589,6 +611,21 @@ public class EntityService
         }
         feetCell = cy;
         return false;
+    }
+
+    /// <summary>What an idle animal does next, and for how long (herbivores graze, a wolf by day mostly lies up, everything rests more at night).</summary>
+    private void ChooseActivity(WanderingEntity e, bool isNight)
+    {
+        bool herbivore = e.Kind is EntityKind.Rabbit or EntityKind.Deer or EntityKind.Boar or EntityKind.Bear;
+        float walk = 32f, stand = 24f, graze = herbivore ? 30f : 0f, rest = 14f;
+        if (e.Kind == EntityKind.Wolf && !isNight) { walk = 14f; stand = 22f; rest = 64f; }
+        else if (isNight && e.Kind != EntityKind.Wolf) { walk = 12f; rest = 50f; graze *= 0.6f; }
+        float roll = (float)_rng.NextDouble() * (walk + stand + graze + rest);
+        if (roll < walk) { e.Doing = EntityActivity.Walk; e.ActivityTimer = 5f + (float)_rng.NextDouble() * 8f; PickRandomDirection(e); e.WanderRetargetIn = WanderRetargetSeconds; }
+        else if ((roll -= walk) < stand) { e.Doing = EntityActivity.Stand; e.ActivityTimer = 3f + (float)_rng.NextDouble() * 7f; }
+        else if ((roll -= stand) < graze) { e.Doing = EntityActivity.Graze; e.ActivityTimer = 8f + (float)_rng.NextDouble() * 14f; }
+        else { e.Doing = EntityActivity.Rest; e.ActivityTimer = 25f + (float)_rng.NextDouble() * 45f; }
+        if (e.Doing != EntityActivity.Walk) e.Velocity = Vector3.Zero;
     }
 
     private void PickRandomDirection(WanderingEntity e)

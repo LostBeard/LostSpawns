@@ -285,6 +285,7 @@
         if (view.God) Stats.Invulnerable = true;
         if (view.Still) Wildlife.Frozen = true;
         Hud.ShowCreatureTags = view.Tags;
+        _debugActivity = view.Act;
         if (view.Light is { } lightOn && World.Light != null) World.Light.Enabled = lightOn;
         if (view.Bedroll)
         {
@@ -305,6 +306,8 @@
     }
 
     /// <summary>?poi=N: stand 14 blocks from the Nth nearest building to the player, looking at it, so it can be looked at.</summary>
+    private LostSpawns.Services.EntityActivity? _debugActivity;
+
     private void GoToBuildingForDebug(int n, float aroundDegrees, string? kind)
     {
         var from = Renderer.Camera.Position;
@@ -348,6 +351,7 @@
             float offset = (i - (kinds.Count - 1) / 2f) * 3.2f;
             var pos = cam.Position + forward * distance + right * offset;
             var e = Wildlife.Spawn(kinds[i], pos, World);
+            if (_debugActivity is { } act) { e.Doing = act; e.ActivityTimer = 9999f; }
             // A heading shows the creature side on, the way a screenshot wants it (frozen wildlife does not move, so it only sets the yaw)
             e.Velocity = right * 0.06f;
         }
