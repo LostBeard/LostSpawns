@@ -36,7 +36,11 @@ public sealed class ModelPart
     /// <summary>Where the part's texture sits in the creature atlas (pixels), set when the atlas is packed.</summary>
     public Vector2 Uv { get; set; }
 
-    public Vector3 PivotPoint => Pivot ?? new Vector3(Origin.X + Size.X * 0.5f, Origin.Y, Origin.Z + Size.Z * 0.5f);
+    /// <summary>
+    /// Where the part turns: a limb hangs from the middle of its top (y is down in model space, so that is the smaller y), but an ear stands up from the head and
+    /// turns about its base, the middle of its bottom, so its tip flicks and it does not swing from the tip.
+    /// </summary>
+    public Vector3 PivotPoint => Pivot ?? new Vector3(Origin.X + Size.X * 0.5f, Gait is PartGait.EarLeft or PartGait.EarRight ? Origin.Y + Size.Y : Origin.Y, Origin.Z + Size.Z * 0.5f);
     /// <summary>The part's footprint in the atlas, Minecraft's cross layout: 2 * (w + d) wide, d + h tall.</summary>
     public (int w, int h) Footprint => ((int)(2 * (Size.X + Size.Z)), (int)(Size.Z + Size.Y));
 }
