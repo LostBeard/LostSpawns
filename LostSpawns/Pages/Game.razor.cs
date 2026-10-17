@@ -18,7 +18,7 @@ public partial class Game
 {
     private VrUi? _vrUi;
     private VrPanel? _vrWrist, _vrMenu, _vrFlash, _vrPack, _vrHelp, _vrSettings, _vrVignette;
-    private UIButton? _vrTurnMode, _vrTurnSpeed, _vrSnapStep, _vrVignetteButton, _vrDrawRadius, _vrRenderScale;
+    private UIButton? _vrTurnMode, _vrTurnSpeed, _vrSnapStep, _vrVignetteButton, _vrDrawRadius, _vrRenderScale, _vrForearm;
     private float _vrVignetteLevel;
     private UIPanel? _vrVigOuter, _vrVigInner;
     private UILabel? _vrWristHeader, _vrWristHeld, _vrWristLog, _vrMenuStatus;
@@ -239,7 +239,7 @@ public partial class Game
     // The headset's own settings: how to turn, how far to draw, whether the edges darken while moving; kept between visits
     private void BuildVrSettings()
     {
-        _vrSettings = new VrPanel(800, 520, 0.0009f);
+        _vrSettings = new VrPanel(800, 580, 0.0009f);
         var p = _vrSettings.Panel;
         var o = Vr.Options;
         p.AddChild(new UILabel { X = 24, Y = 16, Text = "VR settings", FontSize = FontSize.Heading, Color = Color.FromArgb(255, 235, 240, 248) });
@@ -268,10 +268,13 @@ public partial class Game
         Small("-", 416, 316, () => Vr.DrawRadius = o.DrawRadius = Math.Max(VrWorld.MinDrawRadius, o.DrawRadius - 1));
         Small("+", 484, 316, () => Vr.DrawRadius = o.DrawRadius = Math.Min(10, o.DrawRadius + 1));
         p.AddChild(new UILabel { X = 560, Y = 330, Width = 230, Text = "(next time you enter VR)", FontSize = FontSize.Caption, Color = Color.FromArgb(255, 170, 190, 210) });
+        _vrForearm = Row("", 436, () => { }, 380);
+        Small("-", 416, 436, () => { o.ForearmTilt = MathF.Max(0f, o.ForearmTilt - 5f); ApplyVrOptions(); });
+        Small("+", 484, 436, () => { o.ForearmTilt = MathF.Min(80f, o.ForearmTilt + 5f); ApplyVrOptions(); });
         _vrRenderScale = Row("", 376, () => { }, 380);
         Small("-", 416, 376, () => { o.RenderScale = MathF.Max(0.5f, MathF.Round((o.RenderScale - 0.05f) * 100f) / 100f); ApplyVrOptions(); });
         Small("+", 484, 376, () => { o.RenderScale = MathF.Min(1f, MathF.Round((o.RenderScale + 0.05f) * 100f) / 100f); ApplyVrOptions(); });
-        Button(p, "Back", 24, 444, () => { _vrMenu!.Model = _vrSettings!.Model; _vrSettings.IsOpen = false; _vrMenu.IsOpen = true; });
+        Button(p, "Back", 24, 504, () => { _vrMenu!.Model = _vrSettings!.Model; _vrSettings.IsOpen = false; _vrMenu.IsOpen = true; });
     }
 
     private void ApplyVrOptions()
@@ -282,6 +285,7 @@ public partial class Game
         _vr.TurnDegreesPerSecond = o.TurnDegreesPerSecond;
         _vr.SnapTurnDegrees = o.SnapDegrees;
         _vr.RenderScale = Math.Clamp(o.RenderScale, 0.5f, 1f);
+        _vr.ForearmTiltDegrees = Math.Clamp(o.ForearmTilt, 0f, 80f);
     }
 
     private void RefreshVrSettingsText()
@@ -293,6 +297,7 @@ public partial class Game
         _vrVignetteButton!.Text = "Comfort vignette: " + (o.ComfortVignette ? "on" : "off");
         _vrDrawRadius!.Text = $"Draw distance: {o.DrawRadius} columns";
         _vrRenderScale!.Text = $"Sharpness: {o.RenderScale * 100:F0}% of the eye";
+        _vrForearm!.Text = $"Forearm angle: {o.ForearmTilt:F0} deg up";
     }
 
     // The edges of the view go dark while the sticks move the player: a ring close in front of the eyes, wider the harder the push
@@ -623,9 +628,11 @@ public partial class Game
         // exactly; text runs along the arm, the way a watch face is read across the chest. It is lit only while its face is turned toward the eyes.
         if (f.TryGetController(true, out var gripPos, out var gripQ))
         {
-            var xg = Vector3.Transform(Vector3.UnitX, gripQ);
-            var yg = Vector3.Transform(Vector3.UnitY, gripQ);
-            var zg = Vector3.Transform(Vector3.UnitZ, gripQ);
+            // The device rides the forearm, which is tilted up from the controller by the same angle the arm is drawn at
+            var tilt = Matrix4x4.CreateRotationX(-Vr.Options.ForearmTilt * MathF.PI / 180f);
+            var xg = Vector3.Transform(Vector3.TransformNormal(Vector3.UnitX, tilt), gripQ);
+            var yg = Vector3.Transform(Vector3.TransformNormal(Vector3.UnitY, tilt), gripQ);
+            var zg = Vector3.Transform(Vector3.TransformNormal(Vector3.UnitZ, tilt), gripQ);
             var screen = gripPos + zg * 0.142f + yg * 0.088f;
             _vrWrist!.Model = new Matrix4x4(
                 -zg.X, -zg.Y, -zg.Z, 0,

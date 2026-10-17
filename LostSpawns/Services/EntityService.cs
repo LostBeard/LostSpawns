@@ -419,7 +419,7 @@ public class EntityService
             // rather than clipping through / floating above. Crows fly at
             // canopy height with a gentle bob; everyone else walks at
             // ground + 1.
-            int groundY = world.GetHeightAt(e.Position.X, e.Position.Z);
+            int groundY = e.Kind == EntityKind.Crow ? world.GetHeightAt(e.Position.X, e.Position.Z) : SurfaceBelow(world, e.Position);
             float y;
             if (e.Kind == EntityKind.Crow)
             {
@@ -626,6 +626,23 @@ public class EntityService
         else if ((roll -= stand) < graze) { e.Doing = EntityActivity.Graze; e.ActivityTimer = 8f + (float)_rng.NextDouble() * 14f; }
         else { e.Doing = EntityActivity.Rest; e.ActivityTimer = 25f + (float)_rng.NextDouble() * 45f; }
         if (e.Doing != EntityActivity.Walk) e.Velocity = Vector3.Zero;
+    }
+
+    /// <summary>
+    /// The block an animal stands on: the top solid block (not a tree crown, not a plant) below its head, found in the real blocks so that ground a player dug away or built is
+    /// what it stands on or falls to; the terrain's height where the column is not loaded.
+    /// </summary>
+    private static int SurfaceBelow(WorldService world, Vector3 pos)
+    {
+        int bx = (int)MathF.Floor(pos.X), bz = (int)MathF.Floor(pos.Z);
+        int from = (int)MathF.Floor(pos.Y) + 2;
+        for (int y = from; y >= Math.Max(0, from - 24); y--)
+        {
+            var t = world.GetBlockAt(bx, y, bz);
+            if (t == LostSpawns.Models.BlockType.Air || t == LostSpawns.Models.BlockType.Water || t == LostSpawns.Models.BlockType.Leaves || LostSpawns.Models.BlockTypes.IsPlant(t)) continue;
+            return y;
+        }
+        return world.GetHeightAt(pos.X, pos.Z);
     }
 
     private void PickRandomDirection(WanderingEntity e)

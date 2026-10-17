@@ -146,7 +146,7 @@ public static class Structures
             if (wallCell || partition) BuildWall(chunk, p, lx, lz, wx, wz, ix, iz, partition, seed);
 
             // The roof: planks, with holes where it has fallen in
-            if (Rand(wx, wz + 7, seed + 205) > 0.18f * (0.4f + p.Ruin)) chunk.SetBlock(lx, p.FloorY + WallHeight + 1, lz, BlockType.Planks);
+            if (Rand(wx, wz + 7, seed + 205) > 0.05f * (0.3f + p.Ruin)) chunk.SetBlock(lx, p.FloorY + WallHeight + 1, lz, BlockType.Planks);
         }
     }
 

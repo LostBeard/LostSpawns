@@ -280,6 +280,15 @@ public static class HeldModels
         Parts = new[]
         {
             P("fist", PartLook.Skin, -4f, -3.5f, -5f, 8f, 7f, 9f),
+        },
+    };
+
+    /// <summary>The sleeve of the forearm (and its cuff), in the same frame: it is tilted about the wrist, since a forearm does not run along the way a controller points.</summary>
+    public static readonly CreatureModel Sleeve = new()
+    {
+        Name = "sleeve", Palette = None,
+        Parts = new[]
+        {
             P("sleeve", PartLook.Sleeve, -3.8f, -3.6f, 4f, 7.6f, 7.2f, 24f),
             P("cuff", PartLook.Leather, -4.1f, -3.9f, 4f, 8.2f, 7.8f, 2.5f),
         },

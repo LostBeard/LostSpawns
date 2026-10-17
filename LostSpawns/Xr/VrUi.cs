@@ -12,7 +12,8 @@ namespace LostSpawns.Xr;
 /// </summary>
 public sealed class VrUi : IDisposable
 {
-    private readonly UIControllerRay _ray = new() { MaxLength = 4f };
+    // (The ray's own cursor is a white square 16 mm across: the panels draw a small dot of their own where the ray lands, so this one is a speck)
+    private readonly UIControllerRay _ray = new() { MaxLength = 4f, Thickness = 0.0012f, CursorSize = 0.0015f, CursorColor = System.Drawing.Color.FromArgb(70, 160, 210, 255) };
     private GPUTexture? _depth;
     private GPUTextureView? _depthView;
     private int _width, _height;

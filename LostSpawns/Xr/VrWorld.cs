@@ -76,6 +76,9 @@ public sealed class VrWorld : IDisposable
 
     /// <summary>How much of the headset's eye resolution the world is drawn at (the picture is stretched to the eye when copied): the GPU of a headset is the limit, and pixels are what it has most of.</summary>
     public float RenderScale { get; set; } = 0.75f;
+
+    /// <summary>How far the forearm is tilted up from the way the controller points (degrees): the elbow end is higher than the hand.</summary>
+    public float ForearmTiltDegrees { get; set; } = 35f;
     public const int MinDrawRadius = 3;
     private int _startRadius = DefaultDrawRadius;
     private double _bestGap = double.MaxValue;
@@ -239,8 +242,8 @@ public sealed class VrWorld : IDisposable
         _creatures.AddBedroll(_bedroll.Position, head, 100f);
         // The arms: rigid with the controllers (the grip pose), so a hand and its elbow move as one; the right holds the tool, the left carries the wrist device
         var held0 = HeldProvider?.Invoke() ?? default;
-        if (f.TryGetController(false, out var rPos, out var rQ)) _creatures.AddArmAt(ControllerToWorld(rPos, rQ, m), false, in held0);
-        if (f.TryGetController(true, out var lPos, out var lQ)) _creatures.AddArmAt(ControllerToWorld(lPos, lQ, m), true, in held0);
+        if (f.TryGetController(false, out var rPos, out var rQ)) _creatures.AddArmAt(ControllerToWorld(rPos, rQ, m), false, in held0, ForearmTiltDegrees);
+        if (f.TryGetController(true, out var lPos, out var lQ)) _creatures.AddArmAt(ControllerToWorld(lPos, lQ, m), true, in held0, ForearmTiltDegrees);
         _creatures.Commit();
         _particles!.Begin(seconds);
         _particles.AddFires(_fires.Fires, head, 100f, sky.Daylight);

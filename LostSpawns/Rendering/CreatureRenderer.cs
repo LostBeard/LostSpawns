@@ -317,14 +317,17 @@ public sealed class CreatureRenderer : IDisposable
     /// A controller's arm in the room, rigid with it: the forearm and fist in the controller's own frame (<paramref name="controllerWorld"/>: local to world, the grip at its
     /// origin), the tool (if any) in the fist pointing forward and a little up, and on the left a device strapped to the forearm. A swing of the tool dips it about the wrist.
     /// </summary>
-    public void AddArmAt(in Matrix4x4 controllerWorld, bool left, in HeldView held)
+    public void AddArmAt(in Matrix4x4 controllerWorld, bool left, in HeldView held, float forearmTiltDegrees)
     {
         if (!_pipe.IsReady) return;
         const float Cm = 0.16f;   // PixelScale: 16 px of model = 16 cm
         var flip = Matrix4x4.CreateScale(Cm / 16f) * Matrix4x4.CreateScale(-1f, -1f, 1f);
         var toWorld = flip * controllerWorld;
         EmitHeld(HeldModels.Forearm, in toWorld);
-        if (left) EmitHeld(HeldModels.WristDevice, in toWorld);
+        // The forearm runs back and UP from the hand: a controller points several tens of degrees below the line of the arm
+        var armWorld = flip * Matrix4x4.CreateRotationX(-forearmTiltDegrees * MathF.PI / 180f) * controllerWorld;
+        EmitHeld(HeldModels.Sleeve, in armWorld);
+        if (left) EmitHeld(HeldModels.WristDevice, in armWorld);
         var tool = held.ItemId is null || left ? null : HeldModels.For(held.ItemId);
         if (tool == null) return;
         // The tool's working end is +y once flipped; turn it to the controller's -z, tilted 35 degrees up, and a swing dips it up to 80 degrees more

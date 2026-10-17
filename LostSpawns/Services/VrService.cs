@@ -30,10 +30,12 @@ public sealed class VrService : IDisposable
         public int DrawRadius { get; set; } = VrWorld.DefaultDrawRadius;
         /// <summary>The share of the eye resolution the world is drawn at.</summary>
         public float RenderScale { get; set; } = 0.75f;
+        /// <summary>The forearm's tilt up from the controller (degrees).</summary>
+        public float ForearmTilt { get; set; } = 35f;
     }
 
     public VrOptions Options { get; private set; } = new();
-    private const string OptionsKey = "lost.vr2";   // (lost.vr could hold the step turning an accidental stick click had switched on)
+    private const string OptionsKey = "lost.vr3";   // (lost.vr could hold the step turning an accidental stick click had switched on)
 
     private void LoadOptions()
     {
