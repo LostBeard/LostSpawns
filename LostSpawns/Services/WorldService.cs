@@ -1,3 +1,4 @@
+using SpawnDev.VoxelEngine.Lighting;
 using System.Numerics;
 using ILGPU;
 using ILGPU.Runtime;
@@ -400,10 +401,52 @@ public class WorldService
     /// Keep the light's window of columns on the camera, send the light's changes to the GPU, and give light to the loaded columns that have just come
     /// into the window. Called every frame.
     /// </summary>
+    /// <summary>The lights that are not blocks (campfires, bonfires, torches), asked for about once a second; set by the game.</summary>
+    public Func<IReadOnlyList<LightEmitter>>? EmitterSource { get; set; }
+    private List<LightEmitter> _emitters = new();
+    private float _emitterClock;
+
+    // When the set of emitters changes, every column near an old or a new one is lit again (the engine only knows the blocks changed inside the column it is given)
+    private void CheckEmitters(float dt)
+    {
+        _emitterClock += dt;
+        if (_emitterClock < 0.5f || EmitterSource == null) return;
+        _emitterClock = 0f;
+        var now = EmitterSource();
+        bool same = now.Count == _emitters.Count;
+        for (int i = 0; same && i < now.Count; i++) same = now[i] == _emitters[i];
+        if (same) return;
+        var touched = new HashSet<(int, int)>();
+        void Around(LightEmitter e)
+        {
+            int cx = (int)MathF.Floor(e.X / 16f), cz = (int)MathF.Floor(e.Z / 16f);
+            for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++) touched.Add((cx + dx, cz + dz));
+        }
+        // Only the emitters that differ matter, but a few columns more cost little
+        foreach (var e in _emitters) if (!now.Contains(e)) Around(e);
+        foreach (var e in now) if (!_emitters.Contains(e)) Around(e);
+        _emitters = new List<LightEmitter>(now);
+        foreach (var (cx, cz) in touched) QueueLight(cx, cz);
+    }
+
+    private List<LightEmitter>? EmittersNear(int cx, int cz)
+    {
+        List<LightEmitter>? list = null;
+        foreach (var e in _emitters)
+        {
+            int ex = (int)MathF.Floor(e.X / 16f), ez = (int)MathF.Floor(e.Z / 16f);
+            if (Math.Abs(ex - cx) > 1 || Math.Abs(ez - cz) > 1) continue;
+            (list ??= new()).Add(e);
+        }
+        return list;
+    }
+
     private void UpdateLightWindow(Vector3 cameraPos)
     {
         var light = _engine.Light;
         if (light == null) return;
+        CheckEmitters(1f / 60f);
         int cx = (int)MathF.Floor(cameraPos.X / 16f), cz = (int)MathF.Floor(cameraPos.Z / 16f);
         if (cx != _lightCx || cz != _lightCz)
         {
@@ -442,7 +485,7 @@ public class WorldService
                 if (slot < 0) continue;
                 try
                 {
-                    var borders = await _engine.PropagateLightAsync(slot, gpu, GpuNeighbour(cx - 1, cz), GpuNeighbour(cx + 1, cz), GpuNeighbour(cx, cz - 1), GpuNeighbour(cx, cz + 1), first);
+                    var borders = await _engine.PropagateLightAsync(slot, gpu, GpuNeighbour(cx - 1, cz), GpuNeighbour(cx + 1, cz), GpuNeighbour(cx, cz - 1), GpuNeighbour(cx, cz + 1), first, cx, cz, EmittersNear(cx, cz));
                     if ((borders & SpawnDev.VoxelEngine.Lighting.LightBorders.NegX) != 0) QueueLight(cx - 1, cz);
                     if ((borders & SpawnDev.VoxelEngine.Lighting.LightBorders.PosX) != 0) QueueLight(cx + 1, cz);
                     if ((borders & SpawnDev.VoxelEngine.Lighting.LightBorders.NegZ) != 0) QueueLight(cx, cz - 1);

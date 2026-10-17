@@ -123,6 +123,19 @@
         Hud.OnRespawnClicked += HandleRespawnClicked;
         Stats.OnDied += HandleDied;
         Wildlife.OnNoticedPlayer += HandleInfectedNoticed;
+        // Fires are light: the world lights the columns round each one (a campfire 14, a bonfire 15, a torch 12; a dying fire dims)
+        World.EmitterSource = () =>
+        {
+            var list = new List<SpawnDev.VoxelEngine.Lighting.LightEmitter>();
+            foreach (var f in Fires.Fires)
+            {
+                if (f.Fuel <= 0.02f) continue;
+                int level = f.Radius >= 10f ? 15 : f.Radius <= 3f ? 12 : 14;
+                if (f.Fuel < 0.15f) level -= 4;
+                list.Add(new SpawnDev.VoxelEngine.Lighting.LightEmitter((int)MathF.Floor(f.Position.X), (int)MathF.Floor(f.Position.Y), (int)MathF.Floor(f.Position.Z), level));
+            }
+            return list;
+        };
         Wildlife.OnEntityKilled += HandleEntityKilled;
         Wildlife.OnEntityHit += HandleEntityHitAudio;
         Wildlife.OnContactAttack += HandleEntityContactAttack;

@@ -118,19 +118,22 @@ public class VoxelEngineService : IAsyncDisposable
         _lightPropagator = new LightPropagator(_accelerator, Models.ChunkData.Height / 16);
         var classes = BlockStyle.Classes();
         var passes = new byte[classes.Length];
+        var dims = new byte[classes.Length];
         for (int i = 0; i < classes.Length; i++)
         {
-            // Light goes through air, water and the crossed planes of plants; leaves keep it out (a forest is dim underneath), everything else too
+            // Light goes through air, water, the crossed planes of plants and leaves; leaves take a level off it for each layer (a forest is dim underneath), everything else stops it
             int c = classes[i];
-            passes[i] = (c == BlockClass.None || c == BlockClass.Water || c == BlockClass.Cross) ? (byte)1 : (byte)0;
+            passes[i] = (c == BlockClass.None || c == BlockClass.Water || c == BlockClass.Cross || c == BlockClass.Cutout) ? (byte)1 : (byte)0;
+            if (c == BlockClass.Cutout) dims[i] = 1;
         }
-        _lightPropagator.SetBlockLight(passes, ReadOnlySpan<byte>.Empty);
+        _lightPropagator.SetBlockLight(passes, ReadOnlySpan<byte>.Empty, dims);
     }
 
     /// <summary>Light one column into its slot; says which neighbours must be lit again (see <see cref="LightBorders"/>).</summary>
     public async Task<LightBorders> PropagateLightAsync(int slot, MemoryBuffer1D<ushort, Stride1D.Dense> column,
         MemoryBuffer1D<ushort, Stride1D.Dense>? negX, MemoryBuffer1D<ushort, Stride1D.Dense>? posX,
-        MemoryBuffer1D<ushort, Stride1D.Dense>? negZ, MemoryBuffer1D<ushort, Stride1D.Dense>? posZ, bool firstLight)
+        MemoryBuffer1D<ushort, Stride1D.Dense>? negZ, MemoryBuffer1D<ushort, Stride1D.Dense>? posZ, bool firstLight,
+        int columnX, int columnZ, IReadOnlyList<LightEmitter>? emitters)
     {
         if (_lightPropagator == null || Light == null) return LightBorders.None;
         await _lightLock.WaitAsync();
@@ -138,7 +141,7 @@ public class VoxelEngineService : IAsyncDisposable
         {
             // A slot taken over from another column starts with no memory of what the last one looked like
             if (firstLight) _lightPropagator.Forget(Light, slot);
-            return await _lightPropagator.PropagateColumnAsync(Light, slot, column, negX, posX, negZ, posZ);
+            return await _lightPropagator.PropagateColumnAsync(Light, slot, column, negX, posX, negZ, posZ, columnX, columnZ, emitters);
         }
         finally
         {
