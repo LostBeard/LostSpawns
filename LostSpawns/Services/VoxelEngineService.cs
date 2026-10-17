@@ -95,6 +95,7 @@ public class VoxelEngineService : IAsyncDisposable
         {
             MissingNeighborsAreSolid = false,
             EmbedSectionIndex = true,
+            AmbientOcclusion = true,   // each face corner is shaded by what stands beside it, baked into the quad by the mesher
             Arena = _arena,
         };
         _mesher.SetBlockClasses(BlockStyle.Classes());
